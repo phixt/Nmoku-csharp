@@ -1,0 +1,241 @@
+# Gomoku 613B-E2D → Godot C# 迁移计划
+
+> 源项目：`D:\P_rojects\gomoku-613B-E2D`（TypeScript + Three.js + Vite + Tauri，v0.6.4）
+> 目标项目：本仓库（Godot 4.6.x .NET / C#，Windows 桌面 x64）
+> 依据文档：源项目 `docs/architecture-00~04`、`audio_var.md`、`test-and-cicd-plan.md`、README
+> 状态：计划已评审定稿（2026-09-18），待 M0 环境搭建
+
+---
+
+## 0. 已确认的决策
+
+| # | 决策项 | 结论 |
+|---|--------|------|
+| 1 | Godot 版本 | **Godot 4.6.2-stable .NET 版**（win64），配套 **.NET 8 SDK** |
+| 2 | 目标平台 | **仅 Windows 桌面**，不做 Web 导出 |
+| 3 | 视觉还原 | 允许适度重设计；主题/UI 重构为**调色板驱动**系统，首发只做一套调色板 |
+| 4 | 存档 | 第一版即兼容读取旧版 **v2.0.0 JSON**（含 v1 迁移）；同时提供 JSON 明文导出 + **自建 zip 容器格式**导出 |
+| 5 | 简单项直接做 | 色弱模式、明暗切换按源项目语义直接实现 |
+| 6 | 文本 | 先建 `TextConstants` 字符常量文件，后续平滑扩展为 i18n（四语言） |
+| 7 | 音频 | 第一版用导入的 WAV/OGG 资产；**保留合成器接口**（`IMusicEngine`），以后可回填程序化合成 |
+| 8 | 文档未覆盖部分 | 辅助线系统与 2D 右面板与相机强耦合，**谨慎处理、放独立里程碑**；实现时允许局部读源码（`RightPanel.ts`、`LeftPanel.ts`、`main.ts` 输入部分） |
+
+---
+
+## 1. 总体策略
+
+源项目不是 Unity 工程，**没有任何引擎资产可搬运**。好在架构文档达到伪代码级完备，因此采取：
+
+1. **逻辑层按文档重写**：`00-domain / 01-core / 02-rules / 04-contracts` 覆盖了全部游戏逻辑，逐条翻译为 C#，用 xUnit 测试锁行为（测试用例清单直接取自 `test-and-cicd-plan.md` §4）。
+2. **渲染层按文档重实现**：相机管道（`03-camera`）数学公式全部给出，Three.js → Godot 只是 API 换皮；注意 3 处引擎差异（见 §4.6、风险 R1–R3）。
+3. **UI 层适度重设计**：DOM/CSS → Godot `Control` + Theme；一次性还清"调色板系统"的设计债，但首发只填一套色。
+4. **纯逻辑与引擎解耦**：核心算法放在**不引用 Godot 的类库**里，测试项目秒级运行、不启动引擎。
+
+### 1.1 解决方案结构（.NET）
+
+```
+Nmoku.sln
+├── src/Nmoku.Core/          # 纯 C# 类库（net8.0，零 Godot 依赖）
+│   ── 棋盘/规则/AI/存档数据模型/事件总线/相机数学/模式收集
+├── src/Nmoku.Game/          # Godot C# 项目（net8.0，引用 Nmoku.Core）
+│   ── 场景、节点脚本、输入、UI、音频、存储适配
+└── tests/Nmoku.Core.Tests/  # xUnit（net8.0，引用 Nmoku.Core）
+```
+
+Godot 项目文件（`project.godot`、场景、资产）与 csproj 同置于 `src/Nmoku.Game/`；仓库根再放 `docs/`、`assets-src/`（外部素材与许可）。
+
+### 1.2 源项目 → 目标模块映射总表
+
+| 源文件（TS） | 目标（C#） | 方式 | 里程碑 |
+|---|---|---|---|
+| `core/Board.ts` | `Nmoku.Core/Board.cs` | 按 01-core §1 重写（`byte[]` 扁平存储） | M1 |
+| `core/Types.ts` | `Nmoku.Core/Types.cs`（enum/record） | 按 00-domain 重写 | M1 |
+| `core/Config.ts` | `Nmoku.Core/GameConfig.cs` | 常量表照搬（§5 附录） | M1 |
+| `core/Rules.ts` | `Nmoku.Core/Rules.cs` | 按 02-rules §1/§5 重写（13 方向、Pattern3D） | M1 |
+| `core/rules/IRuleEngine.ts` | `Nmoku.Core/IRuleEngine.cs` | 按 04-contracts §2.1 | M1 |
+| `core/rules/StandardEngine.ts` | 同上目录 | 02-rules §2.4 | M1 |
+| `core/rules/SwapEngine.ts` | 同上目录 | 02-rules §2.4/§3 | M1 |
+| `core/SaveManager.ts` | `Nmoku.Core/Saves/SaveData.cs` + `SaveMigrator.cs`（schema/校验/v1→v2 迁移/Base64） | 01-core §6 + 04-contracts §3.3 | M1 |
+| `core/StorageAdapter.ts` | `Nmoku.Game/Persistence/FileSystemStorageAdapter.cs`（实现 Core 中接口） | 04-contracts §3.1 | M4 |
+| `ai/AIEngine.ts` `ai/IAIEngine.ts` | `Nmoku.Core/AI/` | 02-rules §4 + 04-contracts §2.2 | M1（算法）/M3（接线） |
+| `core/EventBus.ts` | `Nmoku.Core/EventBus.cs`（静态 C# event） | 04-contracts §5 | M1 |
+| `core/GameStore.ts` | `Nmoku.Game/GameManager.cs`（Node，状态机宿主） | 01-core §3 | M4 |
+| `utils/MathUtils.ts` | `Nmoku.Core/Camera/CameraRig.cs` 等 | 03-camera 全量 | M2 |
+| `views/LeftPanel.ts` | `Nmoku.Game/Views/Board3DView.tscn` + 脚本 | 03-camera | M2 |
+| `views/RightPanel.ts` | `Nmoku.Game/Views/Board2DView.cs`（Control 自绘） | **文档缺口，需读源码** | M3 |
+| 辅助线（两面板内） | `Nmoku.Game/Views/HelperLinesService` + 两视图渲染器 | 02-rules §5 + 需读源码 | M3 |
+| `ui/OverlayManager.ts` | `Nmoku.Game/Ui/OverlayManager.cs` | 04-contracts §4.1 | M4 |
+| 快捷键表 | `project.godot` InputMap + `Nmoku.Game/Input/ShortcutMap.cs` | 04-contracts §4.2 | M3/M4 |
+| `core/I18n.ts` + `locales/*.ts` | `Nmoku.Game/Text/TextConstants.cs` →（M5）Translation CSV | 用户决策 #6 | M1/M5 |
+| `audio/AudioManager.ts` | `Nmoku.Game/Audio/AudioManager.cs` + `IMusicEngine` 接口 | audio_var.md；资产化路线 | M5 |
+| `styles/*.css`、主题色 | `Nmoku.Game/Theme/Palette.cs` + Godot Theme 资源 | 重设计为调色板系统 | M4 |
+| `public/fonts/LXGWWenKaiLite-Regular.woff2` | 换用官方 TTF（OFL 许可）导入 | — | M4 |
+| Tauri 剪贴板/窗口 | `DisplayServer.ClboardGet/Set`、项目设置 | 平台 API 直换 | M4 |
+| Vite/tsc 质量门禁 | xUnit + `dotnet format` + （可选）GitHub Actions | test-and-cicd §5 思路平移 | M1 起 |
+
+---
+
+## 2. 命名与写法约定
+
+- 伪代码函数 → C# 方法一律 PascalCase：`checkWinner→Rules.CheckWinner`、`Get/Set→Board.Get/Set`、`LogicalToWorld→CoordMapper.LogicalToWorld`。
+- 值对象用 `record struct`（`Coordinate3D`、`Pattern3D` 列表成员用 `readonly struct`）；`Move` 可变性遵循 00-domain §1.3（Swap 时允许原地换色）。
+- 域内不使用 Godot 类型；`Vector3` 只在渲染/相机层出现，Core 用自有 `(int x, int y, int z)`。
+- 枚举对齐源常量：`CellState { Empty=0, Black=1, White=2 }`（存档值直接兼容）、`PlayerColor { Black, White }`。
+- 每个 Core 公共类型必须有对应测试文件（`XxxTests.cs`），命名 `Method_Scenario_Expectation`。
+
+---
+
+## 3. 关键技术决策
+
+### 3.1 逻辑层（M1，全部在 Nmoku.Core）
+
+- **Board**：`byte[] data`，`Index = z*s² + y*s + x`（01-core §1.3 原样）。越界读返回 0、越界写忽略——这是测试点（01-core §1.3 语义）。
+- **规则引擎**：`IRuleEngine` 三方法签名照 04-contracts §2.1。Connect6 只作为扩展点保留接口位置，**第一版不实现**（源项目亦未实装）。
+- **Swap2**：完整照 02-rules §2.4/§3，含"预置子跳过 swap"守卫（4.7）。
+- **存档模型**：`SaveData` 用 `System.Text.Json`，字段名与 v2.0.0 schema 逐一对齐（camelCase `JsonNamingPolicy`），保证双向可读。`focusZ` 读入即弃。v1 旧档（只有 `moves`）走 `SaveMigrator.MigrateV1` 重建 `boardState`。
+- **AI**：评分表/候选集/难度参数全部来自 02-rules §4，无自由发挥。异步契约：`Task<Coordinate3D?> GetBestMoveAsync(board, player, ct)`，内部 `Task.Run` + 协作式取消（04-contracts §2.2.3 要求 100ms 内响应取消）；调用侧回到主线程后再验一次 `IsLegalMove`。
+- **EventBus**：静态类 + `event Action<T>`，事件与 payload 按 04-contracts §5 表逐一建 record。Godot 侧不引入 signal 转译层（统一走 EventBus，保持 Core 纯净）。
+- **TextConstants**：`public static class Text`，按域分组嵌套类（`Text.Swap.Message` 等）。值为简体中文（源项目默认语言）。M5 时调用点改为 `Text.T(key)` 语义不变的查找。
+
+### 3.2 相机与 3D 视图（M2）
+
+- `CameraState/CameraRig`（Core 内纯数学）：03-camera §9 的 8 步管道逐行实现，输入 `(boardSize, layers, layerSpacing, aspect, yaw)`，输出 position/fov/near/far/center。缓存结构 `CameraCache` + `NeedsRecompute`（§8.1）保留，按增量脏标记重算。
+- **FOV 语义**：Three.js `PerspectiveCamera.fov` 与 Godot `Camera3D.Fov` 均按垂直方向定义，但 Godot 在 `keep_aspect` 覆盖与宽高比 <1 时行为不同——**M2 第一周用 13×13×6 默认棋盘做数值对照标定**（同一组输入打印两边参数），必要时把 §9 STEP 5 的 `fovLimit` 计算保持不变、只核对 `aspect` 传入方向（文档已自带水平 FOV 换算式，风险可控）。
+- 相机节点：`Camera3D` 直接设 transform，不用 `look_at` 之外的任何阻尼/平滑（源系统本就是"设定即所得"，交互平滑留给后续）。
+- **坐标映射**：`LogicalToWorld(x, y, z) → new Vector3(x, z * layerSpacing, y)`。Three.js 与 Godot 同为 Y-up 右手系，但**源世界 Z（forward）与 Godot 观察朝向 -Z 的关系需在 M2 用贴边五连的可视化验证**（yaw=45° 对角视角下图象是否镜像）。若镜像，只翻转映射函数一处（集中在此函数，禁止散落）。
+- **棋子渲染**：`MultiMeshInstance3D` ×4（黑/白 × 不透明/ghost），几何用 `SphereMesh`（段数按性能调），实例数据每帧按需重建（13×13×6=1014 上限极小，全量重建成本可忽略，**不做增量**）。透明度按 `ComputeOpacity(worldY)`（§8.2，GHOST_OPACITY_MIN=0.25）。
+- **透明排序**：文档 §9.4 要求 ghost 按距离降序绘制。Godot 对同一 MultiMesh 内实例不做逐实例排序，方案：ghost 组使用 **`StandardMaterial3D` transparency = alpha_sc mix + `depth_draw` 调整**，接受逐实例混合的非严格排序（球体小、opacity 0.25–1.0，视觉误差极小）；若实测出现明显瑕疵，降级为"每 ghost 层一个 MultiMesh 按层排序"（层数 ≤ 视觉分组数，成本仍低）。**列为验证点，不提前优化。**
+- 网格线/层连接线：一次性构建单个 `ArrayMesh`（`PrimitiveType = PRIMITIVE_LINES`），`layerSpacing` 滑杆改变时重建（≤ 2×13×6 条线，重建 <1ms）。
+- 悬停定位蓝点（左视图）：M2 先做"当前焦点层半透明高亮面片"占位，精确拾取联动画像在 M3 与辅助线一起处理。
+
+### 3.3 2D 右面板与输入闭环（M3）
+
+- `Board2DView : Control`，`_Draw()` 自绘：网格、焦点层棋子（非焦点层不画或用淡化描边——以源码行为为准）、最后一手标记、悬停预览子、辅助线。坐标为纯数学（无物理/碰撞节点）：`鼠标坐标 ↔ (x,y)` 网格反算，含安全边距（对应 v0.3.2-fix）。
+- `F` 键水平镜像、`A/D` 换层、点击落子 → 走 `GameManager.PlaceStone` 统一入口。
+- **辅助线（文档最薄弱 + 与视图强耦合，单列子任务）**：
+  - 数据端已有：`collectLayerPatterns3D`（02-rules §5）+ "4 格检测范围限制"（README）→ 在 Core 实现 `PatternCollector.Collect(board, layerZ, maxLen=4)`，输出与颜色无关的 `Pattern3D`。
+  - 展示端需读 `RightPanel.ts`/`LeftPanel.ts` 确认：己方绿/敌方红（色弱：黄/蓝）、3D 蓝点联动、`H` 开关语义。做**一份数据、两个渲染器**（2D 线段 / 3D `Path3D`-或线段 Mesh），杜绝双份逻辑。
+- 输入：全部快捷键进 InputMap action（04-contracts §4.2.2 表逐行建），`ShortcutRouter` 按当前状态机 context 门控（§4.2.3/§4.2.4：匹配即吞掉事件）。
+
+### 3.4 游戏壳与状态机（M4）
+
+- `GameManager : Node` 持有 01-core §3 的 7 态枚举 + 转移表（§3.4 逐行实现，非法转移 `GD.PrintErr` + 拒绝）。UI 场景以 `CanvasLayer` 分：Title / Hud / PauseMenu / GameOverModal / SaveMenu / Guide / ReplayBar。
+- `IOverlayManager`（04-contracts §4.1）：`ShowConfirmDialog/ShowInputDialog/ShowToast/CloseAll`，回调契约（模态互斥、Esc 取消、回调恰好一次、toast 不抢焦点）写进验收清单。
+- 存档 UI：6 槽位（5=快存）、`L` 读最新、`Ctrl+S` 快存、Base64 导入导出（剪贴板走 `DisplayServer.ClboardGet/Set`）。
+- **新自建导出格式 `.nzsave`（zip 容器）**：
+  ```
+  manifest.json      # { "format": "nzsave/1", "createdAt", "appId": "nmoku.godot" }
+  savedata.json      # 内层仍是 v2.0.0 schema（版本演进时加 schema 字段 + 迁移器）
+  replay.png?        # 预留：棋盘快照缩略图（可空）
+  ```
+  读档入口统一嗅探：zip magic `PK` → 容器路径；`{` → JSON 路径；Base64 解码后两者皆可。
+- 关卡：`LevelConfig`（01-core §7）+ `tutorial`/`residual` 两内置关 + 沙盒自定义（尺寸奇数≥5、层数、连珠 4–9）设置面板。
+- 主题/调色板系统（重设计项）：`Palette : Resource`，字段=语义色（bg/board/grid/line-own/line-opp/ghost/…）+ 明暗两套派生；首发一套"水绿宣纸"light + 现有 dark 映射。`T` 切明暗、`V` 色弱（红绿→黄蓝在 Palette 中是第二组 line 颜色，运行时换组）。JSON 序列化 Palette 为**后续自定义调色板**留门，本版不做编辑器 UI。
+
+### 3.5 音频 / i18n / 发布（M5）
+
+- `AudioManager : Node`：3 个 `AudioStreamPlayer` 总线（BGM/SFX/UI → Godot AudioBus），`PlayBgm(Menu|Game|Pause|Guide)`、`PlaySfx(Click|Place|Win|Lose|...)`、`SetVolume`、`Mute`（语义对齐 audio_var.md §六）。
+- `IMusicEngine { Start(track); Stop(); SetIntensity(float); }`：默认实现 `SampleMusicEngine`（导入 OGG 循环轨，占位素材先用 CC0 替代品，**补全音乐**沿用源项目 TODO）；`SynthMusicEngine`（AudioStreamGenerator 复刻和弦合成器）留空实现挂后续版本。
+- i18n：`TextConstants` 键 → Godot `CSV` 翻译表（zh-CN 为源语言），`I18n.ts` 的缺 key fallback 语义由 `TranslationServer` + 自测覆盖；语言切换入口放设置面板（四语言：zh-CN/zh-Hant/en-US/ja-JP）。
+- 导出：Windows x64，`export_presets.cfg` 进仓库；单 exe + pck 或 one-file 打包为 zip 发布。
+
+---
+
+## 4. 常量与数据对齐表（单一事实源）
+
+| 常量 | 值 | 出处 |
+|---|---|---|
+| DEFAULT_BOARD_SIZE / LAYER_COUNT / WIN_LENGTH / LAYER_SPACING | 13 / 6 / 5 / 3.5 | 01-core 附 B |
+| SAVE_SLOT_COUNT / QUICK_SAVE_INDEX | 6 / 5 | 01-core 附 B |
+| CELL_EMPTY/BLACK/WHITE | 0/1/2 | 01-core 附 B |
+| 层间距调节范围 | 2.0–6.0（X 复位到最近非调整值） | README |
+| DIRECTIONS_3D | 13 向量 | 02-rules §1.2（顺序也照抄，测试依赖） |
+| AI 分数表 | 1e6/1e5/1e4/1e3/100/10，defense ×1.1 | 02-rules §4.3/4.4 |
+| AI 难度候选半径 / 思考时间 | Easy 仅堵抢点 200–500ms；Med r=1 100–300ms；Hard r=2 50–200ms | 01-core §8、04-contracts §2.2 |
+| MIN/MAX_FOV、MIN/MAX_PITCH | 30/60、35/85 度 | 03-camera |
+| ASPECT_SENSITIVITY / SAFETY_MARGIN / ZOOM_SPEED | 2.5 / 1.3 / 0.15 | 03-camera |
+| MIN/MAX_VISUAL_SCALE、BASE_* | 0.8/1.2；13/6/3.5 | 03-camera |
+| GHOST_OPACITY_MIN | 0.25 | 03-camera |
+| 距离上下限 | base×0.3 / base×3.0 | 03-camera §6.1 |
+| 辅助线检测上限 | 4 格 | README 特性节 |
+| 连珠数范围 / 边长约束 | 4–9；奇数且 ≥5 | 00-domain 2.2/2.8 |
+
+**MoveHistory / SaveData schema 与 v2.0.0 逐字段一致**（04-contracts §3.3），不增删字段；新字段一律走 zip 容器 `manifest.json` 的外围元数据，避免污染兼容层。
+
+---
+
+## 5. 里程碑
+
+> 每个里程碑结束都要求：`dotnet test` 全绿 + 游戏可运行至该阶段验收场景 + git tag（`m0`…`m5`）。
+
+### M0 — 环境与脚手架（半天～1 天）
+- [ ] 安装 .NET 8 SDK、Godot 4.6.2 .NET win64（指南见 §7）
+- [ ] `Nmoku.sln` + 三项目（Core/Game/Tests），Game 侧跑通空场景 `Main.tscn`
+- [ ] xUnit 冒烟测试 + `.gitignore`（Godot 专属见 §6）+ 首次提交流程
+- **验收**：Godot 编辑器打开无 cs 加载错误；`dotnet test` 1 个恒真测试通过；F5 从 Godot 运行空窗。
+
+### M1 — 纯逻辑层 + 测试基线（预计最重的"确定性"部分）
+- [ ] Types/Config/Board/EventBus/Rules(13 方向+Pattern)/Standard+SwapEngine/SaveData+校验+v1 迁移+Base64/AIEngine(Core 版,同步)/PatternCollector(maxLen=4)/TextConstants(zh-CN)
+- [ ] 测试：把 `test-and-cicd-plan.md` §4.1–4.5 清单逐条翻译为 xUnit（含跨层斜线五连、六连、winLength 可配、Swap2 守卫、AI 合法性、存档往返/损坏容错）
+- [ ] 04-contracts §6.1/6.2(除时间预算)/6.3(mock adapter) 清单打勾
+- **验收**：控制台跑通"AI vs AI 100 手自洽对局"无异常；测试报告覆盖 Core 公共 API。
+
+### M2 — 3D 左视图 + 连续相机
+- [ ] CameraRig(Core) + 标定对照（§3.2）；Board3DView 场景：MultiMesh×4、线 Mesh、ghost 材质与排序方案验证
+- [ ] 交互：Q/E 旋转、W/S 与滚轮缩放（zoom-to-anchor）、Z/C 层间距、X 复位；S 键拉远提示语场景可复现
+- [ ] 悬停层高亮占位
+- **验收**：与源项目并排开（`npm run dev`），同参数（默认盘、9×9×1、13×13×6 spacing 6.0）下相机构图目视一致性记录截图；FPS ≥ 60。
+
+### M3 — 2D 右面板 + 落子闭环 + 辅助线
+- [ ] Board2DView 自绘 + 拾取 + 安全边距；A/D 换层、F 镜像、点击落子、最后一手标记、悬停预览
+- [ ] GameManager 接线：回合、合法性、胜负、GAME_OVER
+- [ ] 辅助线：PatternCollector → 2D/3D 双渲染器，H 开关、V 色弱、蓝点联动；4 格上限与性能约束
+- [ ] 快捷键全表进 InputMap + ShortcutRouter context 门控；Ctrl+Z 悔棋
+- **验收**：本地双人完整对局（含 SWAP2 分支两条路径）可用；辅助线颜色/开关/镜像行为对齐源项目。
+
+### M4 — 游戏壳：状态机、UI、存档
+- [ ] 7 态状态机 + 全转移表 + 暂停/标题/结算/引导(静态文本版) UI
+- [ ] FileSystemStorageAdapter(user://) + SaveManager 槽位/快存/L/Ctrl+S + zip 容器 .nzsave + 导入导出（剪贴板 `DisplayServer.ClipboardGet/Set`）
+- [ ] 关卡（tutorial/residual/沙盒自定义面板：尺寸/层数/连珠 4–9）
+- [ ] 复盘 REPLAY（步进出/入、进度条）；OverlayManager 契约；Palette 系统 + 明暗 + 首发水绿宣纸单套色；霞鹜文楷 TTF 导入
+- **验收**：04-contracts §6.3/6.4/6.5 全勾；**读源项目真实 v2.0.0 旧档恢复棋局**（从浏览器版导 Base64 互转）；复盘与源版本行为一致。
+
+### M5 — 音频、i18n、发布
+- [ ] AudioManager + 采样版 BGM（4 轨循环）+ SFX 全集 + M 静音 + `IMusicEngine`/`SetIntensity` 接口就位（合成器留壳）
+- [ ] TextConstants → CSV 四语言 + 语言切换
+- [ ] 导出配置、Windows 打包 zip、README/CHANGELOG
+- **验收**：安装包冒烟清单（test-and-cicd §L3 的 7 条 E2E 流程手动过一遍）；导出存档→删除→导入往返。
+
+---
+
+## 6. 仓库约定
+
+- `.gitignore`：`.godot/`、`bin/`、`obj/`、`*.glb.import` 不需要——**import 元数据（`*.import`）要提交**；`.vs/`、`.idea/`、`export/`（导出产物）、`*.exe`。
+- 提交信息：中文短句 + 前缀（`M1: 移植 Rules 13 方向判定`）。
+- 源项目参照只读：不把 TS 代码复制进本仓库（许可 MIT 允许，但保持清洁室姿态，仅逻辑按文档重写；`assets-src/` 收纳字体/图标等**素材**并记录许可）。
+- 可选（M1 末）：GitHub Actions —— `dotnet test` + `dotnet build`，平移 test-and-cicd §5 思路。
+
+## 7. 环境搭建（M0 操作步骤，对话中会逐步陪同）
+
+1. **.NET 8 SDK**：<https://dotnet.microsoft.com/zh-CN/download/dotnet/8.0>（若 VS2026 已带，确认 `dotnet --list-sdks` 有 8.x 即可）
+2. **Godot 4.6.2 .NET win64**：官方下载页 <https://godotengine.org/download/windows/> 勾选 ".NET" 版本；解压到如 `D:\Tools\Godot\`。文件名形如 `Godot_v4.6.2-stable_win64_net.exe`。
+3. **VS2026**：确认勾选了「.NET 桌面开发」工作负载；它只作为代码编辑器/调试器使用，**F5 运行游戏走 Godot 编辑器**。Godot 编辑器首次创建 C# 项目会生成 csproj/sln；VS 打开 sln 后按 F5 会"启动 Godot 并调试"（需 NuGet 装 `GodotSharp` 相关引用，由 Godot 自动写入）。
+4. 验证链：`Godot 编辑器新建项目 → 编辑器输出面板无 .NET 错误 → dotnet test 可跑`。
+
+## 8. 风险清单
+
+| ID | 风险 | 等级 | 缓解 |
+|----|------|------|------|
+| R1 | FOV/aspect 在 Godot 与 Three.js 语义差异导致构图不一致 | 中 | M2 数值对照标定；文档公式自带 fovH 换算，`aspect` 传入方向单点验证 |
+| R2 | 世界 Z 轴朝向/镜像差异（lookAt 手性） | 中 | 翻转收敛在 `CoordMapper` 一处；贴边五连截图对照 |
+| R3 | ghost 逐实例透明排序不严格 | 低 | 已定降级方案（按层分桶）；目视验证驱动，不预防性优化 |
+| R4 | 辅助线/悬停联动文档缺口，行为理解偏差 | **高** | M3 独立子任务；先读源 TS（3 文件）提炼行为清单并经你确认再写 |
+| R5 | AI 线程与 Godot 主线程交互（取消/结果回投） | 低 | Core 纯函数 + Game 层单点接线；测试覆盖取消路径 |
+| R6 | 旧档兼容细节（字段缺失、v1 形状、非法 Base64） | 中 | 用源项目**真实导出样本**做测试夹具；migrate/validate 用例先于实现 |
+| R7 | woff2 字体 Godot 不识别 | 低 | 取霞鹜文楷官方 TTF；OFL 许可随仓库附声明 |
+| R8 | 调色板抽象过度设计拖慢 M4 | 中 | 首发仅一套 light+dark+色弱三组色，Palette 字段先语义化、不做编辑器 |
+| R9 | Godot 4.6 相对 4.5 的 API 变动踩坑 | 低 | 均为标准稳定 API（MultiMesh/Camera3D/Control._draw），遇阻再查 release notes |
+
+## 9. 最终验收（对齐 04-contracts §6 全表 + L3 手动清单）
+
+见各里程碑验收栏；M5 后追加：七条用户流程（README 操作指南表全键位）+ 四语言抽查 + 双端存档互转演示。

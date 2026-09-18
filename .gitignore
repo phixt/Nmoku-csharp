@@ -1,0 +1,15 @@
+# Godot
+.godot/
+*.translation
+
+# .NET
+bin/
+obj/
+*.user
+*.suo
+.vs/
+.idea/
+
+# 导出产物
+export/
+*.tmp
