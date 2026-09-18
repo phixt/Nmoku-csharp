@@ -9,8 +9,8 @@ jobs:
   dotnet:
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-dotnet@v4
+      - uses: actions/checkout@v5
+      - uses: actions/setup-dotnet@v5
         with:
           # Nmoku.slnx (SDK 10 solution format) requires the 10.x SDK to even
           # discover the solution; projects still target net8.0.
@@ -26,8 +26,8 @@ jobs:
     env:
       GODOT_VERSION: 4.6.2
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-dotnet@v4
+      - uses: actions/checkout@v5
+      - uses: actions/setup-dotnet@v5
         with:
           # Nmoku.slnx (SDK 10 solution format) requires the 10.x SDK to even
           # discover the solution; projects still target net8.0.
