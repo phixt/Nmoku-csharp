@@ -55,4 +55,8 @@ jobs:
         run: |
           $out = & "${{ steps.exe.outputs.path }}" --headless --path src/Nmoku.Game --quit 2>&1
           $out | ForEach-Object { Write-Output $_ }
-          if ($out -notmatch "engine boot OK") { exit 1 }
+          # PS 陷阱：-notmatch 作用于数组返回"未命中元素集合"而非布尔，
+          # 引擎横幅行必然未命中 -> 集合非空 -> 恒为真。先拼成单串再匹配。
+          $text = $out -join "`n"
+          if ($text -notmatch "engine boot OK") { exit 1 }
+          exit 0
