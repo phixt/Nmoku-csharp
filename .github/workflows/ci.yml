@@ -32,6 +32,10 @@ jobs:
           # Nmoku.slnx (SDK 10 solution format) requires the 10.x SDK to even
           # discover the solution; projects still target net8.0.
           dotnet-version: 10.0.x
+      - name: Build game assemblies
+        # dotnet 作业的构建产物不跨 job 传递；Main.cs 是 C# 脚本，
+        # 缺程序集时引擎报 "class could not be found" 且冒烟串不打印。
+        run: dotnet build src/Nmoku.Game --nologo
       - name: Download Godot (.NET build)
         run: |
           $v = $env:GODOT_VERSION
