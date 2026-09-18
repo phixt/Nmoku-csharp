@@ -175,10 +175,10 @@ Godot 项目文件（`project.godot`、场景、资产）与 csproj 同置于 `s
 - **验收**：Godot 编辑器打开无 cs 加载错误；`dotnet test` 1 个恒真测试通过；F5 从 Godot 运行空窗。
 
 ### M1 — 纯逻辑层 + 测试基线（预计最重的"确定性"部分）
-- [ ] Types/Config/Board/EventBus/Rules(13 方向+Pattern)/Standard+SwapEngine/SaveData+校验+v1 迁移+Base64/AIEngine(Core 版,同步)/PatternCollector(maxLen=4)/TextConstants(zh-CN)
-- [ ] 测试：把 `test-and-cicd-plan.md` §4.1–4.5 清单逐条翻译为 xUnit（含跨层斜线五连、六连、winLength 可配、Swap2 守卫、AI 合法性、存档往返/损坏容错）
-- [ ] 04-contracts §6.1/6.2(除时间预算)/6.3(mock adapter) 清单打勾
-- **验收**：控制台跑通"AI vs AI 100 手自洽对局"无异常；测试报告覆盖 Core 公共 API。
+- [x] Types/Config/Board/EventBus/Rules(13 方向+Pattern)/Standard+SwapEngine/SaveData+校验+v1 迁移+Base64/AIEngine(Core 版,同步)/PatternCollector(maxLen=4)/TextConstants(zh-CN)
+- [x] 测试：把 `test-and-cicd-plan.md` §4.1–4.5 清单逐条翻译为 xUnit（含跨层斜线五连、六连、winLength 可配、Swap2 守卫、AI 合法性、存档往返/损坏容错）
+- [x] 04-contracts §6.1/6.2(除时间预算)/6.3(mock adapter) 清单打勾
+- **验收**：控制台跑通"AI vs AI 100 手自洽对局"无异常（已并入 xUnit `AIVersusAI_HundredMoves_AllLegalAndNoException`，种子固定可复现）；测试报告覆盖 Core 公共 API（113 passing，2026-09-18）。
 
 ### M2 — 3D 左视图 + 连续相机
 - [ ] CameraRig(Core) + 标定对照（§3.2）；Board3DView 场景：MultiMesh×4、线 Mesh、ghost 材质与排序方案验证
@@ -242,3 +242,17 @@ Godot 项目文件（`project.godot`、场景、资产）与 csproj 同置于 `s
 ## 9. 最终验收（对齐 04-contracts §6 全表 + L3 手动清单）
 
 见各里程碑验收栏；M5 后追加：七条用户流程（README 操作指南表全键位）+ 四语言抽查 + 双端存档互转演示。
+
+## 10. 行为结论登记（文档缺口 → 读源 TS 核实，R4 同款流程）
+
+| # | 议题 | 结论 | 依据 |
+|---|---|---|---|
+| B1 | Swap2 `getNextTurnState` 的 `currentPlayer` 是谁 | **刚行棋方**。swap 分支返回 `nextPlayer=刚行棋方(黑)`，shell 在决策期不改写 currentPlayer → 黑连下第 2、3 手，即官方 Swap2 节奏；pass 与 swap 的唯一区别是棋子归属换不换 | `main.ts:341-366`、`SwapEngine.ts:18-34` |
+| B2 | 预置子跳过 swap 的守卫 | 源 TS 引擎**没有** levelConfig 参数，属隐式行为（有预置子时点击后 history 恒 ≥2，永远撞不到 `length=1` 分支）。C# 按 04-contracts §2.1.3 的显式签名实现，守卫结果与源等价 | `SwapEngine.ts` vs 02-rules §2.4 |
+| B3 | 旧单体档拆分（`gomoku_saves_v3`） | 条目为 null **或缺 `id`** 都被跳过，但数组下标照常递增（下标即槽位号） | `LocalStorageAdapter.tryMigrate` |
+| B4 | AI `attack + 1.1*defense` 的次序副作用 | 严格按文档表实现：当 AI 的成五点与对方的成五点**不在同一格**时，AI 会优先堵而不自己胜（defense 1.1e6 > attack 1e6）。源项目同式，保持忠实，M3 接线后如体感过弱再议 | 02-rules §4.4 |
+| B5 | PatternCollector 的 maxLen=4 | 4 格是**展示端**限制（README 性能约束），不是数据端裁剪。Core `Collect(board, layerZ)` 输出完整模式；渲染器用 `GameConfig.HelperLineMaxCells` 截断，保证"一份数据、两个渲染器" | README 特性节 + 02-rules §5.2 |
+
+## 11. M1 交付清单（2026-09-18）
+
+`src/Nmoku.Core`：Types / GameConfig / Board / Rules / PatternCollector / RuleEngines(IRuleEngine,StandardEngine,SwapEngine) / Saves(SaveData,SaveValidator,SaveMigrator,IStorageAdapter,SaveManager) / EventBus / TextConstants(Text) / AI(AIEngine)。测试 113 例全绿（test-and-cicd §4.1–4.5 + contracts §6.1/6.2/6.3 全覆盖，AI vs AI 100 手为固定种子可复现用例）。
