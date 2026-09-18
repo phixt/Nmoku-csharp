@@ -1,7 +1,7 @@
 # AGENTS.md — Agent 协作规约（唯一协调点）
 
 本仓库由 AI agent 主导开发（qoder / dsh / zcode 等）。人类负责决策与验收，agent 负责实现。
-**开工前读本文件 + `docs/migration-plan.md`；收工前更新「进度」节，并独立 commit。**
+**开工前读本文件 + `CHANGELOG.md` + `TODO.md` + `docs/migration-plan.md`；收工前更新「进度」节与 TODO/CHANGELOG，并独立 commit。**
 
 ## 环境（已验证 2026-09-18）
 
@@ -31,6 +31,7 @@ dotnet test tests/Nmoku.Core.Tests                  # 单元测试（秒级，�
 5. 不复制源项目 TS 代码进本仓库；仅逻辑按文档重写。素材（字体等）放 `assets-src/` 并附许可。
 6. 遇到需要产品决策的分歧（UI 布局、交互语义），停下来问人类，不要自行拍板。
 7. 禁止 `git push --force`、`reset --hard` 等破坏性操作；单分支 `master` 直连开发，agent 之间靠进度节声明认领。
+8. `CHANGELOG.md` 与 `TODO.md` 是交接窗口：只记**当前场景**相关事实（里程碑叙事、关键教训、待办分层），各自 **≤300 行**，超限时压缩旧内容但不得丢失当阶段关键教训；收工随进度节一并更新。
 
 ## 进度（收工必更新）
 
