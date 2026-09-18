@@ -1,0 +1,22 @@
+# 统一行尾：仓库内 LF，检出跟随系统
+* text=auto eol=lf
+
+# Godot / VS 解决方案新格式
+*.slnx text eol=lf
+
+# 二进制类型
+*.png binary
+*.jpg binary
+*.svg text eol=lf
+*.ttf binary
+*.otf binary
+*.woff binary
+*.woff2 binary
+*.ogg binary
+*.wav binary
+*.mp3 binary
+*.glb binary
+*.gltf text
+*.exr binary
+*.hdr binary
+*.zip binary

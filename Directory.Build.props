@@ -1,0 +1,9 @@
+<Project>
+  <!-- 全解决方案共享编译属性；csproj 可按需覆写 -->
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+</Project>
