@@ -1,0 +1,49 @@
+# AGENTS.md — Agent 协作规约（唯一协调点）
+
+本仓库由 AI agent 主导开发（qoder / dsh / zcode 等）。人类负责决策与验收，agent 负责实现。
+**开工前读本文件 + `docs/migration-plan.md`；收工前更新「进度」节，并独立 commit。**
+
+## 环境（已验证 2026-09-18）
+
+- .NET SDK：8.0.425 与 10.0.401 并存（`C:\Program Files\dotnet`），项目 TFM 统一 `net8.0`
+  - 解决方案为 SDK 10 生成的 **`Nmoku.slnx`**（新 XML 格式，VS2026 原生支持）；`dotnet build` 在仓库根自动发现，无需写文件名
+- Godot：4.6.2-stable mono win64，✅ 已验证（`4.6.2.stable.mono.official.71f334935`）
+  - `D:\Tools\Godot\Godot.exe` — 主程序（编辑器 GUI，人类双击用）
+  - `D:\Tools\Godot\Godot_console.exe` — 控制台版，**agent 一律用它**（stdout 可靠）；`GodotSharp/` 目录是其依赖，勿动
+  - 用户 PATH 已添加，但**已启动的进程会话可能不继承**；agent 在既有终端里请用全路径 `/d/Tools/Godot/Godot_console.exe`
+- 目标平台：仅 Windows 桌面 x64。无 Web/移动端要求。
+
+## 常用命令
+
+```bash
+dotnet build                                        # 仓库根执行，全解决方案编译（Core/Game/Tests）
+dotnet test tests/Nmoku.Core.Tests                  # 单元测试（秒级，不启动引擎）
+/d/Tools/Godot/Godot_console.exe --headless --path src/Nmoku.Game --import    # 资产重导入（改场景/资源后必跑）
+/d/Tools/Godot/Godot_console.exe --headless --path src/Nmoku.Game --quit      # 工程无错启动冒烟（应打印 "Nmoku M0: engine boot OK" 或后续主场景日志）
+```
+
+## 铁律
+
+1. **`src/Nmoku.Core` 零 Godot 依赖**（不 using Godot.*、不引用 GodotSharp）。所有引擎类型只出现在 `Nmoku.Game`。
+2. 游戏逻辑以 `docs/migration-plan.md` §4 常量表与源项目架构文档为唯一事实源；发现文档缺口（辅助线、2D 面板行为）先读源 TS 并在计划文档 R4 节登记行为结论，再写代码。
+3. 公共 Core API 必须有 xUnit 测试；测试用例名 `Method_Scenario_Expectation`。
+4. 一个 commit 只做一件事，信息格式：`M<里程碑>: <中文短句>`。
+5. 不复制源项目 TS 代码进本仓库；仅逻辑按文档重写。素材（字体等）放 `assets-src/` 并附许可。
+6. 遇到需要产品决策的分歧（UI 布局、交互语义），停下来问人类，不要自行拍板。
+7. 禁止 `git push --force`、`reset --hard` 等破坏性操作；单分支 `master` 直连开发，agent 之间靠进度节声明认领。
+
+## 进度（收工必更新）
+
+| 里程碑 | 状态 | 认领 agent / 备注 |
+|---|---|---|
+| M0 环境与脚手架 | ✅ 完成（build/test/headless 冒烟全绿，2026-09-18） | qoder |
+| M1 纯逻辑层+测试 | ⬜ | |
+| M2 3D 左视图+相机 | ⬜ | |
+| M3 2D 右面板+输入+辅助线 | ⬜ | |
+| M4 状态机/UI/存档 | ⬜ | |
+| M5 音频/i18n/发布 | ⬜ | |
+
+## MCP / 工具说明
+
+本项目**不引入 MCP server**：引擎操作全部 CLI 化（见上）。浏览器类 MCP 仅当需要
+对照运行源项目（`npm run dev`，位于 `D:\P_rojects\gomoku-613B-E2D`）做视觉比对时使用，可选。

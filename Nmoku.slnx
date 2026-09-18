@@ -1,0 +1,11 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/Nmoku.Core/Nmoku.Core.csproj" />
+    <Project Path="src/Nmoku.Game/Nmoku.Game.csproj">
+      <BuildType Project="Debug" />
+    </Project>
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Nmoku.Core.Tests/Nmoku.Core.Tests.csproj" />
+  </Folder>
+</Solution>

@@ -217,10 +217,12 @@ Godot 项目文件（`project.godot`、场景、资产）与 csproj 同置于 `s
 
 ## 7. 环境搭建（M0 操作步骤，对话中会逐步陪同）
 
-1. **.NET 8 SDK**：<https://dotnet.microsoft.com/zh-CN/download/dotnet/8.0>（若 VS2026 已带，确认 `dotnet --list-sdks` 有 8.x 即可）
-2. **Godot 4.6.2 .NET win64**：官方下载页 <https://godotengine.org/download/windows/> 勾选 ".NET" 版本；解压到如 `D:\Tools\Godot\`。文件名形如 `Godot_v4.6.2-stable_win64_net.exe`。
+> 多 agent 协作规约（命令、铁律、进度表）见仓库根 `AGENTS.md`；本项目不引入 MCP，全部 CLI 化。
+
+1. **.NET 8 SDK**：✅ 已装（8.0.425，与 10.0.401 并存，TFM 统一 net8.0）
+2. **Godot 4.6.2 mono win64**：✅ 已装于 `D:\Tools\Godot\`（`Godot.exe` GUI 版 + `Godot_console.exe` 控制台版，agent 用后者；`GodotSharp/` 为 C# 依赖勿动）。PATH 已加入用户变量。
 3. **VS2026**：确认勾选了「.NET 桌面开发」工作负载；它只作为代码编辑器/调试器使用，**F5 运行游戏走 Godot 编辑器**。Godot 编辑器首次创建 C# 项目会生成 csproj/sln；VS 打开 sln 后按 F5 会"启动 Godot 并调试"（需 NuGet 装 `GodotSharp` 相关引用，由 Godot 自动写入）。
-4. 验证链：`Godot 编辑器新建项目 → 编辑器输出面板无 .NET 错误 → dotnet test 可跑`。
+4. 验证链：`Godot 编辑器打开项目 → 输出面板无 .NET 错误 → dotnet test 可跑`。
 
 ## 8. 风险清单
 
