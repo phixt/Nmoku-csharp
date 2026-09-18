@@ -6,7 +6,9 @@
 ## 当前状态（2026-09-18）
 
 - **里程碑**：M0 ✅ / M1 ✅（tag `m0`、`m1`）；下一站 M2（3D 左视图 + 相机）。
-- **质量门禁**：`dotnet test` 113 例全绿；全解决方案 build 0 警告；Godot 4.6.2 无头冒烟 OK；GitHub Actions CI 已就位（推送远程后生效）。
+- **质量门禁**：`dotnet test` 113 例全绿；全解决方案 build 0 警告；Godot 4.6.2 无头冒烟 OK。
+  Actions 已上线（远程 `github.com/phixt/Nmoku-csharp`）：`dotnet` job 绿；`godot-smoke` 曾因**跨 job 不共享构建产物**、
+  启动引擎前缺 `dotnet build src/Nmoku.Game` 导致 C# 脚本类找不到而失败（本地 worktree 复现证实），已修复待推送验证。
 - **架构红线**：`src/Nmoku.Core` 零 Godot 依赖，纯 C#（net8.0），xUnit 秒级运行。
 
 ## M1 — 纯逻辑层（2026-09-18）

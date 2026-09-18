@@ -14,13 +14,15 @@
 
 - [ ] M3 前：读源 TS `RightPanel.ts`/`LeftPanel.ts`/`main.ts` 输入段，把辅助线/2D 面板行为清单写进 migration-plan R4 节并经人类确认（铁律 2，R4 高风险项）
 - [ ] M3：GameManager 接线（回合/合法性/胜负）+ 2D 自绘面板 + 辅助线双渲染器 + 快捷键门控
+- [ ] **AI 难度梯度可视化校验**（人类验收工具）：以可理解的方式呈现 Easy/Medium/Hard 的实力差距，
+      理想形态为不同难度 AI 互弈的批量对局 + 胜率/评分曲线。可能需要改 Core 的 AI 对局驱动与统计接口，
+      底层改动成本随 M2/M3 接线递增，**尽量在 M3 GameManager 接线前定夺接口形状**（本轮仅挂账，不动手）
 - [ ] M3 后：复核 B4——AI"堵优先于胜"的体感，必要时人类拍板是否偏离文档式
 - [ ] M4：真实浏览器导出 Base64 样本入 Fixtures，闭环 R6（见 Fixtures/README.md 尾注）
 - [ ] M4：.nzsave zip 容器 + user:// FileSystemStorageAdapter + 剪贴板互通验证
 
 ## 远期挂账（M5 及以后）
 
-- [ ] 推送远程仓库激活 CI（人类操作：`git remote add` + `git push`）
 - [ ] Godot 导出模板 ~900MB（M5 打包前再下载，不阻塞前期）
 - [ ] 音乐补全（源项目遗留 TODO）；SynthMusicEngine 合成器回填（IMusicEngine 接口已挂）
 - [ ] i18n：TextConstants → CSV 四语言（zh-CN 为源）+ 语言切换 UI
