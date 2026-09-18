@@ -213,7 +213,8 @@ Godot 项目文件（`project.godot`、场景、资产）与 csproj 同置于 `s
 - `.gitignore`：`.godot/`、`bin/`、`obj/`、`*.glb.import` 不需要——**import 元数据（`*.import`）要提交**；`.vs/`、`.idea/`、`export/`（导出产物）、`*.exe`。
 - 提交信息：中文短句 + 前缀（`M1: 移植 Rules 13 方向判定`）。
 - 源项目参照只读：不把 TS 代码复制进本仓库（许可 MIT 允许，但保持清洁室姿态，仅逻辑按文档重写；`assets-src/` 收纳字体/图标等**素材**并记录许可）。
-- 可选（M1 末）：GitHub Actions —— `dotnet test` + `dotnet build`，平移 test-and-cicd §5 思路。
+- ✅ GitHub Actions CI 已就位（`.github/workflows/ci.yml`：dotnet build/test 门禁 + Godot headless 冒烟），待仓库推送远程后生效。
+- ✅ 存档测试夹具已入库（`tests/Nmoku.Core.Tests/Fixtures/`，R6 前置完成；M4 时再补真实浏览器导出样本闭环）。
 
 ## 7. 环境搭建（M0 操作步骤，对话中会逐步陪同）
 
