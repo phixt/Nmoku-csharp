@@ -394,7 +394,7 @@ public sealed partial class Board3DView : Node3D
     /// </summary>
     private void BuildGrid(int boardSize, double spacing)
     {
-        const float thickness = 0.05f;
+        const float thickness = 0.06f; // 0.05→0.06：远景细线锯齿（M4R 反馈），配合 MSAA 8×
         float length = boardSize - 1;
         float mid = length / 2;
 

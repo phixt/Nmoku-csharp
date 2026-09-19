@@ -46,7 +46,8 @@ public sealed partial class GameScreen : Control
         };
         hbox.AddChild(viewportContainer);
 
-        Viewport3D = new SubViewport { OwnWorld3D = true, Msaa3D = Viewport.Msaa.Msaa4X };
+        // MSAA 8×：场景极小（≤1014 球体 + 数百线盒），细网格线在远景掠射角下 4× 仍有锯齿（M4R 反馈）
+        Viewport3D = new SubViewport { OwnWorld3D = true, Msaa3D = Viewport.Msaa.Msaa8X };
         viewportContainer.AddChild(Viewport3D);
 
         Viewport3D.AddChild(new WorldEnvironment
