@@ -1,12 +1,16 @@
 using Godot;
 using Nmoku.Core;
+using Nmoku.Core.AI;
 using Nmoku.Core.Camera;
+using Nmoku.Game;
 using Nmoku.Game.Theme;
 using Nmoku.Game.Views;
 
 /// <summary>
-/// M2 场景根：3D 左视图 + 自由相机接线（决策 #9）。
-/// 游戏状态机/对局接线在 M3/M4（GameManager），当前棋盘为演示棋子（占位）。
+/// M3 场景根：左右分屏（3D 左视图 + 2D 右面板）+ GameManager 接线。
+/// 悬停唯一来源是 2D 面板，3D 蓝点/辅助线跟随（紧密联动）；相机自由交互保留 M2 方案（决策 #9）。
+/// 状态机/菜单 UI 在 M4；命令行参数为 M3 关卡入口：--board=13 --layers=6 --spacing=3.5
+/// --rules=gomoku|swap2 --mode=pvp|pve --ai=easy|medium|hard。
 /// </summary>
 public partial class Main : Node
 {
@@ -15,22 +19,28 @@ public partial class Main : Node
     private const double SpacingPerSecond = 1.2;
     private const double PanPerSecond = 0.6; // ×当前距离，键盘平移速度
 
-    private readonly Palette _palette = Palette.Default;
+    private SubViewport _viewport3D = null!;
     private Camera3D _camera = null!;
-    private Board3DView _boardView = null!;
+    private Board3DView _board3D = null!;
+    private Board2DView _board2D = null!;
+    private GameManager _gm = null!;
     private CameraRig _rig = null!;
-    private Board _demoBoard = null!;
+    private ConfirmationDialog _swapDialog = null!;
+    private Label _statusLabel = null!;
+
     private readonly int _boardSize;
     private readonly int _layers;
     private double _spacing;
+    private RuleSet _rules = RuleSet.Gomoku;
+    private bool _pve;
+    private AIDifficulty _aiDifficulty = AIDifficulty.Medium;
     private Vector2 _lastViewportSize;
     private bool _rotating;
     private bool _panning;
 
     public Main()
     {
-        // M2 标定对照入口：Godot_console.exe --path src/Nmoku.Game -- --board=9 --layers=1 --spacing=3.5
-        (_boardSize, _layers, _spacing) = ParseDebugArgs();
+        (_boardSize, _layers, _spacing, _rules, _pve, _aiDifficulty) = ParseDebugArgs();
     }
 
     public override void _Ready()
@@ -43,47 +53,110 @@ public partial class Main : Node
         }
         GD.Print($"Nmoku M0: engine boot OK (custom input actions={custom}, audio buses={AudioServer.BusCount})");
 
+        BuildLayout();
+        BuildDialogs();
+
+        _gm = new GameManager { Name = "GameManager" };
+        AddChild(_gm);
+        _gm.Configure(_boardSize, _layers, _rules, _pve, _aiDifficulty);
+        Wire2DPanel();
+
+        _gm.StateChanged += Refresh;
+        _gm.FocusChanged += _ => Refresh();
+        _gm.HoverChanged += OnHoverChanged;
+        _gm.SwapPhaseStarted += ShowSwapDialog;
+
+        _lastViewportSize = _viewport3D.GetVisibleRect().Size;
+        _rig = new CameraRig(_boardSize, _layers, _spacing, _lastViewportSize.X / _lastViewportSize.Y);
+        ApplyCamera();
+
+        Refresh();
+        GD.Print($"Nmoku M3: game ready (board={_boardSize}x{_boardSize}x{_layers}, spacing={_spacing:0.0}, " +
+                 $"rules={_rules}, mode={(_pve ? "pve" : "pvp")}, distance={_rig.Current.Distance:0.00})");
+    }
+
+    private void BuildLayout()
+    {
+        var hbox = new HBoxContainer();
+        hbox.SetAnchorsAndOffsetsPreset(Control.LayoutPreset.FullRect);
+        AddChild(hbox);
+
+        var viewportContainer = new SubViewportContainer
+        {
+            Stretch = true,
+            SizeFlagsHorizontal = Control.SizeFlags.Expand,
+            SizeFlagsStretchRatio = 0.62f,
+        };
+        hbox.AddChild(viewportContainer);
+
+        _viewport3D = new SubViewport { OwnWorld3D = true, Msaa3D = Viewport.Msaa.Msaa4X };
+        viewportContainer.AddChild(_viewport3D);
+
+        _viewport3D.AddChild(new WorldEnvironment
+        {
+            Environment = new Godot.Environment
+            {
+                BackgroundMode = Godot.Environment.BGMode.Color,
+                BackgroundColor = Palette.Default.Background,
+                AmbientLightSource = Godot.Environment.AmbientSource.Color,
+                AmbientLightColor = Palette.Default.AmbientLight,
+                AmbientLightEnergy = 0.55f,
+            },
+        });
+        _viewport3D.AddChild(new DirectionalLight3D { RotationDegrees = new Vector3(-55, 35, 0) });
+
+        _board3D = new Board3DView { Name = "Board3DView" };
+        _viewport3D.AddChild(_board3D);
+        _board3D.Configure(_boardSize, _layers, _spacing);
+
         _camera = new Camera3D
         {
             KeepAspect = Camera3D.KeepAspectEnum.Height, // Godot fov 为垂直向，与 Three.js 语义一致（R1）
             Current = true,
         };
-        AddChild(_camera);
+        _viewport3D.AddChild(_camera);
 
-        AddChild(new WorldEnvironment
+        _board2D = new Board2DView
         {
-            Environment = new Godot.Environment
-            {
-                BackgroundMode = Godot.Environment.BGMode.Color,
-                BackgroundColor = _palette.Background,
-                AmbientLightSource = Godot.Environment.AmbientSource.Color,
-                AmbientLightColor = _palette.AmbientLight,
-                AmbientLightEnergy = 0.55f,
-            },
-        });
-        AddChild(new DirectionalLight3D { RotationDegrees = new Vector3(-55, 35, 0) });
+            SizeFlagsHorizontal = Control.SizeFlags.Expand,
+            SizeFlagsStretchRatio = 0.38f,
+        };
+        hbox.AddChild(_board2D);
 
-        _boardView = new Board3DView { Name = "Board3DView", Theme = _palette };
-        AddChild(_boardView);
-        _boardView.Configure(_boardSize, _layers, _spacing);
+        _statusLabel = new Label();
+        _statusLabel.SetAnchorsAndOffsetsPreset(Control.LayoutPreset.CenterBottom);
+        _statusLabel.HorizontalAlignment = HorizontalAlignment.Center;
+        _statusLabel.GrowHorizontal = Control.GrowDirection.Both;
+        _statusLabel.OffsetTop = -64;
+        AddChild(_statusLabel);
+    }
 
-        _demoBoard = new Board(_boardSize, _layers);
-        PlaceDemoStones();
+    private void BuildDialogs()
+    {
+        // SWAP2 决策（M3 占位 UI，M4 换 OverlayManager）：确定=交换、取消/Esc=继续执白
+        _swapDialog = new ConfirmationDialog
+        {
+            Title = "SWAP2",
+            DialogText = Text.Swap.ChooseSwapOrDefault,
+            OkButtonText = "交换黑白",
+            CancelButtonText = "继续执白",
+            Exclusive = true,
+        };
+        _swapDialog.Confirmed += () => _gm.ResolveSwap(true);
+        _swapDialog.Canceled += () => _gm.ResolveSwap(false);
+        AddChild(_swapDialog);
+    }
 
-        _lastViewportSize = GetViewport().GetVisibleRect().Size;
-        _rig = new CameraRig(_boardSize, _layers, _spacing, _lastViewportSize.X / _lastViewportSize.Y);
-        ApplyCamera();
-
-        GD.Print($"Nmoku M2: board3d ready (board={_boardSize}x{_boardSize}x{_layers}, spacing={_spacing:0.0}, " +
-                 $"aspect={_lastViewportSize.X / _lastViewportSize.Y:0.00}, distance={_rig.Current.Distance:0.00}, " +
-                 $"fov={_rig.Current.Fov:0.0}, pitch={_rig.Current.Pitch:0.0})");
+    private void Wire2DPanel()
+    {
+        _board2D.HoverChanged += cell => _gm.SetHover(cell);
+        _board2D.PlaceRequested += cell => _gm.TryPlace(cell.X, cell.Y, cell.Z);
     }
 
     public override void _Process(double delta)
     {
         HandleHeldInput(delta);
         HandleViewportChange();
-        UpdateHover();
         _rig.Advance(delta);
         ApplyCamera();
     }
@@ -93,18 +166,17 @@ public partial class Main : Node
         switch (@event)
         {
             case InputEventMouseButton { ButtonIndex: MouseButton.Left } button:
-                _rotating = button.Pressed;
+                _rotating = button.Pressed && !IsOver2DPanel();
                 break;
             case InputEventMouseButton { ButtonIndex: MouseButton.Middle } middle:
-                _panning = middle.Pressed;
+                _panning = middle.Pressed && !IsOver2DPanel();
                 break;
             case InputEventMouseButton { ButtonIndex: MouseButton.WheelUp, Pressed: true }:
-                // 径向缩放：与 W/S 同路径，单调无跳变。锚点版有"远锚点大步进 + pitch 钳制瞬移"，
-                // 等 M3 有格子拾取后以合法锚点恢复（TODO）
-                _rig.Zoom(1);
+                // 径向缩放：与 W/S 同路径，单调无跳变（zoom-to-anchor 待 M3 拾取恢复）
+                if (!IsOver2DPanel()) _rig.Zoom(1);
                 break;
             case InputEventMouseButton { ButtonIndex: MouseButton.WheelDown, Pressed: true }:
-                _rig.Zoom(-1);
+                if (!IsOver2DPanel()) _rig.Zoom(-1);
                 break;
             case InputEventMouseMotion motion:
             {
@@ -161,17 +233,43 @@ public partial class Main : Node
             _rig.Pan(0, -panStep);
         }
 
+        // ---- M3 游戏键位（§10.5 R4-15..18；Z/C/X 相机语义保留 M2 方案）----
+        if (Input.IsActionJustPressed("layer_prev", true))
+        {
+            _gm.CycleFocus(-1);
+        }
+        if (Input.IsActionJustPressed("layer_next", true))
+        {
+            _gm.CycleFocus(1);
+        }
+        if (Input.IsActionJustPressed("mirror_2d", true))
+        {
+            _board2D.ToggleMirror();
+        }
+        if (Input.IsActionJustPressed("toggle_helper_lines", true))
+        {
+            _gm.ToggleAux();
+        }
+        if (Input.IsActionJustPressed("toggle_colorblind", true))
+        {
+            _gm.ToggleColorblind();
+        }
+        if (Input.IsActionJustPressed("undo", true))
+        {
+            _gm.Undo();
+        }
+
         double before = _spacing;
-        if (Input.IsActionPressed("spacing_compress"))
+        if (Input.IsActionPressed("spacing_compress", true))
         {
             _spacing -= SpacingPerSecond * delta;
         }
-        if (Input.IsActionPressed("spacing_expand"))
+        if (Input.IsActionPressed("spacing_expand", true))
         {
             _spacing += SpacingPerSecond * delta;
         }
         _spacing = Math.Clamp(_spacing, GameConfig.MinLayerSpacing, GameConfig.MaxLayerSpacing);
-        if (Input.IsActionJustPressed("spacing_reset"))
+        if (Input.IsActionJustPressed("spacing_reset", true))
         {
             _spacing = GameConfig.DefaultLayerSpacing;
             _rig.Reset(_boardSize, _layers, _spacing, ViewportAspect());
@@ -184,15 +282,16 @@ public partial class Main : Node
 
     private void OnSpacingChanged()
     {
-        _boardView.Configure(_boardSize, _layers, _spacing);
-        _boardView.Rebuild(_demoBoard);
+        _board3D.Configure(_boardSize, _layers, _spacing);
+        _board3D.Rebuild(_gm.Board, _gm.FocusZ);
         _rig.Update(_boardSize, _layers, _spacing, ViewportAspect(), GameConfig.DefaultYaw);
+        RecomputeAux();
     }
 
     private void HandleViewportChange()
     {
         // 按尺寸比较而非宽高比：杜绝浮点抖动触发公式重算（距离被拉回初始态的疑似来源之一）
-        var size = GetViewport().GetVisibleRect().Size;
+        var size = _viewport3D.GetVisibleRect().Size;
         if (_lastViewportSize != size)
         {
             _lastViewportSize = size;
@@ -210,81 +309,77 @@ public partial class Main : Node
         _camera.Far = (float)s.FarPlane;
     }
 
-    /// <summary>悬停高亮占位：鼠标射线与各层平面求交，取最近层贴齐格心（R4 精确联动 M3 做）。</summary>
-    private void UpdateHover()
-    {
-        if (_rotating || _panning)
-        {
-            _boardView.SetHover(null);
-            return;
-        }
-        var mouse = _camera.GetViewport().GetMousePosition();
-        var origin = _camera.ProjectRayOrigin(mouse);
-        var dir = _camera.ProjectRayNormal(mouse);
+    // ---- GameManager 事件 → 视图联动 ----
 
-        Coordinate3D? best = null;
-        double bestT = double.MaxValue;
-        for (int z = 0; z < _layers; z++)
+    private void Refresh()
+    {
+        var palette = _gm.Colorblind ? Palette.Colorblind : Palette.Default;
+        _board3D.ApplyPalette(palette);
+        _board2D.Palette = palette;
+        _board3D.Rebuild(_gm.Board, _gm.FocusZ);
+        _board2D.QueueRedraw();
+        RecomputeAux();
+        UpdateStatus();
+        if (!_gm.SwapPending)
         {
-            // B8 朝向：层 = 世界 Z 处的竖直 XY 平面
-            double planeZ = z * _spacing;
-            if (Math.Abs(dir.Z) < 1e-6)
-            {
-                continue;
-            }
-            double t = (planeZ - origin.Z) / dir.Z;
-            if (t <= 0 || t >= bestT)
-            {
-                continue;
-            }
-            double hitX = origin.X + dir.X * t;
-            double hitY = origin.Y + dir.Y * t;
-            // 连续范围判定（含格心半格边距）：修"高亮出现在棋盘外任意位置"（人类反馈 2026-09-19）
-            if (hitX >= -0.5 && hitX <= _boardSize - 0.5 && hitY >= -0.5 && hitY <= _boardSize - 0.5)
-            {
-                best = new Coordinate3D((int)Math.Round(hitX), (int)Math.Round(hitY), z);
-                bestT = t;
-            }
+            _swapDialog.Hide();
         }
-        _boardView.SetHover(best);
     }
+
+    private void OnHoverChanged(Coordinate3D? cell)
+    {
+        _board3D.SetHover(cell); // 3D 蓝点跟随 2D 悬停（R4-12）
+        RecomputeAux();
+        _board2D.QueueRedraw();
+    }
+
+    private void RecomputeAux()
+    {
+        _board3D.SetAuxData(_gm.ComputeAux(_gm.Hover));
+    }
+
+    private void ShowSwapDialog()
+    {
+        _swapDialog.PopupCentered();
+    }
+
+    private void UpdateStatus()
+    {
+        if (_gm.IsOver)
+        {
+            _statusLabel.Text = _gm.IsDraw
+                ? Text.Result.Draw
+                : _gm.Winner == 1 ? Text.Result.BlackWin : Text.Result.WhiteWin;
+        }
+        else if (_gm.SwapPending)
+        {
+            _statusLabel.Text = Text.Swap.ChooseSwapOrDefault;
+        }
+        else
+        {
+            _statusLabel.Text = _gm.Current == PlayerColor.Black ? Text.Turn.BlackTurn : Text.Turn.WhiteTurn;
+        }
+    }
+
+    private bool IsOver2DPanel() =>
+        _board2D.GetGlobalRect().HasPoint(GetViewport().GetMousePosition());
 
     private double WorldPerPixel() =>
         2.0 * Math.Tan(CameraMath.ToRadians(_rig.Current.Fov) / 2.0) * _rig.Current.Distance
-        / GetViewport().GetVisibleRect().Size.Y;
+        / _viewport3D.GetVisibleRect().Size.Y;
 
-    private double ViewportAspect()
-    {
-        var size = GetViewport().GetVisibleRect().Size;
-        return size.X / size.Y;
-    }
+    private double ViewportAspect() => _lastViewportSize.X / _lastViewportSize.Y;
 
-    /// <summary>M2 演示棋子（占位，M3 接 GameManager 后删除）：中层横五连 + 竖列跨层展示透明度梯度。</summary>
-    private void PlaceDemoStones()
-    {
-        // 格心一律由 (size-1)/2 推导（天元/地元公式语义），禁止写死
-        int mid = (_boardSize - 1) / 2;
-        for (int x = mid - 2; x <= mid + 2; x++)
-        {
-            _demoBoard.Set(x, mid, _layers / 2, CellState.Black);
-        }
-        for (int i = 0; i < 3; i++)
-        {
-            _demoBoard.Set(mid - 2 + i, mid + 2, _layers / 2, CellState.White);
-        }
-        for (int z = 0; z < _layers; z++)
-        {
-            _demoBoard.Set(_boardSize - 2, 2, z, z % 2 == 0 ? CellState.Black : CellState.White);
-        }
-        _boardView.Rebuild(_demoBoard);
-    }
-
-    /// <summary>M2 标定参数：`-- --board=9 --layers=1 --spacing=3.5`（Godot 用户参数在 `--` 之后）。</summary>
-    private static (int Size, int Layers, double Spacing) ParseDebugArgs()
+    /// <summary>M3 参数：`-- --board=9 --layers=1 --spacing=3.5 --rules=swap2 --mode=pve --ai=hard`（`--` 后为用户参数）。</summary>
+    private static (int Size, int Layers, double Spacing, RuleSet Rules, bool PvE, AIDifficulty Ai) ParseDebugArgs()
     {
         int size = GameConfig.DefaultBoardSize;
         int layers = GameConfig.DefaultLayerCount;
         double spacing = GameConfig.DefaultLayerSpacing;
+        var rules = RuleSet.Gomoku;
+        bool pve = false;
+        var ai = AIDifficulty.Medium;
+
         foreach (string arg in OS.GetCmdlineUserArgs())
         {
             if (arg.StartsWith("--board=") && int.TryParse(arg["--board=".Length..], out int s))
@@ -301,7 +396,26 @@ public partial class Main : Node
             {
                 spacing = sp;
             }
+            else if (arg.StartsWith("--rules="))
+            {
+                rules = arg["--rules=".Length..].Equals("swap2", StringComparison.OrdinalIgnoreCase)
+                    ? RuleSet.Swap2
+                    : RuleSet.Gomoku;
+            }
+            else if (arg.StartsWith("--mode="))
+            {
+                pve = arg["--mode=".Length..].Equals("pve", StringComparison.OrdinalIgnoreCase);
+            }
+            else if (arg.StartsWith("--ai="))
+            {
+                ai = arg["--ai=".Length..].ToLowerInvariant() switch
+                {
+                    "easy" => AIDifficulty.Easy,
+                    "hard" => AIDifficulty.Hard,
+                    _ => AIDifficulty.Medium,
+                };
+            }
         }
-        return (size, layers, spacing);
+        return (size, layers, spacing, rules, pve, ai);
     }
 }

@@ -137,11 +137,12 @@ public sealed partial class GameManager : Node
         MaybeTriggerAi();
     }
 
-    /// <summary>A/D 循环换层（§10.5 R4-15：取模 wrap-around）。</summary>
+    /// <summary>A/D 循环换层（§10.5 R4-15：取模 wrap-around）；换层清悬停与覆盖（源 setFocusZ 行为）。</summary>
     public void CycleFocus(int delta)
     {
         int n = _board.Layers;
         _focusZ = ((_focusZ + delta) % n + n) % n;
+        SetHover(null);
         FocusChanged?.Invoke(_focusZ);
     }
 
@@ -205,6 +206,7 @@ public sealed partial class GameManager : Node
             _swapPending = true;
             StateChanged?.Invoke();
             SwapPhaseStarted?.Invoke();
+            MaybeTriggerAi(); // PvE：AI 执白时自动"继续执白"
             return;
         }
         _current = ts.NextPlayer;

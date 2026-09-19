@@ -20,8 +20,8 @@ public sealed partial class Board2DView : Control
     /// <summary>对局状态源（Main 注入）。</summary>
     public GameManager? Game { get; set; }
 
-    /// <summary>调色板（色弱切换时由 Main 换实例）。</summary>
-    public Palette Theme { get; set; } = Palette.Default;
+    /// <summary>调色板（色弱切换时由 Main 换实例）。命名避开 Control.Theme。</summary>
+    public Palette Palette { get; set; } = Palette.Default;
 
     /// <summary>悬停格变化（界内格或 null）→ GameManager.SetHover。</summary>
     public event Action<Coordinate3D?>? HoverChanged;
@@ -60,11 +60,11 @@ public sealed partial class Board2DView : Control
         // 网格
         for (int y = 0; y < size; y++)
         {
-            DrawLine(CellToScreen(0, y), CellToScreen(size - 1, y), Theme.GridLine, 1.5f, true);
+            DrawLine(CellToScreen(0, y), CellToScreen(size - 1, y), Palette.GridLine, 1.5f, true);
         }
         for (int x = 0; x < size; x++)
         {
-            DrawLine(CellToScreen(x, 0), CellToScreen(x, size - 1), Theme.GridLine, 1.5f, true);
+            DrawLine(CellToScreen(x, 0), CellToScreen(x, size - 1), Palette.GridLine, 1.5f, true);
         }
 
         // 星位（R4-3/D1：边星 max(1, floor(size/5)) + 中心，由 size 推导禁止硬编码）
@@ -76,7 +76,7 @@ public sealed partial class Board2DView : Control
                      (size - 1 - offset, offset), (size - 1 - offset, size - 1 - offset),
                  })
         {
-            DrawCircle(CellToScreen(sx, sy), StarRadius * _scale, Theme.StarPoint,
+            DrawCircle(CellToScreen(sx, sy), StarRadius * _scale, Palette.StarPoint,
                 filled: true, width: -1f, antialiased: true);
         }
 
@@ -100,7 +100,7 @@ public sealed partial class Board2DView : Control
             if (last.Z == focus)
             {
                 DrawArc(CellToScreen(last.X, last.Y), LastMoveRingRadius * _scale,
-                    0, MathF.Tau, 40, Theme.LastMoveRing, 3f, true);
+                    0, MathF.Tau, 40, Palette.LastMoveRing, 3f, true);
             }
         }
 
@@ -137,7 +137,7 @@ public sealed partial class Board2DView : Control
 
     private void DrawStone(Vector2 pos, CellState state, float alpha)
     {
-        var baseColor = state == CellState.Black ? Theme.StoneBlack : Theme.StoneWhite;
+        var baseColor = state == CellState.Black ? Palette.StoneBlack : Palette.StoneWhite;
         var fill = new Color(baseColor.R, baseColor.G, baseColor.B, alpha);
         var outline = new Color(baseColor.R, baseColor.G, baseColor.B, MathF.Min(1f, alpha + 0.2f));
         DrawCircle(pos, StoneRadius * _scale, fill, filled: true, width: -1f, antialiased: true);
@@ -146,7 +146,7 @@ public sealed partial class Board2DView : Control
 
     private Color RoleColor(AuxRole role, float alpha)
     {
-        var @base = role == AuxRole.Self ? Theme.LineSelf : Theme.LineEnemy;
+        var @base = role == AuxRole.Self ? Palette.LineSelf : Palette.LineEnemy;
         return new Color(@base.R, @base.G, @base.B, alpha);
     }
 
