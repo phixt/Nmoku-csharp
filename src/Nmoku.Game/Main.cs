@@ -29,6 +29,7 @@ public partial class Main : Node
     private GameManager _gm = null!;
     private CameraRig _rig = null!;
     private GameScreen _gameScreen = null!;
+    private SceneRouter _router = null!;
     private OverlayManager _overlay = null!;
     private TitleScreen _titleScreen = null!;
     private PauseMenu _pauseMenu = null!;
@@ -74,108 +75,40 @@ public partial class Main : Node
         }
         GD.Print($"Nmoku M0: engine boot OK (custom input actions={custom}, audio buses={AudioServer.BusCount})");
 
-        BuildLayout();
-        BuildShell();
+        // 1) 对局基座组件（不入树，由路由器首个 ShowState 挂载并 KeepAlive 常驻——保留现场）
+        _gameScreen = new GameScreen(_boardSize, _layers, _spacing);
 
+        // 2) 对话框层（z=30，高于路由三层）
+        _overlay = new OverlayManager();
+        AddChild(_overlay);
+
+        // 3) 路由器与壳屏（工厂内构造+接线，KeepAlive 路由首次挂载后常驻）
+        _router = new SceneRouter(BuildRoutes());
+        AddChild(_router);
+
+        // 4) 壳状态机宿主
         _store = new GameStore { Name = "GameStore" };
         AddChild(_store); // 触发 GameStore._Ready → GM 入树
         _store.Overlay = _overlay;
+
+        // 5) 首次路由：挂载 title（可见）+ game（KeepAlive 隐藏）→ GameScreen._Ready
+        _router.ShowState(_store.State);
+
+        // 6) 对局内核接线（基座已入树，视图引用可用）
         _gm = _store.GM;
         _gm.LayerSpacing = _spacing;
-        _gm.Configure(_boardSize, _layers, _rules, _pve, _aiDifficulty);
-        _board2D.Game = _gm; // 2D 面板状态源（此前遗漏导致右半屏空白）
-        Wire2DPanel();
-        WireShell();
-        _store.InitializeSaves();
-
-        _lastViewportSize = _viewport3D.GetVisibleRect().Size;
-        _rig = new CameraRig(_boardSize, _layers, _spacing, _lastViewportSize.X / _lastViewportSize.Y);
-        ApplyCamera();
-
-        ShowState(_store.State);
-        Refresh();
-        GD.Print($"Nmoku M4: game ready (board={_boardSize}x{_boardSize}x{_layers}, spacing={_spacing:0.0}, " +
-                 $"rules={_rules}, mode={(_pve ? "pve" : "pvp")}, distance={_rig.Current.Distance:0.00})");
-    }
-
-    private void BuildLayout()
-    {
-        // 对局基座组件化（M4R：SceneRouter 挂载入口），字段引用保持不变以最小化接线改动
-        _gameScreen = new GameScreen(_boardSize, _layers, _spacing);
-        AddChild(_gameScreen);
         _viewport3D = _gameScreen.Viewport3D;
         _camera = _gameScreen.Camera;
         _board3D = _gameScreen.Board3D;
         _board2D = _gameScreen.Board2D;
         _statusLabel = _gameScreen.StatusLabel;
-    }
-
-    /// <summary>OverlayManager（layer 20）+ 六个壳屏（layer 10，默认全隐藏，ShowState 按态切换）。</summary>
-    private void BuildShell()
-    {
-        _overlay = new OverlayManager();
-        AddChild(_overlay);
-
-        _titleScreen = new TitleScreen { Visible = false };
-        _pauseMenu = new PauseMenu { Visible = false };
-        _gameOverModal = new GameOverModal { Visible = false };
-        _saveMenu = new SaveMenu { Visible = false };
-        _guideScreen = new GuideScreen { Visible = false };
-        _replayBar = new ReplayBar { Visible = false };
-
-        var uiLayer = new CanvasLayer { Layer = 10 };
-        AddChild(uiLayer);
-        uiLayer.AddChild(_titleScreen);
-        uiLayer.AddChild(_pauseMenu);
-        uiLayer.AddChild(_gameOverModal);
-        uiLayer.AddChild(_saveMenu);
-        uiLayer.AddChild(_guideScreen);
-        uiLayer.AddChild(_replayBar);
-    }
-
-    private void Wire2DPanel()
-    {
+        _board2D.Game = _gm; // 2D 面板状态源（此前遗漏导致右半屏空白）
         _board2D.HoverChanged += cell => _gm.SetHover(cell);
         _board2D.PlaceRequested += cell => _gm.TryPlace(cell.X, cell.Y, cell.Z);
-    }
-
-    private void WireShell()
-    {
-        // ---- 壳屏意图 → GameStore 动作 ----
-        _titleScreen.StartRequested += () => _store.StartGame();
-        _titleScreen.LoadRequested += OpenSaveMenu;
-        _titleScreen.GuideRequested += () => _store.OpenGuide();
-        _titleScreen.QuitRequested += () => GetTree().Quit();
-
-        _pauseMenu.ResumeRequested += () => _store.Resume();
-        _pauseMenu.RestartRequested += () => _store.RequestRestart();
-        _pauseMenu.SaveMenuRequested += OpenSaveMenu;
-        _pauseMenu.GuideRequested += () => _store.OpenGuide();
-        _pauseMenu.TitleRequested += () => _store.ReturnToTitle();
-
-        _gameOverModal.RestartRequested += () => _store.RequestRestart();
-        _gameOverModal.TitleRequested += () => _store.ReturnToTitle();
-
-        _saveMenu.LoadSlotRequested += i => { CloseSaveMenu(); _store.LoadSlot(i); };
-        _saveMenu.ReplaySlotRequested += i => { CloseSaveMenu(); _store.EnterReplay(i); };
-        _saveMenu.ExportSlotRequested += i => _store.ExportSlot(i);
-        _saveMenu.DeleteSlotRequested += i => _store.DeleteSlot(i);
-        _saveMenu.ImportRequested += () => _store.ImportFromClipboard();
-        _saveMenu.CloseRequested += CloseSaveMenu;
-
-        _guideScreen.StartRequested += () => _store.StartGame();
-        _guideScreen.ResumeRequested += () => _store.Resume();
-        _guideScreen.BackRequested += () => _store.GuideBack();
-
-        _replayBar.StepRequested += d => _gm.StepReplay(d);
-        _replayBar.SeekRequested += i => _gm.SetReplayIndex(i);
-        _replayBar.ExitRequested += () => _store.ExitReplay();
-
-        // ---- 状态机 / 对局事件 → 壳 ----
-        _store.StateChanged += ShowState;
+        _store.StateChanged += OnStateChanged;
         _store.SavesChanged += () =>
         {
-            if (_saveMenu.Visible)
+            if (_router.IsOverlayOpen("save-menu"))
             {
                 _saveMenu.RefreshSlots(_store.Saves.GetSlots());
             }
@@ -185,7 +118,141 @@ public partial class Main : Node
         _gm.StateChanged += Refresh;
         _gm.FocusChanged += _ => Refresh();
         _gm.HoverChanged += OnHoverChanged;
+
+        _gm.Configure(_boardSize, _layers, _rules, _pve, _aiDifficulty);
+        _store.InitializeSaves();
+
+        // 7) 相机与首刷
+        _lastViewportSize = _viewport3D.GetVisibleRect().Size;
+        _rig = new CameraRig(_boardSize, _layers, _spacing, _lastViewportSize.X / _lastViewportSize.Y);
+        ApplyCamera();
+        Refresh();
+        GD.Print($"Nmoku M4R: game ready (board={_boardSize}x{_boardSize}x{_layers}, spacing={_spacing:0.0}, " +
+                 $"rules={_rules}, mode={(_pve ? "pve" : "pvp")}, distance={_rig.Current.Distance:0.00})");
     }
+
+    /// <summary>
+    /// 路由表（声明式，migration-plan M4R）：改 KeepAlive/背板字段即改行为，无需动逻辑。
+    /// 工厂负责构造+事件接线（KeepAlive 路由仅首次挂载执行一次，无重复订阅）。
+    /// </summary>
+    private IEnumerable<RouteDef> BuildRoutes() =>
+    [
+        new RouteDef
+        {
+            Id = "title",
+            Layer = RouteLayer.Base,
+            Backdrop = BackdropKind.Opaque,
+            KeepAlive = true,
+            Factory = () =>
+            {
+                var screen = new TitleScreen();
+                screen.StartRequested += () => _store.RequestStartNew();
+                screen.ResumeRequested += () => _store.ResumeLive();
+                screen.LoadRequested += OpenSaveMenu;
+                screen.GuideRequested += () => _store.OpenGuide();
+                screen.QuitRequested += () => GetTree().Quit();
+                _titleScreen = screen;
+                return screen;
+            },
+        },
+        new RouteDef
+        {
+            Id = "game",
+            Layer = RouteLayer.Base,
+            KeepAlive = true, // 保留现场（人类拍板 2026-09-19）：切回标题仅隐藏
+            Factory = () => _gameScreen,
+        },
+        new RouteDef
+        {
+            Id = "pause",
+            Layer = RouteLayer.Modal,
+            Backdrop = BackdropKind.Blur,
+            Factory = () =>
+            {
+                var screen = new PauseMenu();
+                screen.ResumeRequested += () => _store.Resume();
+                screen.RestartRequested += () => _store.RequestRestart();
+                screen.SaveMenuRequested += OpenSaveMenu;
+                screen.GuideRequested += () => _store.OpenGuide();
+                screen.TitleRequested += () => _store.ReturnToTitle();
+                _pauseMenu = screen;
+                return screen;
+            },
+        },
+        new RouteDef
+        {
+            Id = "game-over",
+            Layer = RouteLayer.Modal,
+            Backdrop = BackdropKind.Blur,
+            Factory = () =>
+            {
+                var screen = new GameOverModal();
+                screen.RestartRequested += () => _store.RequestRestart();
+                screen.TitleRequested += () => _store.ReturnToTitle();
+                _gameOverModal = screen;
+                return screen;
+            },
+        },
+        new RouteDef
+        {
+            Id = "guide",
+            Layer = RouteLayer.Modal,
+            Backdrop = BackdropKind.Opaque,
+            Factory = () =>
+            {
+                var screen = new GuideScreen();
+                screen.StartRequested += () => _store.RequestStartNew();
+                screen.ResumeRequested += () => _store.Resume();
+                screen.BackRequested += () => _store.GuideBack();
+                _guideScreen = screen;
+                return screen;
+            },
+        },
+        new RouteDef
+        {
+            Id = "save-menu",
+            Layer = RouteLayer.Overlay,
+            Backdrop = BackdropKind.Dim,
+            Factory = () =>
+            {
+                var screen = new SaveMenu();
+                screen.LoadSlotRequested += i => { CloseSaveMenu(); _store.LoadSlot(i); };
+                screen.ReplaySlotRequested += i => { CloseSaveMenu(); _store.EnterReplay(i); };
+                screen.ExportSlotRequested += i => _store.ExportSlot(i);
+                screen.DeleteSlotRequested += i => _store.DeleteSlot(i);
+                screen.ImportRequested += () => _store.ImportFromClipboard();
+                screen.CloseRequested += CloseSaveMenu;
+                _saveMenu = screen;
+                return screen;
+            },
+        },
+        new RouteDef
+        {
+            Id = "help",
+            Layer = RouteLayer.Overlay,
+            Backdrop = BackdropKind.Opaque,
+            Factory = () =>
+            {
+                var screen = new KeymapScreen();
+                screen.CloseRequested += () => _router.PopOverlay("help");
+                return screen;
+            },
+        },
+        new RouteDef
+        {
+            Id = "replay-hud",
+            Layer = RouteLayer.Overlay, // HUD 附件：无背板，不拦截相机鼠标
+            Factory = () =>
+            {
+                var bar = new ReplayBar();
+                bar.StepRequested += d => _gm.StepReplay(d);
+                bar.SeekRequested += i => _gm.SetReplayIndex(i);
+                bar.ExitRequested += () => _store.ExitReplay();
+                _replayBar = bar;
+                return bar;
+            },
+        },
+    ];
 
     public override void _Process(double delta)
     {
@@ -378,6 +445,35 @@ public partial class Main : Node
             SimulateActionPress("resume");
             return _store.State == GameState.Playing ? "ok" : "FAIL";
         }));
+        _autotestSteps.Enqueue(("m4r-router-keepalive", () =>
+        {
+            bool ok = _gameScreen.IsInsideTree() && _gameScreen.Visible;
+            _store.Pause();
+            ok = ok && _store.State == GameState.Paused;
+            _store.ReturnToTitle();
+            ok = ok && _store.State == GameState.Title
+                && _gameScreen.IsInsideTree() && !_gameScreen.Visible; // 保留现场：隐藏不销毁
+            ok = ok && _store.ResumeLive() && _store.State == GameState.Playing && _gameScreen.Visible;
+            return ok ? "ok" : "FAIL";
+        }));
+        _autotestSteps.Enqueue(("m4r-help-overlay", () =>
+        {
+            ToggleHelp();
+            bool opened = _router.IsOverlayOpen("help");
+            ToggleHelp();
+            return opened && !_router.IsOverlayOpen("help") ? "ok" : "FAIL";
+        }));
+        _autotestSteps.Enqueue(("m4r-newgame-confirm-guard", () =>
+        {
+            // 保留局存在时"开始游戏"先确认覆盖；取消则现场保留
+            _gm.TryPlace(4, 4, 0);
+            _store.Pause();
+            _store.ReturnToTitle();
+            _store.RequestStartNew();
+            bool asked = _overlay.IsModalOpen;
+            _overlay.CloseAll();
+            return asked && _store.State == GameState.Title && _gm.History.Count == 1 ? "ok" : "FAIL";
+        }));
     }
 
     /// <summary>M4 自测：存档落盘 → 模拟重启恢复 → 载入转 Playing → 复盘步进 → 退出回 Title。</summary>
@@ -483,6 +579,7 @@ public partial class Main : Node
     /// </summary>
     private IEnumerable<(string Action, Action Run)> SingleActions()
     {
+        yield return ("toggle_help", ToggleHelp);
         yield return ("pause", () => _store.Pause());
         yield return ("resume", () => _store.Resume());
         yield return ("confirm", ConfirmAction);
@@ -523,11 +620,17 @@ public partial class Main : Node
         {
             return; // 模态框吞掉一切游戏快捷键（Esc/Enter 由对话框自身处理，§4.1）
         }
-        if (_saveMenu.Visible)
+
+        // ---- L2 浮层作用域（KeymapTable AllowWhenOverlay）：只响应 F1 切帮助、Esc 关最顶浮层 ----
+        if (_router.HasOverlay)
         {
-            if (Input.IsActionJustPressed("ui_cancel"))
+            if (Input.IsActionJustPressed("toggle_help"))
             {
-                CloseSaveMenu();
+                ToggleHelp();
+            }
+            else if (Input.IsActionJustPressed("ui_cancel"))
+            {
+                _router.PopOverlay(_router.TopOverlay!); // Esc 逐层冒泡：先关最顶浮层
             }
             return;
         }
@@ -661,38 +764,45 @@ public partial class Main : Node
         _camera.Far = (float)s.FarPlane;
     }
 
-    // ---- 状态机 → 屏幕可见性 ----
+    // ---- 状态机 → 路由（可见性由 SceneRouter 按栈差分管理，这里只做各屏的数据灌入）----
 
-    private void ShowState(GameState state)
+    private void OnStateChanged(GameState state)
     {
-        _titleScreen.Visible = state == GameState.Title;
-        _pauseMenu.Visible = state == GameState.Paused;
-        _gameOverModal.Visible = state == GameState.GameOver;
+        _router.ShowState(state);
         if (state == GameState.GameOver)
         {
             _gameOverModal.SetResult(_gm.Winner, _gm.History.Count);
         }
-        _guideScreen.Visible = state is GameState.GuideFromTitle or GameState.GuideFromGame;
-        if (_guideScreen.Visible)
+        if (state == GameState.Title)
+        {
+            _titleScreen.UpdateResumeButton(_store.HasLiveGame);
+        }
+        if (state is GameState.GuideFromTitle or GameState.GuideFromGame)
         {
             _guideScreen.FromGame = state == GameState.GuideFromGame;
             _guideScreen.ApplyMode();
-        }
-        _replayBar.Visible = state == GameState.Replay;
-        _statusLabel.Visible = state is GameState.Playing or GameState.Paused;
-        if (state is not (GameState.Title or GameState.Paused))
-        {
-            CloseSaveMenu(); // 换态时安全收起存档菜单（正常路径已在按钮回调先行关闭）
         }
     }
 
     private void OpenSaveMenu()
     {
+        _router.PushOverlay("save-menu"); // 首次 push 触发工厂：构造+接线并赋值 _saveMenu
         _saveMenu.RefreshSlots(_store.Saves.GetSlots());
-        _saveMenu.Visible = true;
     }
 
-    private void CloseSaveMenu() => _saveMenu.Visible = false;
+    private void CloseSaveMenu() => _router.PopOverlay("save-menu");
+
+    private void ToggleHelp()
+    {
+        if (_router.IsOverlayOpen("help"))
+        {
+            _router.PopOverlay("help");
+        }
+        else
+        {
+            _router.PushOverlay("help");
+        }
+    }
 
     // ---- GameManager 事件 → 视图联动 ----
 

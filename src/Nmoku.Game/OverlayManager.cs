@@ -31,7 +31,7 @@ public sealed partial class OverlayManager : CanvasLayer, IOverlayManager
 
     public override void _Ready()
     {
-        Layer = 20;
+        Layer = 30; // 对话框高于路由三层（基座0/模态10/浮层20）
 
         _confirm = new ConfirmationDialog
         {

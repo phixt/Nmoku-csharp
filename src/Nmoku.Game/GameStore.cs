@@ -63,6 +63,32 @@ public sealed partial class GameStore : Node
 
     public bool StartGame() => Fire(GameTrigger.StartGame);
 
+    /// <summary>保留现场：切回标题后对局（棋盘/相机/视图）KeepAlive 存活时为真。</summary>
+    public bool HasLiveGame => GM.History.Count > 0 && !GM.IsOver && !GM.InReplay;
+
+    /// <summary>
+    /// 标题/引导的"开始游戏"：新局。存在进行中的保留局时先确认覆盖
+    /// （对齐 §3.4 "Confirms restart" 精神），确认后重置棋盘再 TITLE→PLAYING。
+    /// </summary>
+    public void RequestStartNew()
+    {
+        if (HasLiveGame)
+        {
+            Overlay.ShowConfirmDialog(Text.Title.Start, Text.Title.NewGameConfirm,
+                onYes: () =>
+                {
+                    GM.Reset();
+                    Fire(GameTrigger.StartGame);
+                });
+            return;
+        }
+        GM.Reset();
+        Fire(GameTrigger.StartGame);
+    }
+
+    /// <summary>标题"继续对局"：不动保留现场，直接 TITLE→PLAYING（§3.4 StartGame 行的恢复语义）。</summary>
+    public bool ResumeLive() => Fire(GameTrigger.StartGame);
+
     public bool Pause() => Fire(GameTrigger.Pause);
 
     public bool Resume() => Fire(GameTrigger.Resume);

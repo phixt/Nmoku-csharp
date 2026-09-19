@@ -23,9 +23,7 @@ public sealed partial class GuideScreen : Control
     public override void _Ready()
     {
         SetAnchorsAndOffsetsPreset(LayoutPreset.FullRect);
-        MouseFilter = MouseFilterEnum.Stop;
-
-        AddChild(new ColorRect { Color = Palette.Default.Background, MouseFilter = MouseFilterEnum.Ignore });
+        MouseFilter = MouseFilterEnum.Stop; // 不透明背板由 SceneRouter 提供，此处为内容层
 
         var center = new CenterContainer();
         center.SetAnchorsAndOffsetsPreset(LayoutPreset.FullRect);

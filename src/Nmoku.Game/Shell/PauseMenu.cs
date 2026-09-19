@@ -16,11 +16,7 @@ public sealed partial class PauseMenu : Control
     public override void _Ready()
     {
         SetAnchorsAndOffsetsPreset(LayoutPreset.FullRect);
-        MouseFilter = MouseFilterEnum.Stop;
-
-        var dim = new ColorRect { Color = new Color(0, 0, 0, 0.55f), MouseFilter = MouseFilterEnum.Stop };
-        dim.SetAnchorsAndOffsetsPreset(LayoutPreset.FullRect);
-        AddChild(dim);
+        MouseFilter = MouseFilterEnum.Stop; // dim+blur 背板由 SceneRouter 提供，此处为内容层
 
         var center = new CenterContainer();
         center.SetAnchorsAndOffsetsPreset(LayoutPreset.FullRect);

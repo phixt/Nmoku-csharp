@@ -54,10 +54,12 @@ public static class Text
     {
         public const string GameName = "立体五子棋";
         public const string Start = "开始游戏";
+        public const string ContinueGame = "继续对局";
         public const string LoadGame = "读档";
         public const string Guide = "引导";
         public const string Quit = "退出";
         public const string Subtitle = "13×13×6 三维连珠 · Nmoku";
+        public const string NewGameConfirm = "当前有进行中的对局，开始新局将覆盖保留现场。确定？";
     }
 
     public static class Menu
