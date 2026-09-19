@@ -1,5 +1,6 @@
 using Godot;
 using Nmoku.Core;
+using Nmoku.Core.AI;
 using Nmoku.Core.Saves;
 
 namespace Nmoku.Game;
@@ -95,6 +96,13 @@ public sealed partial class GameStore : Node
 
     /// <summary>标题"继续对局"：不动保留现场，直接 TITLE→PLAYING（§3.4 StartGame 行的恢复语义）。</summary>
     public bool ResumeLive() => Fire(GameTrigger.StartGame);
+
+    /// <summary>关卡启动（沙盒面板/预设）：随 LevelConfig 装配对局后 TITLE→PLAYING。</summary>
+    public bool StartLevel(LevelConfig level, bool pve, AIDifficulty difficulty)
+    {
+        GM.Configure(level, pve, difficulty);
+        return Fire(GameTrigger.StartGame);
+    }
 
     public bool Pause() => Fire(GameTrigger.Pause);
 

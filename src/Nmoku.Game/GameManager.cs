@@ -66,19 +66,55 @@ public sealed partial class GameManager : Node
     /// <summary>悬停格变化（2D→3D 蓝点联动，null=无）。</summary>
     public event Action<Coordinate3D?>? HoverChanged;
 
-    /// <summary>命令行/关卡参数装配（M4 关卡系统接管前入口）。</summary>
-    public void Configure(int size, int layers, RuleSet rules, bool pve, AIDifficulty difficulty)
+    /// <summary>命令行兼容入口：按裸参数装配（关卡系统的简化路径，WinLength 取默认）。</summary>
+    public void Configure(int size, int layers, RuleSet rules, bool pve, AIDifficulty difficulty) =>
+        Configure(new LevelConfig
+        {
+            Id = "sandbox",
+            BoardSize = size,
+            Layers = layers,
+            Rules = rules,
+        }, pve, difficulty);
+
+    /// <summary>
+    /// 关卡装配（01-core §7）：棋盘/规则引擎/连珠数全部随 LevelConfig；预置子先落盘再由引擎
+    /// 重推导回合与决策期（与 LoadFrom 同口径，不信任列表末尾的手数推断）。
+    /// </summary>
+    public void Configure(LevelConfig level, bool pve, AIDifficulty difficulty)
     {
-        _board = new Board(size, layers);
-        _level = new LevelConfig { Id = "sandbox", BoardSize = size, Layers = layers, Rules = rules };
-        _engine = RuleEngineFactory.Create(rules, GameConfig.WinLength);
+        _board = new Board(level.BoardSize, level.Layers);
+        _level = level;
+        _engine = RuleEngineFactory.Create(level.Rules, level.WinLength);
         _pve = pve;
         _aiDifficulty = difficulty;
         _aiColor = PlayerColor.White; // PvE 人执黑，AI 执白（M3 约定）
         _ai = pve ? new AIEngine(difficulty) : null;
-        _ai?.Initialize(size, layers, GameConfig.WinLength);
+        _ai?.Initialize(level.BoardSize, level.Layers, level.WinLength);
         _saveId = null;
         Reset();
+        ApplyInitialMoves(level.InitialMoves);
+    }
+
+    private void ApplyInitialMoves(IReadOnlyList<Move> initialMoves)
+    {
+        if (initialMoves.Count == 0)
+        {
+            return;
+        }
+        foreach (var move in initialMoves)
+        {
+            _board.Set(move.X, move.Y, move.Z, move.Player);
+            _history.Add(move);
+        }
+        var ts = _engine.GetNextTurnState(_history, _history[^1].Player, _level);
+        _swapPending = ts.IsSwapPhase;
+        _current = ts.NextPlayer; // B1：决策期指针不动（=刚行棋方），标准局为对手
+        StateChanged?.Invoke();
+        if (_swapPending)
+        {
+            SwapPhaseStarted?.Invoke();
+        }
+        MaybeTriggerAi(); // PvE 且预置子恰好轮到 AI 则续下
     }
 
     public void Reset()

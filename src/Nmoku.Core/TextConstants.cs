@@ -55,6 +55,7 @@ public static class Text
         public const string GameName = "立体五子棋";
         public const string Start = "开始游戏";
         public const string ContinueGame = "继续对局";
+        public const string CustomGame = "自定义对局";
         public const string LoadGame = "读档";
         public const string Guide = "引导";
         public const string Quit = "退出";
@@ -96,5 +97,30 @@ public static class Text
         public const string Cancel = "取消";
         public const string SwapYes = "交换黑白";
         public const string SwapNo = "继续执白";
+    }
+
+    public static class Levels
+    {
+        public const string Classic = "标准对局";
+        public const string Tutorial = "教学·平面";
+        public const string Residual = "残局·预置子";
+        public const string Cmdline = "命令行参数局";
+        public const string Custom = "自定义对局";
+        public const string Preset = "预设";
+        public const string BoardSize = "棋盘边长（奇数 ≥5）";
+        public const string Layers = "层数";
+        public const string WinLength = "连珠数（4–9）";
+        public const string Rules = "规则";
+        public const string Mode = "模式";
+        public const string PvE = "人机";
+        public const string PvP = "双人";
+        public const string AiDifficulty = "AI 难度";
+        public const string Start = "开始对局";
+        public const string SizeInvalid = "棋盘边长必须为 ≥5 的奇数";
+        public const string Gomoku = "无禁手";
+        public const string Swap2 = "SWAP2";
+        public const string Easy = "简单";
+        public const string Medium = "中等";
+        public const string Hard = "困难";
     }
 }

@@ -37,6 +37,7 @@ public partial class Main : Node
     private SaveMenu _saveMenu = null!;
     private GuideScreen _guideScreen = null!;
     private ReplayBar _replayBar = null!;
+    private SandboxPanel _sandboxPanel = null!;
     private Label _statusLabel = null!;
 
     private readonly int _boardSize;
@@ -126,7 +127,14 @@ public partial class Main : Node
         _gm.HoverChanged += OnHoverChanged;
         EventBus.ThemeToggled += ApplyTheme;
 
-        _gm.Configure(_boardSize, _layers, _rules, _pve, _aiDifficulty);
+        _gm.Configure(new LevelConfig
+        {
+            Id = "cmdline",
+            Name = Text.Levels.Cmdline,
+            BoardSize = _boardSize,
+            Layers = _layers,
+            Rules = _rules,
+        }, _pve, _aiDifficulty);
         _store.InitializeSaves();
 
         // 7) 相机与首刷
@@ -171,6 +179,7 @@ public partial class Main : Node
                 var screen = new TitleScreen();
                 screen.StartRequested += () => _store.RequestStartNew();
                 screen.ResumeRequested += () => _store.ResumeLive();
+                screen.CustomGameRequested += () => _router.PushOverlay("sandbox");
                 screen.LoadRequested += OpenSaveMenu;
                 screen.GuideRequested += () => _store.OpenGuide();
                 screen.QuitRequested += () => GetTree().Quit();
@@ -259,6 +268,25 @@ public partial class Main : Node
                 var screen = new KeymapScreen();
                 screen.CloseRequested += () => _router.PopOverlay("help");
                 return screen;
+            },
+        },
+        new RouteDef
+        {
+            Id = "sandbox",
+            Layer = RouteLayer.Overlay,
+            Backdrop = BackdropKind.Dim,
+            Factory = () =>
+            {
+                var panel = new SandboxPanel();
+                panel.StartRequested += (level, pve, difficulty) =>
+                {
+                    CloseSandbox();
+                    _store.StartLevel(level, pve, difficulty);
+                };
+                panel.CloseRequested += CloseSandbox;
+                panel.ToastRequested += (msg, isError) => _overlay.ShowToast(msg, isError);
+                _sandboxPanel = panel;
+                return panel;
             },
         },
         new RouteDef
@@ -511,6 +539,56 @@ public partial class Main : Node
             return freed ? "ok" : "FAIL";
         }));
         _autotestSteps.Enqueue(("m4r-key-echo-filter", AutotestKeyEchoFilter));
+
+        // ---- M4 第二轮：主题切换 / 连珠可配 / 预置子 ----
+        _autotestSteps.Enqueue(("m4b-theme-toggle", () =>
+        {
+            bool wasDark = _store.IsDarkTheme;
+            _store.ToggleTheme();
+            bool flipped = _store.IsDarkTheme != wasDark
+                && Palette.Active == (wasDark ? Palette.Light : Palette.Dark);
+            _store.ToggleTheme();
+            return flipped && _store.IsDarkTheme == wasDark ? "ok" : "FAIL";
+        }));
+        _autotestSteps.Enqueue(("m4b-winlen4-start", () =>
+        {
+            _store.Pause();
+            _store.ReturnToTitle();
+            bool ok = _store.StartLevel(new LevelConfig
+            {
+                Id = "t4",
+                BoardSize = 9,
+                Layers = 1,
+                WinLength = 4,
+                Rules = RuleSet.Gomoku,
+            }, false, AIDifficulty.Medium) && _store.State == GameState.Playing;
+            return ok ? "ok" : "FAIL";
+        }));
+        _autotestSteps.Enqueue(("m4b-winlen4-win", () =>
+        {
+            (int x, int y)[] b = [(0, 0), (1, 0), (2, 0), (3, 0)];
+            (int x, int y)[] w = [(0, 1), (1, 1), (2, 1)];
+            for (int k = 0; k < 3; k++)
+            {
+                if (!_gm.TryPlace(b[k].x, b[k].y, 0) || !_gm.TryPlace(w[k].x, w[k].y, 0))
+                {
+                    return "FAIL place";
+                }
+            }
+            return _gm.TryPlace(b[3].x, b[3].y, 0) && _gm.IsOver && _gm.Winner == 1
+                && _store.State == GameState.GameOver ? "ok" : "FAIL";
+        }));
+        _autotestSteps.Enqueue(("m4b-initialmoves", () =>
+        {
+            _store.Pause();
+            _store.ReturnToTitle();
+            bool ok = _store.StartLevel(LevelCatalog.Residual, false, AIDifficulty.Medium)
+                && _store.State == GameState.Playing
+                && _gm.History.Count == 3
+                && _gm.Board.MoveCount() == 3
+                && _gm.Current == PlayerColor.White; // B W B → 轮白
+            return ok ? "ok" : "FAIL";
+        }));
     }
 
     /// <summary>M4R-2 自测：合成真实按键事件验证 echo 过滤——非 echo 按键转 90°，echo 按键不再触发。</summary>
@@ -896,6 +974,8 @@ public partial class Main : Node
     }
 
     private void CloseSaveMenu() => _router.PopOverlay("save-menu");
+
+    private void CloseSandbox() => _router.PopOverlay("sandbox");
 
     private void ToggleHelp()
     {
