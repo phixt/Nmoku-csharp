@@ -377,6 +377,10 @@ public partial class Main : Node
         {
             _gm.ToggleColorblind();
         }
+        if (Input.IsActionJustPressed("toggle_grid_all", true))
+        {
+            _board3D.ToggleGridAll();
+        }
         if (Input.IsActionJustPressed("undo", true))
         {
             _gm.Undo();

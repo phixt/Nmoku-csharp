@@ -14,8 +14,6 @@ namespace Nmoku.Game.Views;
 /// </summary>
 public sealed partial class Board3DView : Node3D
 {
-    private const float GridAdjacentAlpha = 0.35f; // 同源 GHOST_GRID_OPACITY
-
     /// <summary>语义调色板（色弱切换时由 Main 推送 ApplyPalette）。</summary>
     public Palette Theme { get; private set; } = Palette.Default;
 
@@ -163,13 +161,38 @@ public sealed partial class Board3DView : Node3D
         });
     }
 
-    /// <summary>网格逐层显隐（人类反馈 2026-09-19）：焦点全亮、相邻层 0.35、更远层断崖式全透明。</summary>
+    private bool _gridAllFull;    // O 键开关：所有格线强制全亮
+    private int _lastFocusZ;
+
+    /// <summary>网格逐层显隐（人类反馈 2026-09-19）：反比例雾化 alpha=1/(1+d)——焦点 1.0、相邻 0.5、
+    /// 远层渐近 0 但永远留一点（像雾）；O 键切换全亮 1.0。</summary>
     public void SetGridFocus(int focusZ)
+    {
+        _lastFocusZ = focusZ;
+        ApplyGridAlphas();
+    }
+
+    /// <summary>O 键：所有格线全亮 1.0 ↔ 反比例雾化。</summary>
+    public void ToggleGridAll()
+    {
+        _gridAllFull = !_gridAllFull;
+        ApplyGridAlphas();
+    }
+
+    private void ApplyGridAlphas()
     {
         for (int z = 0; z < _gridLayerMats.Count; z++)
         {
-            int d = Math.Abs(z - focusZ);
-            float alpha = d == 0 ? 1f : d == 1 ? GridAdjacentAlpha : 0f;
+            float alpha;
+            if (_gridAllFull)
+            {
+                alpha = 1f;
+            }
+            else
+            {
+                int d = Math.Abs(z - _lastFocusZ);
+                alpha = 1f / (1f + d); // 反比例雾化
+            }
             var c = Theme.GridLine;
             _gridLayerMats[z].AlbedoColor = WithAlpha(c, alpha);
         }
