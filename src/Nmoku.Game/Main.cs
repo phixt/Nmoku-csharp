@@ -28,6 +28,7 @@ public partial class Main : Node
     private GameStore _store = null!;
     private GameManager _gm = null!;
     private CameraRig _rig = null!;
+    private GameScreen _gameScreen = null!;
     private OverlayManager _overlay = null!;
     private TitleScreen _titleScreen = null!;
     private PauseMenu _pauseMenu = null!;
@@ -99,59 +100,14 @@ public partial class Main : Node
 
     private void BuildLayout()
     {
-        var hbox = new HBoxContainer();
-        hbox.SetAnchorsAndOffsetsPreset(Control.LayoutPreset.FullRect);
-        AddChild(hbox);
-
-        var viewportContainer = new SubViewportContainer
-        {
-            Stretch = true,
-            // ExpandFill：Expand 只分配不填充，子视口会塌缩到最小宽 2px（首轮验收灰屏根因）
-            SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
-            SizeFlagsStretchRatio = 0.62f,
-        };
-        hbox.AddChild(viewportContainer);
-
-        _viewport3D = new SubViewport { OwnWorld3D = true, Msaa3D = Viewport.Msaa.Msaa4X };
-        viewportContainer.AddChild(_viewport3D);
-
-        _viewport3D.AddChild(new WorldEnvironment
-        {
-            Environment = new Godot.Environment
-            {
-                BackgroundMode = Godot.Environment.BGMode.Color,
-                BackgroundColor = Palette.Default.Background,
-                AmbientLightSource = Godot.Environment.AmbientSource.Color,
-                AmbientLightColor = Palette.Default.AmbientLight,
-                AmbientLightEnergy = 0.55f,
-            },
-        });
-        _viewport3D.AddChild(new DirectionalLight3D { RotationDegrees = new Vector3(-55, 35, 0) });
-
-        _board3D = new Board3DView { Name = "Board3DView" };
-        _viewport3D.AddChild(_board3D);
-        _board3D.Configure(_boardSize, _layers, _spacing);
-
-        _camera = new Camera3D
-        {
-            KeepAspect = Camera3D.KeepAspectEnum.Height, // Godot fov 为垂直向，与 Three.js 语义一致（R1）
-            Current = true,
-        };
-        _viewport3D.AddChild(_camera);
-
-        _board2D = new Board2DView
-        {
-            SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
-            SizeFlagsStretchRatio = 0.38f,
-        };
-        hbox.AddChild(_board2D);
-
-        _statusLabel = new Label();
-        _statusLabel.SetAnchorsAndOffsetsPreset(Control.LayoutPreset.CenterBottom);
-        _statusLabel.HorizontalAlignment = HorizontalAlignment.Center;
-        _statusLabel.GrowHorizontal = Control.GrowDirection.Both;
-        _statusLabel.OffsetTop = -64;
-        AddChild(_statusLabel);
+        // 对局基座组件化（M4R：SceneRouter 挂载入口），字段引用保持不变以最小化接线改动
+        _gameScreen = new GameScreen(_boardSize, _layers, _spacing);
+        AddChild(_gameScreen);
+        _viewport3D = _gameScreen.Viewport3D;
+        _camera = _gameScreen.Camera;
+        _board3D = _gameScreen.Board3D;
+        _board2D = _gameScreen.Board2D;
+        _statusLabel = _gameScreen.StatusLabel;
     }
 
     /// <summary>OverlayManager（layer 20）+ 六个壳屏（layer 10，默认全隐藏，ShowState 按态切换）。</summary>
