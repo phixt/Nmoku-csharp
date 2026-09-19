@@ -1,6 +1,6 @@
 namespace Nmoku.Core.Tests;
 
-/// <summary>§10.5 R4-5：悬停辅助线扫描——跳空、连走、敌停、落点/截断标记、门控与角色归属。</summary>
+/// <summary>B9 简化语义：每方向只到首个非空子即停——一条线 + 一个标记，不穿透、不连走、不截断标记。</summary>
 public class AuxScanTests
 {
     private static readonly Coordinate3D H = new(5, 5, 0); // 悬停格（空）
@@ -16,7 +16,7 @@ public class AuxScanTests
     }
 
     [Fact]
-    public void Scan_NeighborAlly_LineFromHoverAndMarkerAtPiece()
+    public void Scan_NeighborAlly_LineAndMarkerAtPiece()
     {
         var board = BoardWith((6, 5, 0, CellState.Black));
         var r = AuxScan.Scan(board, PlayerColor.Black, H, includePlanar: true, includeSpace: false);
@@ -28,38 +28,50 @@ public class AuxScanTests
 
         var marker = Assert.Single(r.PlanarMarkers);
         Assert.Equal(new Coordinate3D(6, 5, 0), marker.Position);
-        Assert.Equal(AuxRole.Self, marker.Role); // 落点/收尾同点已去重
+        Assert.Equal(AuxRole.Self, marker.Role);
     }
 
     [Fact]
-    public void Scan_SkipsEmptyCells_LineJumpsTheGap()
+    public void Scan_LineCrossesEmptyCells_NeverAStone()
     {
         var board = BoardWith((7, 5, 0, CellState.Black)); // (6,5,0) 为空
         var r = AuxScan.Scan(board, PlayerColor.Black, H, true, false);
 
         var line = Assert.Single(r.PlanarLines);
         Assert.Equal(H, line.Start);
-        Assert.Equal(new Coordinate3D(7, 5, 0), line.End); // 越过空格直连
+        Assert.Equal(new Coordinate3D(7, 5, 0), line.End); // 越过空格直达首子
     }
 
     [Fact]
-    public void Scan_AllyThenEnemy_EnemyLineOnTopWithBothMarkers()
+    public void Scan_AllyThenEnemyBehind_OnlyFirstAllyShown()
     {
+        // 己子后方的敌子（或任何子）不再出现——首子即停
         var board = BoardWith((6, 5, 0, CellState.Black), (7, 5, 0, CellState.White));
         var r = AuxScan.Scan(board, PlayerColor.Black, H, true, false);
 
-        Assert.Equal(2, r.PlanarLines.Count);
-        Assert.Equal(AuxRole.Self, r.PlanarLines[0].Role);   // hover→己子
-        Assert.Equal(AuxRole.Enemy, r.PlanarLines[1].Role);  // 己子→敌子
-        Assert.Equal(new Coordinate3D(7, 5, 0), r.PlanarLines[1].End);
-
-        Assert.Contains(r.PlanarMarkers, m => m.Position.Equals(new Coordinate3D(7, 5, 0)) && m.Role == AuxRole.Enemy);
-        Assert.Contains(r.PlanarMarkers, m => m.Position.Equals(new Coordinate3D(6, 5, 0)) && m.Role == AuxRole.Self);
-        Assert.Equal(2, r.PlanarMarkers.Count);
+        var line = Assert.Single(r.PlanarLines);
+        Assert.Equal(new Coordinate3D(6, 5, 0), line.End);
+        Assert.Equal(AuxRole.Self, line.Role);
+        var marker = Assert.Single(r.PlanarMarkers);
+        Assert.Equal(new Coordinate3D(6, 5, 0), marker.Position);
     }
 
     [Fact]
-    public void Scan_EnemyFirst_NoTrailingSelfMarker()
+    public void Scan_AllyChain_OnlyNearestShown()
+    {
+        // 修复"己方只有最远的显示"：连子不再延伸到最远端
+        var board = BoardWith(
+            (6, 5, 0, CellState.Black), (7, 5, 0, CellState.Black), (8, 5, 0, CellState.Black));
+        var r = AuxScan.Scan(board, PlayerColor.Black, H, true, false);
+
+        var line = Assert.Single(r.PlanarLines);
+        Assert.Equal(new Coordinate3D(6, 5, 0), line.End);
+        var marker = Assert.Single(r.PlanarMarkers);
+        Assert.Equal(new Coordinate3D(6, 5, 0), marker.Position);
+    }
+
+    [Fact]
+    public void Scan_EnemyFirst_EnemyLineAndMarker()
     {
         var board = BoardWith((6, 5, 0, CellState.White));
         var r = AuxScan.Scan(board, PlayerColor.Black, H, true, false);
@@ -67,44 +79,7 @@ public class AuxScanTests
         var line = Assert.Single(r.PlanarLines);
         Assert.Equal(AuxRole.Enemy, line.Role);
         var marker = Assert.Single(r.PlanarMarkers);
-        Assert.Equal(AuxRole.Enemy, marker.Role); // prev==hover 不补己方标记
-    }
-
-    [Fact]
-    public void Scan_AllyChain_TruncatesAtMaxCells_WithTrailingMarker()
-    {
-        var board = BoardWith(
-            (6, 5, 0, CellState.Black), (7, 5, 0, CellState.Black),
-            (8, 5, 0, CellState.Black), (9, 5, 0, CellState.Black),
-            (10, 5, 0, CellState.Black)); // 第 5 子超出 4 格窗口
-        var r = AuxScan.Scan(board, PlayerColor.Black, H, true, false);
-
-        Assert.Equal(4, r.PlanarLines.Count); // hover→6→7→8→9
-        Assert.DoesNotContain(r.PlanarLines, l => l.End.Equals(new Coordinate3D(10, 5, 0)));
-
-        var marker = Assert.Single(r.PlanarMarkers);
-        Assert.Equal(new Coordinate3D(9, 5, 0), marker.Position); // 截断处最后非空格
-        Assert.Equal(AuxRole.Self, marker.Role);
-    }
-
-    [Fact]
-    public void Scan_EmptyBeyondAlly_LandingMarkerAtLastAlly()
-    {
-        var board = BoardWith((6, 5, 0, CellState.Black), (7, 5, 0, CellState.Black));
-        var r = AuxScan.Scan(board, PlayerColor.Black, H, true, false);
-
-        var marker = Assert.Single(r.PlanarMarkers);
-        Assert.Equal(new Coordinate3D(7, 5, 0), marker.Position); // 空位前的最后己子
-        Assert.Equal(AuxRole.Self, marker.Role);
-    }
-
-    [Fact]
-    public void Scan_AllFarBeyondMaxCells_ReturnsEmpty()
-    {
-        var board = BoardWith((10, 5, 0, CellState.Black)); // 距悬停 5 格
-        var r = AuxScan.Scan(board, PlayerColor.Black, H, true, true);
-        Assert.Empty(r.PlanarLines);
-        Assert.Empty(r.SpaceLines);
+        Assert.Equal(AuxRole.Enemy, marker.Role);
     }
 
     [Fact]
@@ -118,6 +93,15 @@ public class AuxScanTests
     }
 
     [Fact]
+    public void Scan_StoneBeyondMaxCells_Ignored()
+    {
+        var board = BoardWith((10, 5, 0, CellState.Black)); // 距悬停 5 格
+        var r = AuxScan.Scan(board, PlayerColor.Black, H, true, true);
+        Assert.Empty(r.PlanarLines);
+        Assert.Empty(r.SpaceLines);
+    }
+
+    [Fact]
     public void Scan_SpaceGating_AndLayerAxisCoverage()
     {
         var board = BoardWith((5, 5, 1, CellState.Black));
@@ -128,7 +112,9 @@ public class AuxScanTests
 
         var both = AuxScan.Scan(board, PlayerColor.Black, H, false, true);
         Assert.Empty(both.PlanarLines); // 平面被门控
-        Assert.Contains(both.SpaceLines, l => l.End.Equals(new Coordinate3D(5, 5, 1)) && l.Role == AuxRole.Self);
+        var line = Assert.Single(both.SpaceLines);
+        Assert.Equal(new Coordinate3D(5, 5, 1), line.End); // 跨层首子
+        Assert.Equal(AuxRole.Self, line.Role);
     }
 
     [Fact]

@@ -10,7 +10,7 @@ public enum AuxRole
 /// <summary>一条辅助线段（逻辑坐标；平面族共层，空间族跨层）。</summary>
 public readonly record struct AuxLine(Coordinate3D Start, Coordinate3D End, AuxRole Role);
 
-/// <summary>一个辅助线标记点：落点提示（Self）/敌子提醒（Enemy）。</summary>
+/// <summary>一个辅助线标记点：首个非空子（己=延伸提示，敌=阻挡提示）。</summary>
 public readonly record struct AuxMarker(Coordinate3D Position, AuxRole Role);
 
 /// <summary>
@@ -27,10 +27,10 @@ public sealed record AuxScanResult(
 }
 
 /// <summary>
-/// 悬停辅助线扫描（§10.5 R4-5，源 RightPanel.scanDirection2D/3D 忠实重写）：
-/// 每方向先跳过连续空格找首个非空子；随后己方连子续走、敌方画线即停、遇空位在最后非空格放落点标记、
-/// HelperLineMaxCells 截断/出界在最后非空格放己方标记。线段颜色取目的格角色。
-/// 悬停格本身须为空（展示端保证）；同位置重复标记已去重（源会重复添加，视觉等价）。
+/// 悬停辅助线扫描（**B9 简化语义**，人类指示 2026-09-19 弃源逻辑）：
+/// 每方向从悬停格起最多 HelperLineMaxCells 步，遇**首个非空子即停**——恰好一条线（悬停→该子，
+/// 可越过空格，但永不穿过棋子）+ 一个标记（角色=子色）。源的跳空续走/己方连走/截断标记
+/// 会使跨层斜线视觉穿透中间层（己方只剩最远标记/敌方己敌混杂），不再保留。
 /// </summary>
 public static class AuxScan
 {
@@ -74,71 +74,22 @@ public static class AuxScan
     {
         int maxSteps = GameConfig.HelperLineMaxCells;
 
-        // 1) 跳过连续空格，找方向上首个非空子
-        int first = 1;
-        while (true)
+        for (int step = 1; step <= maxSteps; step++)
         {
-            if (first > maxSteps || !board.InBounds(hover + dir * first))
-            {
-                return;
-            }
-            if (board.Get(hover + dir * first) != CellState.Empty)
-            {
-                break;
-            }
-            first++;
-        }
-        // 2) 沿方向走：己方续走、敌方画线即停、空位放落点标记即停、截断/出界收尾
-        int step = first;
-        var prev = hover;
-        while (true)
-        {
-            if (step > maxSteps)
-            {
-                break;
-            }
             var p = hover + dir * step;
             if (!board.InBounds(p))
             {
-                break;
+                return;
             }
             var state = board.Get(p);
-            bool ally = state == player.ToCell();
-
-            if (state != CellState.Empty)
-            {
-                lines.Add(new AuxLine(prev, p, ally ? AuxRole.Self : AuxRole.Enemy));
-            }
-
             if (state == CellState.Empty)
             {
-                AddMarker(markers, prev, AuxRole.Self);
-                break;
+                continue; // 空格越过（线不穿过任何棋子）
             }
-            if (!ally)
-            {
-                AddMarker(markers, p, AuxRole.Enemy);
-                break;
-            }
-
-            prev = p;
-            step++;
-        }
-
-        // 3) 收尾标记：最后非空格（prev==hover 说明首子即敌/无子，不补）
-        if (!prev.Equals(hover))
-        {
-            AddMarker(markers, prev, AuxRole.Self);
-        }
-    }
-
-    /// <summary>同位同角色去重（源在"落点标记 + 截断标记"处会重复添加，数据端收敛为一条）。</summary>
-    private static void AddMarker(List<AuxMarker> markers, Coordinate3D position, AuxRole role)
-    {
-        var marker = new AuxMarker(position, role);
-        if (markers.Count == 0 || !markers[^1].Equals(marker))
-        {
-            markers.Add(marker);
+            var role = state == player.ToCell() ? AuxRole.Self : AuxRole.Enemy;
+            lines.Add(new AuxLine(hover, p, role));
+            markers.Add(new AuxMarker(p, role));
+            return; // 首个非空子即停
         }
     }
 }
