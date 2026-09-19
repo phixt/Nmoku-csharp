@@ -12,6 +12,7 @@ public partial class Main : Node
     private const double OrbitDegPerPixel = 0.25;
     private const double ZoomPerSecond = 3.0;
     private const double SpacingPerSecond = 1.2;
+    private const double PanPerSecond = 0.6; // ×当前距离，键盘平移速度
 
     private Camera3D _camera = null!;
     private Board3DView _boardView = null!;
@@ -20,7 +21,7 @@ public partial class Main : Node
     private readonly int _boardSize;
     private readonly int _layers;
     private double _spacing;
-    private double _lastAspect;
+    private Vector2 _lastViewportSize;
     private bool _rotating;
     private bool _panning;
 
@@ -67,19 +68,19 @@ public partial class Main : Node
         _demoBoard = new Board(_boardSize, _layers);
         PlaceDemoStones();
 
-        _lastAspect = ViewportAspect();
-        _rig = new CameraRig(_boardSize, _layers, _spacing, _lastAspect);
+        _lastViewportSize = GetViewport().GetVisibleRect().Size;
+        _rig = new CameraRig(_boardSize, _layers, _spacing, _lastViewportSize.X / _lastViewportSize.Y);
         ApplyCamera();
 
         GD.Print($"Nmoku M2: board3d ready (board={_boardSize}x{_boardSize}x{_layers}, spacing={_spacing:0.0}, " +
-                 $"aspect={_lastAspect:0.00}, distance={_rig.Current.Distance:0.00}, " +
+                 $"aspect={_lastViewportSize.X / _lastViewportSize.Y:0.00}, distance={_rig.Current.Distance:0.00}, " +
                  $"fov={_rig.Current.Fov:0.0}, pitch={_rig.Current.Pitch:0.0})");
     }
 
     public override void _Process(double delta)
     {
         HandleHeldInput(delta);
-        HandleAspectChange();
+        HandleViewportChange();
         UpdateHover();
         _rig.Advance(delta);
         ApplyCamera();
@@ -95,18 +96,20 @@ public partial class Main : Node
             case InputEventMouseButton { ButtonIndex: MouseButton.Middle } middle:
                 _panning = middle.Pressed;
                 break;
-            case InputEventMouseButton { ButtonIndex: MouseButton.WheelUp, Pressed: true } wheelUp:
-                _rig.ZoomToAnchor(GroundAnchor(wheelUp.Position) ?? _rig.Target.Center, 1);
+            case InputEventMouseButton { ButtonIndex: MouseButton.WheelUp, Pressed: true }:
+                // 径向缩放：与 W/S 同路径，单调无跳变。锚点版有"远锚点大步进 + pitch 钳制瞬移"，
+                // 等 M3 有格子拾取后以合法锚点恢复（TODO）
+                _rig.Zoom(1);
                 break;
-            case InputEventMouseButton { ButtonIndex: MouseButton.WheelDown, Pressed: true } wheelDown:
-                _rig.ZoomToAnchor(GroundAnchor(wheelDown.Position) ?? _rig.Target.Center, -1);
+            case InputEventMouseButton { ButtonIndex: MouseButton.WheelDown, Pressed: true }:
+                _rig.Zoom(-1);
                 break;
             case InputEventMouseMotion motion:
             {
                 if (_rotating)
                 {
-                    // 手感方向待 M2 标定确认（决策 #9）
-                    _rig.Orbit(motion.Relative.X * OrbitDegPerPixel, -motion.Relative.Y * OrbitDegPerPixel);
+                    // 左右方向人类已确认；上下已按反馈翻转（2026-09-19）
+                    _rig.Orbit(motion.Relative.X * OrbitDegPerPixel, motion.Relative.Y * OrbitDegPerPixel);
                 }
                 else if (_panning)
                 {
@@ -120,21 +123,40 @@ public partial class Main : Node
 
     private void HandleHeldInput(double delta)
     {
-        if (Input.IsActionJustPressed("rotate_left"))
+        // exact match：Shift+WASD/方向键是平移，不得与无修饰键的 zoom_in/out 串线
+        if (Input.IsActionJustPressed("rotate_left", true))
         {
             _rig.Orbit(-90);
         }
-        if (Input.IsActionJustPressed("rotate_right"))
+        if (Input.IsActionJustPressed("rotate_right", true))
         {
             _rig.Orbit(90);
         }
-        if (Input.IsActionPressed("zoom_in"))
+        if (Input.IsActionPressed("zoom_in", true))
         {
             _rig.Zoom(ZoomPerSecond * delta);
         }
-        if (Input.IsActionPressed("zoom_out"))
+        if (Input.IsActionPressed("zoom_out", true))
         {
             _rig.Zoom(-ZoomPerSecond * delta);
+        }
+
+        double panStep = PanPerSecond * delta * _rig.Current.Distance;
+        if (Input.IsActionPressed("pan_left", true))
+        {
+            _rig.Pan(-panStep, 0);
+        }
+        if (Input.IsActionPressed("pan_right", true))
+        {
+            _rig.Pan(panStep, 0);
+        }
+        if (Input.IsActionPressed("pan_up", true))
+        {
+            _rig.Pan(0, panStep);
+        }
+        if (Input.IsActionPressed("pan_down", true))
+        {
+            _rig.Pan(0, -panStep);
         }
 
         double before = _spacing;
@@ -165,13 +187,14 @@ public partial class Main : Node
         _rig.Update(_boardSize, _layers, _spacing, ViewportAspect(), GameConfig.DefaultYaw);
     }
 
-    private void HandleAspectChange()
+    private void HandleViewportChange()
     {
-        double aspect = ViewportAspect();
-        if (Math.Abs(aspect - _lastAspect) > GameConfig.CameraEpsilon)
+        // 按尺寸比较而非宽高比：杜绝浮点抖动触发公式重算（距离被拉回初始态的疑似来源之一）
+        var size = GetViewport().GetVisibleRect().Size;
+        if (_lastViewportSize != size)
         {
-            _lastAspect = aspect;
-            _rig.Update(_boardSize, _layers, _spacing, aspect, GameConfig.DefaultYaw);
+            _lastViewportSize = size;
+            _rig.Update(_boardSize, _layers, _spacing, size.X / size.Y, GameConfig.DefaultYaw);
         }
     }
 
@@ -211,28 +234,16 @@ public partial class Main : Node
             {
                 continue;
             }
-            int x = (int)Math.Round(origin.X + dir.X * t);
-            int y = (int)Math.Round(origin.Z + dir.Z * t);
-            if (x >= 0 && x < _boardSize && y >= 0 && y < _boardSize)
+            double hitX = origin.X + dir.X * t;
+            double hitY = origin.Z + dir.Z * t;
+            // 连续范围判定（含格心半格边距）：修"高亮出现在棋盘外任意位置"（人类反馈 2026-09-19）
+            if (hitX >= -0.5 && hitX <= _boardSize - 0.5 && hitY >= -0.5 && hitY <= _boardSize - 0.5)
             {
-                best = new Coordinate3D(x, y, z);
+                best = new Coordinate3D((int)Math.Round(hitX), (int)Math.Round(hitY), z);
                 bestT = t;
             }
         }
         _boardView.SetHover(best);
-    }
-
-    /// <summary>滚轮缩放锚点：鼠标射线与地面 y=0 的交点；无交点（望向地平线）由调用方回退盘心。</summary>
-    private WorldPoint? GroundAnchor(Vector2 mouse)
-    {
-        var origin = _camera.ProjectRayOrigin(mouse);
-        var dir = _camera.ProjectRayNormal(mouse);
-        if (Math.Abs(dir.Y) < 1e-6)
-        {
-            return null;
-        }
-        double t = -origin.Y / dir.Y;
-        return t <= 0 ? null : new WorldPoint(origin.X + dir.X * t, 0, origin.Z + dir.Z * t);
     }
 
     private double WorldPerPixel() =>

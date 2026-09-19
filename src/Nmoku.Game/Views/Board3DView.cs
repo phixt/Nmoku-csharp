@@ -14,7 +14,7 @@ public sealed partial class Board3DView : Node3D
     private MultiMeshInstance3D _blackOpaque = null!;
     private MultiMeshInstance3D _whiteOpaque = null!;
     private readonly List<MultiMeshInstance3D> _ghostBuckets = new(); // 下标 = z*2+颜色
-    private MeshInstance3D _grid = null!;
+    private MultiMeshInstance3D _grid = null!;
     private MeshInstance3D _hover = null!;
     private int _boardSize;
     private int _layers;
@@ -97,13 +97,13 @@ public sealed partial class Board3DView : Node3D
         });
     }
 
-    /// <summary>悬停高亮占位：蓝点落在 (x,y,z) 格心，null 隐藏。</summary>
+    /// <summary>悬停预选：比棋子略小的蓝色小球（源项目形态，人类反馈 2026-09-19），落格心与棋子同高。</summary>
     public void SetHover(Coordinate3D? cell)
     {
         if (cell is { } c)
         {
             var world = CoordMapper.LogicalToWorld(c.X, c.Y, c.Z, _spacing);
-            _hover.Position = new Vector3((float)world.X, (float)world.Y + 0.45f, (float)world.Z);
+            _hover.Position = new Vector3((float)world.X, (float)world.Y + 0.4f, (float)world.Z);
             _hover.Visible = true;
         }
         else
@@ -145,52 +145,77 @@ public sealed partial class Board3DView : Node3D
         return instance;
     }
 
-    private MeshInstance3D BuildGrid(int boardSize, double spacing)
+    private MultiMeshInstance3D BuildGrid(int boardSize, double spacing)
     {
-        var verts = new List<Vector3>();
+        // 细盒代替 1px 线（人类反馈：加粗+平滑）；配合 MSAA 4× 抗锯齿
+        const float thickness = 0.05f;
+        float length = boardSize - 1;
+        float mid = length / 2;
+
+        var mesh = new BoxMesh
+        {
+            Size = new Vector3(1, 1, 1),
+            Material = new StandardMaterial3D
+            {
+                ShadingMode = BaseMaterial3D.ShadingModeEnum.Unshaded,
+                AlbedoColor = new Color(0.62f, 0.66f, 0.70f),
+            },
+        };
+
+        var multimesh = new MultiMesh
+        {
+            TransformFormat = MultiMesh.TransformFormatEnum.Transform3D,
+            Mesh = mesh,
+            InstanceCount = 2 * boardSize * _layers,
+        };
+
+        int i = 0;
         for (int z = 0; z < _layers; z++)
         {
             float height = (float)(z * spacing);
             for (int y = 0; y < boardSize; y++)
             {
-                verts.Add(new Vector3(0, y, height));
-                verts.Add(new Vector3(boardSize - 1, y, height));
+                var xAxis = new Basis(new Vector3(length, 0, 0), new Vector3(0, thickness, 0), new Vector3(0, 0, thickness));
+                multimesh.SetInstanceTransform(i++, new Transform3D(xAxis, new Vector3(mid, y, height)));
             }
             for (int x = 0; x < boardSize; x++)
             {
-                verts.Add(new Vector3(x, 0, height));
-                verts.Add(new Vector3(x, boardSize - 1, height));
+                var zAxis = new Basis(new Vector3(thickness, 0, 0), new Vector3(0, thickness, 0), new Vector3(0, 0, length));
+                multimesh.SetInstanceTransform(i++, new Transform3D(zAxis, new Vector3(x, mid, height)));
             }
         }
 
-        var arrays = new Godot.Collections.Array();
-        arrays.Resize((int)Mesh.ArrayType.Max);
-        arrays[(int)Mesh.ArrayType.Vertex] = verts.ToArray();
-
-        var mesh = new ArrayMesh();
-        mesh.AddSurfaceFromArrays(Mesh.PrimitiveType.Lines, arrays);
-        mesh.SurfaceSetMaterial(0, new StandardMaterial3D
+        return new MultiMeshInstance3D
         {
-            ShadingMode = BaseMaterial3D.ShadingModeEnum.Unshaded,
-            AlbedoColor = new Color(0.62f, 0.66f, 0.70f),
-        });
-
-        return new MeshInstance3D { Name = "grid", Mesh = mesh };
+            Name = "grid",
+            Multimesh = multimesh,
+            CastShadow = GeometryInstance3D.ShadowCastingSetting.Off,
+        };
     }
 
+    /// <summary>悬停预选球：半径略小于棋子（0.32 vs 0.4），空位格上可见。</summary>
     private MeshInstance3D BuildHover()
     {
-        var mesh = new PlaneMesh
+        var mesh = new SphereMesh
         {
-            Size = new Vector2(0.9f, 0.9f),
+            Radius = 0.32f,
+            Height = 0.64f,
+            RadialSegments = 20,
+            Rings = 10,
             Material = new StandardMaterial3D
             {
                 ShadingMode = BaseMaterial3D.ShadingModeEnum.Unshaded,
-                AlbedoColor = new Color(0.30f, 0.55f, 1.00f, 0.35f),
+                AlbedoColor = new Color(0.30f, 0.55f, 1.00f, 0.55f),
                 Transparency = BaseMaterial3D.TransparencyEnum.Alpha,
             },
         };
-        var instance = new MeshInstance3D { Name = "hover", Mesh = mesh, Visible = false };
+        var instance = new MeshInstance3D
+        {
+            Name = "hover",
+            Mesh = mesh,
+            Visible = false,
+            CastShadow = GeometryInstance3D.ShadowCastingSetting.Off,
+        };
         return instance;
     }
 }
