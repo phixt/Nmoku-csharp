@@ -313,6 +313,8 @@ public sealed partial class Board3DView : Node3D
             {
                 ShadingMode = BaseMaterial3D.ShadingModeEnum.Unshaded,
                 AlbedoColor = Theme.GridLine,
+                // 必须开 Alpha：不透明材质会忽略 AlbedoColor 的 alpha 通道，逐层显隐失效（人类反馈 2026-09-19）
+                Transparency = BaseMaterial3D.TransparencyEnum.Alpha,
             };
             var grid = new MultiMesh
             {
