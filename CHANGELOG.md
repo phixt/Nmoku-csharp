@@ -12,9 +12,17 @@
   ② 冒烟断言误用数组 `-notmatch`——它返回"未命中元素集合"而非布尔，引擎横幅行必未命中，集合非空恒为真；
   断言须先 `-join` 成单串再匹配（本地 pwsh 复现：旧写法 exit 1 / 新写法 exit 0，输出逐行同 CI 日志）。
 - **M1 review（2026-09-18）**：验收通过——口径属实（0 警告/113 绿）、红线全过、Swap2 与 AI 逐项对照源 TS 无保真偏差。
-  修复批挂 TODO 次日执行（P1：SwapEngine 注释与调用契约矛盾、SaveValidator 首行校验缺口；小收敛：引擎工厂/契约 doc/判和 API）。
-  新规则拍板：Connect6 进待办（须先出接口演进设计）且优先级高于 Renju 禁手（调低）；开局库后置、须与状态机解耦（难则放弃）；演示关视为占位符。
+  修复批已完成（见「M1.5」节）。新规则拍板：Connect6 进待办（须先出接口演进设计）且优先级高于 Renju 禁手（调低）；
+  开局库后置、须与状态机解耦（难则放弃）；演示关视为占位符。
 - **架构红线**：`src/Nmoku.Core` 零 Godot 依赖，纯 C#（net8.0），xUnit 秒级运行。
+
+## M1.5 — review 修复批（2026-09-19）
+
+- 契约文档化：`IRuleEngine.GetNextTurnState`/`TurnState` XML doc 写死"currentPlayer=刚行棋方、swap 决策期指针不动、决策者=Message 受众白方"；修 SwapEngine 与测试注释口径。
+- 存档健壮性：`SaveValidator` 行宽逐行校验（原只查每层首行，y>0 错配放行）；`SaveManager` 载入路径对 v2 直通档补 `Validate`，维度错配不再穿透进槽位缓存（+3 回归用例）。
+- 规则层小收敛：`RuleEngineFactory.Create(RuleSet, winLength)`（Renju 未实装即抛 NotSupportedException）、`Board.IsFull()` 判和原语（+5 用例）。
+- 测试清理：死字段/恒等三元/名不副实用例改名；计划文档 §10 修 B1 措辞（黑连下第 1、2 手，第 3 手起白方）、登记 B6（AI 等分策略 C# 种子随机池 vs TS 先到先得）。
+- 验收：build 0 警告、测试 121 例全绿；按铁律 9 与交接文档一并 push 走 CI 门禁。
 
 ## M1 — 纯逻辑层（2026-09-18）
 
