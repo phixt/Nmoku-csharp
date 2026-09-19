@@ -62,6 +62,19 @@
   原生像素。启动日志新增 `display:` 行（window/screen/dpi/canvasScale/3D 视口）用于诊断 DPI 感知是否生效；
   若 window 为逻辑像素，须检查 exe 的 Windows 兼容性 DPI 设置（[Godot 论坛同款问题](https://forum.godotengine.org)）。
 
+## M4 第二轮修复批 — 人类验收反馈（2026-09-19）
+
+- **严重：自定义关卡层数多于默认不渲染**——GameScreen 的 3D 视图按启动参数 Configure 一次，
+  StartLevel 换关卡后无人重配。修复：`GameStore.LevelChanged` 事件 → Main 重配 Board3D 与 CameraRig
+  （2D 自绘全动态无需重配）；顺带清理 Main 中会过期的 `_boardSize/_layers` 运行时用法（间距调账/复位
+  改从活棋盘取维度）。自测锁定 11×8 关：Board3D.Layers==8、相机中心=(layers-1)×spacing/2、深层可落子。
+- **B13 常驻行棋指示假棋子**（已登记 migration-plan §10）：2D 面板右上角半透明（0.55）指示子显示
+  当前行棋方；纯 _Draw 图元，不入棋盘数据/子数/辅助线/3D MultiMesh；**SWAP2 决策期显示决策方白方**
+  （B1 指针不动）；复盘/终局隐藏。源项目的假棋子即悬停预览（M3 已实现），常驻指示为本项目扩展。
+- **主题语义化微调**（值全在 Palette，后续细调不动视图代码）：①2D 白子体色/描边改为语义字段
+  （light 套取受光乳白+灰绿描边，与 3D 观感一致；dark 值=原派生结果观感不变）；②light 套深字调浅
+  （TextPrimary/TextDim）；③状态字加描边（TextOutline 语义字段，暗底黑描边/浅底纸色描边）并随主题换色。
+
 ## M4 第二轮 — 明暗主题/字体/关卡/文件存档（2026-09-19，代码完结）
 
 - **Palette 明暗双套**：`Dark`（既有基线）/`Light`（水绿宣纸：宣纸底、墨色字、水绿强调）；`Active` 运行时
