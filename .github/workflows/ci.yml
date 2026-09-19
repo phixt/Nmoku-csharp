@@ -59,4 +59,9 @@ jobs:
           # 引擎横幅行必然未命中 -> 集合非空 -> 恒为真。先拼成单串再匹配。
           $text = $out -join "`n"
           if ($text -notmatch "engine boot OK") { exit 1 }
+          # 对局自测：胜负/悔棋/SWAP2 双分支/AI 应答（自跑自退）
+          $auto = & "${{ steps.exe.outputs.path }}" --headless --path src/Nmoku.Game -- --autotest 2>&1
+          $auto | ForEach-Object { Write-Output $_ }
+          $atext = $auto -join "`n"
+          if ($atext -notmatch "AUTOTEST ALL PASS") { exit 1 }
           exit 0

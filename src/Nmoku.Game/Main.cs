@@ -41,6 +41,10 @@ public partial class Main : Node
     public Main()
     {
         (_boardSize, _layers, _spacing, _rules, _pve, _aiDifficulty) = ParseDebugArgs();
+        if (OS.GetCmdlineUserArgs().Contains("--autotest"))
+        {
+            _autotestArmed = true;
+        }
     }
 
     public override void _Ready()
@@ -155,10 +159,127 @@ public partial class Main : Node
 
     public override void _Process(double delta)
     {
+        if (_autotestArmed)
+        {
+            RunAutotest();
+            return;
+        }
         HandleHeldInput(delta);
         HandleViewportChange();
         _rig.Advance(delta);
         ApplyCamera();
+    }
+
+    // ---- 无头对局自测（-- --autotest）：胜负/判和/悔棋/SWAP2 双分支/AI 落子；CI 冒烟依赖 AUTOTEST ALL PASS ----
+    private bool _autotestArmed;
+    private bool _autotestBuilt;
+    private readonly Queue<(string Name, Func<string> Run)> _autotestSteps = new();
+    private string _autotestFails = "";
+    private int _autotestWait;
+
+    private void RunAutotest()
+    {
+        if (!_autotestBuilt)
+        {
+            _autotestBuilt = true;
+            BuildAutotestSteps();
+        }
+        if (_autotestSteps.Count == 0)
+        {
+            GD.Print(_autotestFails.Length == 0 ? "AUTOTEST ALL PASS" : $"AUTOTEST FAIL: {_autotestFails}");
+            GetTree().Quit();
+            return;
+        }
+        var (name, run) = _autotestSteps.Peek();
+        var result = run();
+        if (result == "wait")
+        {
+            return;
+        }
+        _autotestSteps.Dequeue();
+        if (result != "ok")
+        {
+            _autotestFails += $"[{name}: {result}] ";
+        }
+        GD.Print($"AUTOTEST {name}: {result}");
+    }
+
+    private void BuildAutotestSteps()
+    {
+        // PvP 五连胜利 + 悔棋
+        _gm.Configure(9, 3, RuleSet.Gomoku, false, AIDifficulty.Medium);
+        (int x, int y)[] black = [(0, 5), (1, 5), (2, 5), (3, 5), (4, 5)];
+        (int x, int y)[] white = [(0, 6), (1, 6), (2, 6), (3, 6)];
+        for (int k = 0; k < 4; k++)
+        {
+            var b = black[k];
+            _autotestSteps.Enqueue(("pvp-black" + k, () => _gm.TryPlace(b.x, b.y, 0) ? "ok" : "FAIL"));
+            var w = white[k];
+            _autotestSteps.Enqueue(("pvp-white" + k, () => _gm.TryPlace(w.x, w.y, 0) ? "ok" : "FAIL"));
+        }
+        var lastBlack = black[4];
+        _autotestSteps.Enqueue(("pvp-black4", () => _gm.TryPlace(lastBlack.x, lastBlack.y, 0) ? "ok" : "FAIL"));
+        _autotestSteps.Enqueue(("pvp-win", () =>
+            _gm.IsOver && _gm.Winner == 1 ? "ok" : "FAIL"));
+        _autotestSteps.Enqueue(("undo", () =>
+        {
+            _gm.Undo();
+            return !_gm.IsOver && _gm.History.Count == 8 && _gm.Current == PlayerColor.Black ? "ok" : "FAIL";
+        }));
+        _autotestSteps.Enqueue(("reset", () =>
+        {
+            _gm.Reset();
+            return !_gm.IsOver && _gm.History.Count == 0 ? "ok" : "FAIL";
+        }));
+
+        // SWAP2 pass 分支：黑首子 → 白决策期 → 继续 → 黑连下第 2 手
+        _autotestSteps.Enqueue(("cfg-swap2", () =>
+        {
+            _gm.Configure(9, 3, RuleSet.Swap2, false, AIDifficulty.Medium);
+            return "ok";
+        }));
+        _autotestSteps.Enqueue(("swap2-first", () => _gm.TryPlace(4, 4, 0) ? "ok" : "FAIL"));
+        _autotestSteps.Enqueue(("swap2-pending", () => _gm.SwapPending ? "ok" : "FAIL"));
+        _autotestSteps.Enqueue(("swap2-pass", () =>
+        {
+            _gm.ResolveSwap(false);
+            return !_gm.SwapPending && _gm.Current == PlayerColor.Black ? "ok" : "FAIL";
+        }));
+        _autotestSteps.Enqueue(("swap2-black2", () =>
+            _gm.TryPlace(5, 4, 0) && _gm.Current == PlayerColor.White ? "ok" : "FAIL"));
+
+        // SWAP2 swap 分支：决策后全历史换色
+        _autotestSteps.Enqueue(("cfg-swap2b", () =>
+        {
+            _gm.Configure(9, 3, RuleSet.Swap2, false, AIDifficulty.Medium);
+            return "ok";
+        }));
+        _autotestSteps.Enqueue(("swap2b-first", () => _gm.TryPlace(4, 4, 0) ? "ok" : "FAIL"));
+        _autotestSteps.Enqueue(("swap2b-swap", () =>
+        {
+            _gm.ResolveSwap(true);
+            return _gm.History[0].Player == PlayerColor.White && _gm.Board.Get(4, 4, 0) == CellState.White
+                ? "ok"
+                : "FAIL";
+        }));
+        _autotestSteps.Enqueue(("swap2b-black2", () => _gm.TryPlace(3, 3, 0) ? "ok" : "FAIL"));
+
+        // PvE：人类落子后 AI 应答
+        _autotestSteps.Enqueue(("cfg-pve", () =>
+        {
+            _gm.Configure(9, 3, RuleSet.Gomoku, true, AIDifficulty.Medium);
+            return "ok";
+        }));
+        _autotestSteps.Enqueue(("pve-human", () => _gm.TryPlace(4, 4, 1) ? "ok" : "FAIL"));
+        _autotestSteps.Enqueue(("pve-ai-reply", () =>
+        {
+            _autotestWait++;
+            if (_autotestWait > 600)
+            {
+                return "FAIL timeout";
+            }
+            return _gm.History.Count == 2 ? "ok" : "wait";
+        }));
     }
 
     public override void _Input(InputEvent @event)
