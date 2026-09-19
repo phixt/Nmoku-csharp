@@ -50,9 +50,14 @@ public static class GameStateMachine
 {
     /// <summary>
     /// 查询转移结果；不在 §3.4 表内的组合返回 null（调用方必须拒绝并按需报错）。
+    /// EnterReplay 在每个态都可触发（§3.4 "Any → REPLAY" 行），统一走尾部合并处理。
     /// </summary>
     public static GameState? Transition(GameState from, GameTrigger trigger)
     {
+        if (trigger == GameTrigger.EnterReplay)
+        {
+            return GameState.Replay; // Any → REPLAY（含 Replay 自环：复盘期间可换另一档）
+        }
         return from switch
         {
             GameState.Title => trigger switch
@@ -98,7 +103,6 @@ public static class GameStateMachine
             GameState.Replay => trigger switch
             {
                 GameTrigger.ExitReplay => GameState.Title,
-                GameTrigger.EnterReplay => GameState.Replay, // "Any → REPLAY"：复盘期间可换另一档
                 _ => null,
             },
             _ => null,

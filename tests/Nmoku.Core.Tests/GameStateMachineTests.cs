@@ -26,6 +26,13 @@ public class GameStateMachineTests
         (GameState.GameOver, GameTrigger.NewGame, GameState.Playing),
         (GameState.GameOver, GameTrigger.ReturnToTitle, GameState.Title),
         (GameState.Replay, GameTrigger.ExitReplay, GameState.Title),
+        // §3.4 "Any → REPLAY"：7 个态全部可经 EnterReplay 进入复盘
+        (GameState.Title, GameTrigger.EnterReplay, GameState.Replay),
+        (GameState.GuideFromTitle, GameTrigger.EnterReplay, GameState.Replay),
+        (GameState.Playing, GameTrigger.EnterReplay, GameState.Replay),
+        (GameState.Paused, GameTrigger.EnterReplay, GameState.Replay),
+        (GameState.GuideFromGame, GameTrigger.EnterReplay, GameState.Replay),
+        (GameState.GameOver, GameTrigger.EnterReplay, GameState.Replay),
         (GameState.Replay, GameTrigger.EnterReplay, GameState.Replay),
     ];
 
