@@ -58,6 +58,13 @@ public partial class Main : Node
 
     public override void _Ready()
     {
+        // F1 帮助屏 action 运行时注册（KeymapTable 已登记语义；不进 project.godot 以免 --import 回写风险）
+        if (!InputMap.HasAction("toggle_help"))
+        {
+            InputMap.AddAction("toggle_help");
+            InputMap.ActionAddEvent("toggle_help", new InputEventKey { PhysicalKeycode = Key.F1 });
+        }
+
         int custom = 0;
         foreach (string action in InputMap.GetActions())
         {
