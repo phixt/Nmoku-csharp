@@ -388,6 +388,33 @@ public partial class Main : Node
         _autotestSteps.Enqueue(("m4-back-to-title", () =>
             _store.Pause() && _store.ReturnToTitle() && _store.State == GameState.Title ? "ok" : "FAIL"));
         _autotestSteps.Enqueue(("m4-import", AutotestImportClipboardPath));
+
+        // ---- M4R：首中即吞回归（同键跨态双触发根因：修复前 ESC 同帧 pause+resume 互抵）----
+        _autotestSteps.Enqueue(("m4r-start", () =>
+        {
+            _gm.Configure(9, 3, RuleSet.Gomoku, false, AIDifficulty.Medium);
+            return _store.StartGame() && _store.State == GameState.Playing ? "ok" : "FAIL";
+        }));
+        _autotestSteps.Enqueue(("m4r-pause-stays", () =>
+        {
+            SimulateActionPress("pause");
+            return _store.State == GameState.Paused ? "ok" : "FAIL";
+        }));
+        _autotestSteps.Enqueue(("m4r-restart-opens-confirm", () =>
+        {
+            SimulateActionPress("restart"); // R 在 Paused=重开请求：应只弹确认框
+            return _overlay.IsModalOpen ? "ok" : "FAIL";
+        }));
+        _autotestSteps.Enqueue(("m4r-cancel-confirm", () =>
+        {
+            _overlay.CloseAll();
+            return !_overlay.IsModalOpen && _store.State == GameState.Paused ? "ok" : "FAIL";
+        }));
+        _autotestSteps.Enqueue(("m4r-resume", () =>
+        {
+            SimulateActionPress("resume");
+            return _store.State == GameState.Playing ? "ok" : "FAIL";
+        }));
     }
 
     /// <summary>M4 自测：存档落盘 → 模拟重启恢复 → 载入转 Playing → 复盘步进 → 退出回 Title。</summary>
@@ -487,6 +514,46 @@ public partial class Main : Node
     private bool Held(string action) =>
         ShortcutRouter.Allows(action, _store.State) && Input.IsActionPressed(action, true);
 
+    /// <summary>
+    /// 有序单次动作表（顺序即优先级）。HandleHeldInput 首中即吞；autotest 经
+    /// SimulateActionPress 复用同一分发逻辑，保证测试与真实输入同路径。
+    /// </summary>
+    private IEnumerable<(string Action, Action Run)> SingleActions()
+    {
+        yield return ("pause", () => _store.Pause());
+        yield return ("resume", () => _store.Resume());
+        yield return ("confirm", ConfirmAction);
+        yield return ("load_latest", () => _store.LoadLatest());
+        yield return ("quick_save", () => _store.QuickSave());
+        yield return ("restart", () => _store.RequestRestart());
+        yield return ("return_to_title", () => _store.ReturnToTitle());
+        yield return ("open_guide", () => _store.OpenGuide());
+        yield return ("replay_prev", () => _gm.StepReplay(-1));
+        yield return ("replay_next", () => _gm.StepReplay(1));
+        yield return ("exit_replay", () => _store.ExitReplay());
+        yield return ("layer_prev", () => _gm.CycleFocus(-1));
+        yield return ("layer_next", () => _gm.CycleFocus(1));
+        yield return ("mirror_2d", () => _board2D.ToggleMirror());
+        yield return ("toggle_helper_lines", () => _gm.ToggleAux());
+        yield return ("toggle_colorblind", () => _gm.ToggleColorblind());
+        yield return ("toggle_grid_all", () => _board3D.ToggleGridAll());
+        yield return ("undo", () => _gm.Undo());
+    }
+
+    private void ConfirmAction()
+    {
+        switch (_store.State)
+        {
+            case GameState.Title:
+            case GameState.GuideFromTitle:
+                _store.StartGame();
+                break;
+            case GameState.GuideFromGame:
+                _store.Resume();
+                break;
+        }
+    }
+
     private void HandleHeldInput(double delta)
     {
         if (_overlay.IsModalOpen)
@@ -502,67 +569,39 @@ public partial class Main : Node
             return;
         }
 
-        // ---- 壳状态动作（04-contracts §4.2.2）----
-        if (Want("pause"))
+        // 引导态 Esc（§3.4 两行的 Esc 语义）：标题入口=返回，对局入口=回对局
+        if (_store.State is GameState.GuideFromTitle or GameState.GuideFromGame
+            && Input.IsActionJustPressed("ui_cancel"))
         {
-            _store.Pause();
-        }
-        if (Want("resume"))
-        {
-            _store.Resume();
-        }
-        if (Want("confirm"))
-        {
-            switch (_store.State)
+            if (_store.State == GameState.GuideFromGame)
             {
-                case GameState.Title:
-                case GameState.GuideFromTitle:
-                    _store.StartGame();
-                    break;
-                case GameState.GuideFromGame:
-                    _store.Resume();
-                    break;
+                _store.Resume();
             }
-        }
-        if (Want("load_latest"))
-        {
-            _store.LoadLatest();
-        }
-        if (Want("quick_save"))
-        {
-            _store.QuickSave();
-        }
-        if (Want("restart"))
-        {
-            _store.RequestRestart();
-        }
-        if (Want("return_to_title"))
-        {
-            _store.ReturnToTitle();
-        }
-        if (Want("open_guide"))
-        {
-            _store.OpenGuide();
-        }
-        if (Want("replay_prev"))
-        {
-            _gm.StepReplay(-1);
-        }
-        if (Want("replay_next"))
-        {
-            _gm.StepReplay(1);
-        }
-        if (Want("exit_replay"))
-        {
-            _store.ExitReplay();
+            else
+            {
+                _store.GuideBack();
+            }
+            return;
         }
 
-        // ---- 相机（PLAYING + REPLAY；exact match 防 Shift 平移串线，M2 决策 #9）----
-        if (Want("rotate_left"))
+        // ---- 单次动作：首中即吞（04-contracts §4.2.4"匹配即吞掉事件"）----
+        // 每帧至多执行一个：状态在同帧变化后不再求值后续动作，
+        // 根除 ESC(pause+resume 同帧互抵) 与 R(pause+restart 同帧双弹) 的双触发。
+        foreach (var (action, run) in SingleActions())
+        {
+            if (Want(action))
+            {
+                run();
+                return;
+            }
+        }
+
+        // ---- 相机/间距：持续按住类，不参与首中互斥（exact match 防 Shift 平移串线，M2 决策 #9）----
+        if (Held("rotate_left"))
         {
             _rig.Orbit(-90);
         }
-        if (Want("rotate_right"))
+        if (Held("rotate_right"))
         {
             _rig.Orbit(90);
         }
@@ -593,36 +632,6 @@ public partial class Main : Node
             _rig.Pan(0, -panStep);
         }
 
-        // ---- M3 游戏键位（PLAYING）----
-        if (Want("layer_prev"))
-        {
-            _gm.CycleFocus(-1);
-        }
-        if (Want("layer_next"))
-        {
-            _gm.CycleFocus(1);
-        }
-        if (Want("mirror_2d"))
-        {
-            _board2D.ToggleMirror();
-        }
-        if (Want("toggle_helper_lines"))
-        {
-            _gm.ToggleAux();
-        }
-        if (Want("toggle_colorblind"))
-        {
-            _gm.ToggleColorblind();
-        }
-        if (Want("toggle_grid_all"))
-        {
-            _board3D.ToggleGridAll();
-        }
-        if (Want("undo"))
-        {
-            _gm.Undo();
-        }
-
         double before = _spacing;
         if (Held("spacing_compress"))
         {
@@ -641,6 +650,22 @@ public partial class Main : Node
         if (Math.Abs(_spacing - before) > 1e-9)
         {
             OnSpacingChanged();
+        }
+    }
+
+    /// <summary>autotest 专用：绕过 Input 单例直接驱动单次动作分发（与真实路径共用有序表与门控）。</summary>
+    private void SimulateActionPress(string action)
+    {
+        foreach (var (candidate, run) in SingleActions())
+        {
+            if (candidate == action)
+            {
+                if (ShortcutRouter.Allows(action, _store.State))
+                {
+                    run();
+                }
+                return;
+            }
         }
     }
 
