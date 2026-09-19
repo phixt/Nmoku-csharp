@@ -2,7 +2,7 @@ namespace Nmoku.Core.Tests;
 
 /// <summary>test-and-cicd-plan §4.4：SWAP2 开局状态机。调用约定（读源自 main.ts:341）：
 /// getNextTurnState 接收"刚行棋方"；swap 分支下 nextPlayer=刚行棋方且 shell 保持不变，
-/// 由黑连下两手——与官方 Swap2 节奏一致。</summary>
+/// 黑连下第 1、2 手（决策弹窗插在两子之间），第 3 手起白方——与官方 Swap2 节奏一致。</summary>
 public class SwapEngineTests
 {
     private static readonly LevelConfig EmptyLevel = new() { Id = "sandbox" };
@@ -92,7 +92,7 @@ public class SwapEngineTests
         SwapEngine.ApplySwap(history, board);
         Assert.Equal(CellState.White, board.Get(4, 4, 0));
 
-        // 交换后节奏：黑色（原白方持有）连下两手
+        // 交换后仍由刚行棋方落第 2 子（选择交换的一方现执黑），随后白方行棋
         current = ts.NextPlayer; // Black
         Assert.True(engine.IsLegalMove(3, 3, 0, current, history, board));
         board.Set(3, 3, 0, current);

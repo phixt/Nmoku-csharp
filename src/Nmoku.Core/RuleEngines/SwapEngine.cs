@@ -17,6 +17,10 @@ public sealed class SwapEngine : IRuleEngine
         IReadOnlyList<Move> history, Board board) =>
         board.InBounds(x, y, z) && board.IsEmpty(x, y, z);
 
+    /// <summary>
+    /// swap 分支（history 恰 1 手且无预置子）返回 NextPlayer=刚行棋方、IsSwapPhase=true；
+    /// 其余分支为刚行棋方的对手（02-rules §2.4/§3）。
+    /// </summary>
     public TurnState GetNextTurnState(IReadOnlyList<Move> history, PlayerColor currentPlayer,
         LevelConfig? levelConfig = null)
     {
@@ -28,7 +32,8 @@ public sealed class SwapEngine : IRuleEngine
 
         if (history.Count == 1)
         {
-            // 黑落首子后，仍由"当前行棋方"（白）来决定交换与否
+            // swap 决策期：nextPlayer=刚行棋方（指针不动）；决策者是 Message 受众（白方），
+            // 由 shell 弹窗收集并决定是否 ApplySwap；决策后仍由刚行棋方落第 2 子（源 main.ts:341）
             return new TurnState(currentPlayer, true, Text.Swap.ChooseSwapOrDefault);
         }
 

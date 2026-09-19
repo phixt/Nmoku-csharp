@@ -54,7 +54,11 @@ public sealed class Move
     public Coordinate3D Coordinate => new(X, Y, Z);
 }
 
-/// <summary>回合状态（02-rules §2.2）。</summary>
+/// <summary>
+/// 回合状态（02-rules §2.2）。IsSwapPhase=true 表示处于换色决策期：
+/// NextPlayer 保持刚行棋方不变，Message 的受众（白方）负责在弹窗中决策，
+/// shell 在决策完成前不得推进回合（源 main.ts:341 "keep currentPlayer unchanged"）。
+/// </summary>
 public readonly record struct TurnState(PlayerColor NextPlayer, bool IsSwapPhase, string Message);
 
 /// <summary>一条连珠模式（01-core §5.3），count 为同色连子数，openEnds∈{0,1,2}。</summary>
