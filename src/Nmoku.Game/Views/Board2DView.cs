@@ -172,8 +172,10 @@ public sealed partial class Board2DView : Control
 
         EnsureGlowTexture();
         var glowStrength = (isBlack ? 0.35f : 0.55f) * alpha;
-        float glowDiameter = StoneRadius * 1.1f * _scale;
-        var glowCenter = pos + new Vector2(-0.28f, -0.28f) * _scale;
+        // 高光必须完整落在轮廓内：偏移幅 0.30√2·r ≈ 0.42r + 光斑半径 0.45r = 0.87r < r。
+        // 旧参数（0.28 格偏移 + 0.55r 光斑 = 1.43r）会穿透圆形边框（M4R 验收反馈）。
+        float glowDiameter = StoneRadius * 0.9f * _scale;
+        var glowCenter = pos + new Vector2(-0.30f, -0.30f) * StoneRadius * _scale;
         var glowRect = new Rect2(glowCenter - new Vector2(glowDiameter / 2f, glowDiameter / 2f),
             new Vector2(glowDiameter, glowDiameter));
         DrawTextureRect(_glowTex, glowRect, tile: false, modulate: new Color(1, 1, 1, glowStrength));

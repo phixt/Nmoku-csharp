@@ -20,6 +20,7 @@ public partial class Main : Node
     private const double ZoomPerSecond = 3.0;
     private const double SpacingPerSecond = 1.2;
     private const double PanPerSecond = 0.6; // ×当前距离，键盘平移速度
+    private const double RotateCooldownSeconds = 0.2; // Q/E ±90° 冷却（连按/键回显防抖，M4R 反馈）
 
     private SubViewport _viewport3D = null!;
     private Camera3D _camera = null!;
@@ -256,6 +257,7 @@ public partial class Main : Node
 
     public override void _Process(double delta)
     {
+        _nowSeconds += delta;
         if (_autotestArmed)
         {
             RunAutotest();
@@ -474,7 +476,22 @@ public partial class Main : Node
             _overlay.CloseAll();
             return asked && _store.State == GameState.Title && _gm.History.Count == 1 ? "ok" : "FAIL";
         }));
+        _autotestSteps.Enqueue(("m4r-overlay-unmount-frees", () =>
+        {
+            // 残留面板回归（"存档菜单取消无响应"根因）：关闭浮层后旧实例必须被释放
+            OpenSaveMenu();
+            _staleProbe = _saveMenu;
+            CloseSaveMenu();
+            return _router.IsOverlayOpen("save-menu") ? "FAIL" : "ok";
+        }));
+        _autotestSteps.Enqueue(("m4r-overlay-unmount-frees-2", () =>
+        {
+            bool freed = !IsInstanceValid(_staleProbe); // QueueFree 跨帧生效
+            return freed ? "ok" : "FAIL";
+        }));
     }
+
+    private Control? _staleProbe;
 
     /// <summary>M4 自测：存档落盘 → 模拟重启恢复 → 载入转 Playing → 复盘步进 → 退出回 Title。</summary>
     private string AutotestSaveLoadReplay()
@@ -580,6 +597,8 @@ public partial class Main : Node
     private IEnumerable<(string Action, Action Run)> SingleActions()
     {
         yield return ("toggle_help", ToggleHelp);
+        yield return ("rotate_left", () => CooledOrbit(-90));
+        yield return ("rotate_right", () => CooledOrbit(90));
         yield return ("pause", () => _store.Pause());
         yield return ("resume", () => _store.Resume());
         yield return ("confirm", ConfirmAction);
@@ -612,6 +631,20 @@ public partial class Main : Node
                 _store.Resume();
                 break;
         }
+    }
+
+    private double _nowSeconds;
+    private double _nextOrbitAt;
+
+    /// <summary>Q/E 冷却：冷却期内吞掉触发（连按/键回显防抖），Q/E 共享一个节拍。</summary>
+    private void CooledOrbit(double degrees)
+    {
+        if (_nowSeconds < _nextOrbitAt)
+        {
+            return;
+        }
+        _nextOrbitAt = _nowSeconds + RotateCooldownSeconds;
+        _rig.Orbit(degrees);
     }
 
     private void HandleHeldInput(double delta)
