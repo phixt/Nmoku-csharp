@@ -3,20 +3,40 @@
 > 维护规则见 `AGENTS.md`：只记"当前场景"相关事实；总量 ≤300 行，旧条目按里程碑压缩合并，但关键教训（踩坑结论）不删。
 > 提交级细节看 `git log`，这里只留人读的里程碑叙事。
 
-## 当前状态（2026-09-18）
+## 当前状态（2026-09-19）
 
-- **里程碑**：M0 ✅ / M1 ✅（tag `m0`、`m1`）；下一站 M2（3D 左视图 + 相机）。
-- **质量门禁**：`dotnet test` 113 例全绿；全解决方案 build 0 警告；Godot 4.6.2 无头冒烟 OK。
-  Actions 双 job 全绿（`dotnet` + `godot-smoke`）。`godot-smoke` 两次踩坑已修：
-  ① 跨 job 不共享构建产物，引擎启动前须 `dotnet build src/Nmoku.Game`（缺程序集时 C# 类找不到）；
-  ② 冒烟断言误用数组 `-notmatch`——它返回"未命中元素集合"而非布尔，引擎横幅行必未命中，集合非空恒为真；
-  断言须先 `-join` 成单串再匹配（本地 pwsh 复现：旧写法 exit 1 / 新写法 exit 0，输出逐行同 CI 日志）。
-- **M1 review（2026-09-18）**：验收通过——口径属实（0 警告/113 绿）、红线全过、Swap2 与 AI 逐项对照源 TS 无保真偏差。
-  修复批已完成（见「M1.5」节）。新规则拍板：Connect6 进待办（须先出接口演进设计）且优先级高于 Renju 禁手（调低）；
-  开局库后置、须与状态机解耦（难则放弃）；演示关视为占位符。
+- **里程碑**：M0–M3 ✅（tag `m0`–`m3`）；M4 🚧 第一轮「游戏壳全通」代码完结（2026-09-19，见下节），剩 Palette 明暗/关卡/字体/验收轮。
+- **质量门禁**：`dotnet test` 232 例全绿；全解决方案 build 0 警告；无头自测 AUTOTEST ALL PASS（M3 对局闭环 + M4 状态机/存档/复盘段已挂 CI 同款冒烟）。
 - **架构红线**：`src/Nmoku.Core` 零 Godot 依赖，纯 C#（net8.0），xUnit 秒级运行。
 
-## M3 — 2D 右面板 + 落子闭环 + 辅助线（2026-09-19，✅ 代码完结，M4 转新对话）
+## M4 第一轮 — 游戏壳全通（2026-09-19，代码完结，M4 第二轮转新对话）
+
+- **Core**：`GameStateMachine` 7 态 + §3.4 全转移表（非法组合拒绝，穷举测试）；
+  `NzSaveContainer`（.nzsave zip 容器：manifest.json + savedata.json，replay.png 预留位）+
+  `SaveArchive.TryParse` 统一嗅探（裸 JSON / Base64(JSON) / Base64(zip) / Latin-1 zip 字节四路）；
+  `Board.ToJaggedArray()` 存档导出原语；`IOverlayManager` 接口按 §1 依赖方向落 Core（纯 C# 委托）。
+- **Game**：`GameStore`（状态机宿主：转移副作用集中在动作方法，读档失败整转移取消）+
+  `FileSystemStorageAdapter`（user://saves：index.json + <id>.sav，覆盖槽位清旧 blob）+
+  `ShortcutRouter`（§4.2.2 context 门控；相机/视觉键 PLAYING+REPLAY，玩法键 PLAYING）+
+  `OverlayManager` Godot 实现（模态互斥拒绝第二调用、回调恰好一次、toast 堆叠 2.5s 不抢焦点；
+  扩展 onCancel+按钮文案——SWAP2 的"取消=继续执白"是有效决策）。
+- **壳屏六件**：TitleScreen / PauseMenu / GameOverModal / SaveMenu(6 槽+载入/复盘/导出/删除/导入) /
+  GuideScreen(静态占位文案) / ReplayBar(步进+进度条)，状态驱动可见性；Ctrl+S 快存、L 读最新、
+  剪贴板导出（Base64 v2，与源浏览器互通）/导入（统一嗅探落首个空槽）。
+- **GameManager 扩展**：`BuildSaveData`（回合/SWAP2 决策期由引擎从 history 重推导，不信任存档中间态字段；
+  focusZ 读入即弃复位层 0）/ `LoadFrom`（棋盘尺寸/规则/模式/AI 随档重配）/ `BeginReplay/SetReplayIndex`（复盘态门控落子/悔棋/AI）。
+- **关键教训**：
+  - §3.4 的 **Any→REPLAY** 是 7 个态全部可达——首轮实现只给了 Replay 自环，无头自测 `m4-save-load-replay`
+    一步暴露（Playing 进不了复盘）。转移表改动必须以文档逐行为准，穷举测试是安全网。
+  - Main.cs 重写时漏 `using Nmoku.Core.Saves`，报错表现为 tuple/lambda 的 CS1503 级联噪音，
+    真实错误被吞——**块级 lambda 抽成私有方法后错误才浮出**。
+  - ImplicitUsings 使 `FileAccess` 歧义（System.IO vs Godot），Game 侧用 `using FileAccess = Godot.FileAccess` 别名收敛。
+  - manifest.json 键序按 §3.4 示例走 camelCase（默认序列化是 PascalCase，TestFirst 抓住）。
+- **待人类验收**：真实窗口走七态（标题 Space 开始/暂停 Esc/重开确认框/Guide 两入口/结算模态）；
+  Ctrl+S→L 往返、存档菜单导出→（源浏览器版）导入互转、复盘 ←/→ 与进度条；视觉与手感反馈。
+- **M4 第二轮待办**：见 TODO「当前」节（Palette 明暗/关卡系统/字体/FileDialog/真实样本/§6.3-6.5 核对 + tag `m4`）。
+
+## M3 — 2D 右面板 + 落子闭环 + 辅助线（2026-09-19，✅ 验收通过 tag `m3`）
 
 - **R4 流程**（铁律 2）：通读源 RightPanel/LeftPanel/main 输入段，行为清单 + D1–D4 决策落计划 §10.5
   （星位边星公式、F 镜像默认开、A/D 循环换层、辅助线扫描细节），人类确认后实现。

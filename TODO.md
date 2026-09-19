@@ -2,22 +2,24 @@
 
 > 维护规则见 `AGENTS.md`：本文件按"当前→近期→远期挂账"三层组织，收工必更新；总量 ≤300 行，已完成的尽快移入 CHANGELOG/git log，不丢当阶段关键教训。
 
-## 当前（M4 开工就绪——建议新对话执行）
+## 当前（M4 第二轮——建议新对话执行）
 
-M3 已完结（代码 + 无头自测全绿，2026-09-19；**tag `m3` 待人类确认后补打**）。
-**M4 开工必读**：本文件全文 + CHANGELOG「M1.5/M2/M3」节 + migration-plan §10.5（R4 行为清单与 D1–D4 决策）+ §10 B7–B9 + §3.4。
+M4 第一轮「游戏壳全通」已完结（2026-09-19：7 态状态机/Overlay/存档链路/壳屏六件/复盘闭环；232 测试全绿，
+无头自测 ALL PASS）。**第二轮开工必读**：本文件全文 + CHANGELOG「M4 第一轮」节 + migration-plan §3.4
++ 04-contracts §4/§6.3-6.5。
 
-- [ ] M4：7 态状态机 + 全转移表（01-core §3/§3.4），非法转移拒绝；现 GameManager 逻辑并入 GameStore
-- [ ] M4：OverlayManager（04-contracts §4.1 契约：确认框/输入框/toast/Esc、回调恰好一次）——替换 M3 的 SWAP2 ConfirmationDialog 占位与状态栏 Label
-- [ ] M4：FileSystemStorageAdapter(user://) + SaveManager 槽位接线（Core 门面已就绪）+ `.nzsave` zip 容器 + Base64 导入导出（DisplayServer 剪贴板）
-- [ ] M4：真实浏览器导出 Base64 样本入 Fixtures，闭环 R6（见 Fixtures/README.md 尾注）
-- [ ] M4：复盘 REPLAY（←/→ 步进出/入 + 进度条；InputMap 已有 replay_prev/next/exit_replay）
-- [ ] M4：Palette 资源化 + 明暗切换（T 键事件已挂；明暗数值反转 GhostBlack/White 等字段）+ 霞鹜文楷 TTF 导入
-- [ ] M4：关卡系统（LevelConfig 数据驱动 + `--rules/--board` 命令行并入关卡选择；tutorial/residual 视为占位符重设计）
-- [ ] M4 验收：04-contracts §6.3/6.4/6.5 全勾；真实 v2.0.0 旧档恢复棋局；验收后 tag `m4`
-- [ ] 待人类：M3 tag `m3` 确认补打；偶数阶中心标注方案（低优先级）；AI 难度梯度可视化接口形状（M4 期间定夺，见近期）
+- [ ] M4：Palette 明暗系统——`T` 键切换（SaveData.isDarkTheme 已随档存取）、水绿宣纸 light 套色
+      （GhostBlack/White 等透明度数值反转）、霞鹜文楷 TTF Godot 导入并应用到壳 UI（assets-src 已有字体文件）
+- [ ] M4：关卡系统——LevelConfig 数据驱动（tutorial/residual 为占位符需重设计）+ 沙盒自定义面板
+      （尺寸奇数≥5、层数、连珠 4–9；GameManager.Configure 需接 WinLength）+ `--rules/--board` 并入关卡选择
+- [ ] M4：`.nzsave` 文件级导入导出（FileDialog 存/取；容器与嗅探 Core 已就绪，现仅剪贴板路径）
+- [ ] M4：Guide 内容深化（现为静态占位文案）；偶数阶中心标注方案如涉及引导一并处理（低优先级）
+- [ ] M4：真实浏览器导出 Base64 样本入 Fixtures，闭环 R6（见 Fixtures/README.md 尾注；需跑源项目 `npm run dev`）
+- [ ] M4 验收轮：04-contracts §6.3/6.4/6.5 逐条核对（storage/overlay/shortcut 契约清单）+ 真实 v2.0.0 旧档恢复棋局
+      + 人类全流程验收（七态走查/快存读档/导出导入/复盘）→ tag `m4`
+- [ ] 待人类：M4 第一轮的视觉走查（无头不渲染，壳屏布局需真实窗口确认；本轮仅保证功能与键盘路径正确）
 
-## 近期（M4 期间与 M5 预备）
+## 近期（M4 之后与 M5 预备）
 
 - [ ] **AI 难度梯度可视化校验**（人类验收工具）：以可理解的方式呈现 Easy/Medium/Hard 的实力差距，
       理想形态为不同难度 AI 互弈的批量对局 + 胜率/评分曲线。Core 的 AI 对局驱动与统计接口形状**需人类定夺**（挂账至今）
