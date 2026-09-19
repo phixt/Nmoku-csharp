@@ -91,6 +91,25 @@ public class BoardTests
     }
 
     [Fact]
+    public void IsFull_AllCellsOccupied_TrueOtherwiseFalse()
+    {
+        var board = new Board(5, 1);
+        Assert.False(board.IsFull());
+
+        for (int y = 0; y < 5; y++)
+        {
+            for (int x = 0; x < 5; x++)
+            {
+                board.Set(x, y, 0, CellState.Black);
+            }
+        }
+        Assert.True(board.IsFull());
+
+        board.Reset();
+        Assert.False(board.IsFull());
+    }
+
+    [Fact]
     public void CountPieces_And_DetectCurrentPlayer_FollowsDoc()
     {
         var board = new Board();

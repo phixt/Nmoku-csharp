@@ -73,12 +73,15 @@ public sealed class Board
         return black <= white ? PlayerColor.Black : PlayerColor.White;
     }
 
-    /// <summary>已落子总数；等于 BoardSize²×Layers 即棋盘满（00-domain §4.9 判和）。</summary>
+    /// <summary>已落子总数；盘满判断用 <see cref="IsFull"/>。</summary>
     public int MoveCount()
     {
         var (black, white) = CountPieces();
         return black + white;
     }
+
+    /// <summary>棋盘是否已满（00-domain §4.9 判和依据：盘满且无胜者时判和，判和决策在 Game 侧）。</summary>
+    public bool IsFull() => MoveCount() == _data.Length;
 
     public bool IsEmpty(int x, int y, int z) => Get(x, y, z) == CellState.Empty;
 }
