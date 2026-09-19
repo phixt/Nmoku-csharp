@@ -38,6 +38,9 @@ public partial class Main : Node
     private GuideScreen _guideScreen = null!;
     private ReplayBar _replayBar = null!;
     private SandboxPanel _sandboxPanel = null!;
+    private FileDialog? _exportFileDialog;
+    private FileDialog? _importFileDialog;
+    private int _exportSlot;
     private Label _statusLabel = null!;
 
     private readonly int _boardSize;
@@ -251,8 +254,10 @@ public partial class Main : Node
                 screen.LoadSlotRequested += i => { CloseSaveMenu(); _store.LoadSlot(i); };
                 screen.ReplaySlotRequested += i => { CloseSaveMenu(); _store.EnterReplay(i); };
                 screen.ExportSlotRequested += i => _store.ExportSlot(i);
+                screen.ExportFileRequested += OpenExportFileDialog;
                 screen.DeleteSlotRequested += i => _store.DeleteSlot(i);
                 screen.ImportRequested += () => _store.ImportFromClipboard();
+                screen.ImportFileRequested += OpenImportFileDialog;
                 screen.CloseRequested += CloseSaveMenu;
                 _saveMenu = screen;
                 return screen;
@@ -587,6 +592,25 @@ public partial class Main : Node
                 && _gm.History.Count == 3
                 && _gm.Board.MoveCount() == 3
                 && _gm.Current == PlayerColor.White; // B W B → 轮白
+            return ok ? "ok" : "FAIL";
+        }));
+        _autotestSteps.Enqueue(("m4b-nzsave-file-roundtrip", () =>
+        {
+            // .nzsave 文件往返：导出槽位 → 删除 → 文件导入（zip 容器直解）→ 落首空槽内容一致
+            var iso = new GameStore(new FileSystemStorageAdapter("user://saves_autotest"));
+            iso.InitializeSaves();
+            var data = _gm.BuildSaveData(false);
+            iso.Saves.SaveAsync(1, data).GetAwaiter().GetResult();
+
+            string path = "user://saves_autotest/file_roundtrip.nzsave";
+            iso.ExportSlotToFile(1, path);
+            iso.Saves.DeleteAsync(1).GetAwaiter().GetResult();
+            iso.ImportFile(path);
+            var reloaded = iso.Saves.Load(0);
+            bool ok = reloaded != null && reloaded.Id == data.Id && reloaded.Moves.Count == data.Moves.Count;
+
+            iso.Saves.DeleteAsync(0).GetAwaiter().GetResult();
+            DirAccess.RemoveAbsolute(path);
             return ok ? "ok" : "FAIL";
         }));
     }
@@ -976,6 +1000,44 @@ public partial class Main : Node
     private void CloseSaveMenu() => _router.PopOverlay("save-menu");
 
     private void CloseSandbox() => _router.PopOverlay("sandbox");
+
+    // ---- .nzsave 文件级导入导出（FileDialog；容器/嗅探在 Core，Game 只管路径选择与字节读写）----
+
+    private void OpenExportFileDialog(int slot)
+    {
+        if (_store.Saves.IsSlotEmpty(slot))
+        {
+            return;
+        }
+        _exportSlot = slot;
+        _exportFileDialog ??= MakeFileDialog(FileDialog.FileModeEnum.SaveFile,
+            path => _store.ExportSlotToFile(_exportSlot, path));
+        _exportFileDialog.CurrentFile = $"nmoku-{DateTime.Now:yyyyMMdd-HHmmss}.nzsave";
+        _exportFileDialog.PopupCentered();
+    }
+
+    private void OpenImportFileDialog()
+    {
+        _importFileDialog ??= MakeFileDialog(FileDialog.FileModeEnum.OpenFile,
+            path => _store.ImportFile(path));
+        _importFileDialog.PopupCentered();
+    }
+
+    private FileDialog MakeFileDialog(FileDialog.FileModeEnum mode, Action<string> onSelected)
+    {
+        var dialog = new FileDialog
+        {
+            Access = FileDialog.AccessEnum.Filesystem,
+            FileMode = mode,
+            Exclusive = true,
+            Unresizable = false,
+            MinSize = new Vector2I(720, 480),
+            Filters = ["*.nzsave ; Nmoku 存档文件"],
+        };
+        dialog.FileSelected += path => onSelected(path);
+        AddChild(dialog);
+        return dialog;
+    }
 
     private void ToggleHelp()
     {

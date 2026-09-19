@@ -2,6 +2,7 @@ using Godot;
 using Nmoku.Core;
 using Nmoku.Core.AI;
 using Nmoku.Core.Saves;
+using FileAccess = Godot.FileAccess;
 
 namespace Nmoku.Game;
 
@@ -246,6 +247,52 @@ public sealed partial class GameStore : Node
             Overlay?.ShowToast(Text.Save.ImportFailed, isError: true);
             return;
         }
+        ImportData(parsed);
+    }
+
+    /// <summary>从 .nzsave 文件导入（优先 zip 容器直解，回退文本嗅探）。落入第一个空槽。</summary>
+    public void ImportFile(string path)
+    {
+        using var file = FileAccess.Open(path, FileAccess.ModeFlags.Read);
+        if (file == null)
+        {
+            Overlay?.ShowToast(Text.Save.ImportFailed, isError: true);
+            return;
+        }
+        byte[] raw = file.GetBuffer((long)file.GetLength());
+        var parsed = NzSaveContainer.TryUnpack(raw)
+                     ?? SaveArchive.TryParse(System.Text.Encoding.UTF8.GetString(raw));
+        if (parsed == null)
+        {
+            Overlay?.ShowToast(Text.Save.ImportFailed, isError: true);
+            return;
+        }
+        ImportData(parsed);
+    }
+
+    /// <summary>导出槽位为 .nzsave 文件（manifest+savedata zip 容器）。</summary>
+    public void ExportSlotToFile(int index, string path)
+    {
+        var data = Saves.Load(index);
+        if (data == null)
+        {
+            Overlay?.ShowToast(Text.Save.LoadSlotFailed, isError: true);
+            return;
+        }
+        byte[] zip = NzSaveContainer.Pack(data, DateTimeOffset.UtcNow.ToUnixTimeMilliseconds());
+        using var file = FileAccess.Open(path, FileAccess.ModeFlags.Write);
+        if (file == null)
+        {
+            Overlay?.ShowToast(Text.Save.ExportFailed, isError: true);
+            return;
+        }
+        file.StoreBuffer(zip);
+        Overlay?.ShowToast(Text.Save.ExportedToFile);
+    }
+
+    /// <summary>导入落位共用路径：第一个空槽；无空槽 toast。</summary>
+    private void ImportData(SaveData parsed)
+    {
         for (int i = 0; i < GameConfig.SaveSlotCount; i++)
         {
             if (!Saves.IsSlotEmpty(i))

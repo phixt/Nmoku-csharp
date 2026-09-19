@@ -14,8 +14,10 @@ public sealed partial class SaveMenu : Control
     public event Action<int>? LoadSlotRequested;
     public event Action<int>? ReplaySlotRequested;
     public event Action<int>? ExportSlotRequested;
+    public event Action<int>? ExportFileRequested;
     public event Action<int>? DeleteSlotRequested;
     public event Action? ImportRequested;
+    public event Action? ImportFileRequested;
     public event Action? CloseRequested;
 
     private VBoxContainer _rows = null!;
@@ -56,6 +58,7 @@ public sealed partial class SaveMenu : Control
         title.AddThemeColorOverride("font_color", Palette.Active.TextPrimary);
         header.AddChild(title);
         header.AddChild(MakeButton(Text.Save.Import, () => ImportRequested?.Invoke()));
+        header.AddChild(MakeButton(Text.Save.ImportFile, () => ImportFileRequested?.Invoke()));
         header.AddChild(MakeButton(Text.Overlay.Cancel, () => CloseRequested?.Invoke()));
 
         _rows = new VBoxContainer();
@@ -111,6 +114,7 @@ public sealed partial class SaveMenu : Control
             row.AddChild(MakeButton(Text.Title.LoadGame, () => LoadSlotRequested?.Invoke(index)));
             row.AddChild(MakeButton(Text.Replay.Label, () => ReplaySlotRequested?.Invoke(index)));
             row.AddChild(MakeButton(Text.Save.Export, () => ExportSlotRequested?.Invoke(index)));
+            row.AddChild(MakeButton(Text.Save.ExportFile, () => ExportFileRequested?.Invoke(index)));
             row.AddChild(MakeButton(Text.Save.Delete, () => DeleteSlotRequested?.Invoke(index)));
         }
         return row;

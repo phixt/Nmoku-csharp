@@ -43,7 +43,11 @@ public static class Text
         public const string ImportFailed = "剪贴板中无有效存档";
         public const string ImportNoEmptySlot = "没有空槽位可导入";
         public const string Exported = "已导出到剪贴板";
+        public const string ExportedToFile = "已存为存档文件";
+        public const string ExportFailed = "存档文件写入失败";
         public const string Import = "导入";
+        public const string ImportFile = "导入文件";
+        public const string ExportFile = "文件";
         public const string Export = "导出";
         public const string Delete = "删除";
         public const string DeleteConfirm = "确定删除槽位 {0} 的存档？";
