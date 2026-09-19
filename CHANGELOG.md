@@ -47,7 +47,20 @@
 - **2D 高光穿透圆形边框**：高光斑偏移 0.88r + 半径 0.55r = 1.43r 超出棋子。收紧为偏移 0.42r + 半径 0.45r
   = 0.87r，完整落在轮廓内。
 - **全屏发糊**：项目从未配置显示参数（Godot 默认 648p 基准）。现设 1920×1080 基准 + `canvas_items` 拉伸 +
-  `expand` + `allow_hidpi`——UI 矢量渲染在窗口原生分辨率，高分/全屏清晰；窗口默认 1600×900。
+  `expand` + `allow_hidpi`——UI 矢量渲染在窗口原生分辨率，高分/全屏清晰。
+
+## M4R 修复批 2 — 二轮走查反馈（2026-09-19）
+
+- **Q/E 单击转 180°**：键回显（长按触发的 echo 事件）会让 `IsActionJustPressed` 在回显帧再次为真，
+  0.2s 冷却挡不住 0.25s+ 的系统重复延迟。**单次动作全部改事件驱动**（`_Input` 键事件 + `Echo` 过滤 +
+  匹配即吞）：全表与 A/D 一致"按一下动一次"，冷却机制移除；轮询路径只剩按住生效类（zoom/pan/spacing）。
+  合成键自测（`Input.ParseInputEvent`）锁定：非 echo 转 90°、echo 不触发。事件化后同键跨态分发
+  （R=pause/restart/exit_replay）按 KeymapTable 声明序取本状态合法动作，语义不变。
+- **高分屏仍是逻辑分辨率（3200×2000 只渲染 1600）**：两层根因——①窗口 override 1600 恰为屏宽一半，
+  已去掉（默认=基准 1920）；②**`SubViewportContainer.stretch` 只把子视口设成逻辑像素**，3D 视图渲染在
+  低于原生再被拉伸（web 查证为 Godot 已知行为）→ `SyncViewport3DResolution` 手动乘窗口最终变换缩放至
+  原生像素。启动日志新增 `display:` 行（window/screen/dpi/canvasScale/3D 视口）用于诊断 DPI 感知是否生效；
+  若 window 为逻辑像素，须检查 exe 的 Windows 兼容性 DPI 设置（[Godot 论坛同款问题](https://forum.godotengine.org)）。
 
 ## M4 第一轮 — 游戏壳全通（2026-09-19，代码完结，M4 第二轮转新对话）
 
