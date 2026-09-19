@@ -63,6 +63,7 @@ public partial class Main : Node
         _gm = new GameManager { Name = "GameManager" };
         AddChild(_gm);
         _gm.Configure(_boardSize, _layers, _rules, _pve, _aiDifficulty);
+        _board2D.Game = _gm; // 2D 面板状态源（此前遗漏导致右半屏空白）
         Wire2DPanel();
 
         _gm.StateChanged += Refresh;
@@ -88,7 +89,8 @@ public partial class Main : Node
         var viewportContainer = new SubViewportContainer
         {
             Stretch = true,
-            SizeFlagsHorizontal = Control.SizeFlags.Expand,
+            // ExpandFill：Expand 只分配不填充，子视口会塌缩到最小宽 2px（首轮验收灰屏根因）
+            SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
             SizeFlagsStretchRatio = 0.62f,
         };
         hbox.AddChild(viewportContainer);
@@ -122,7 +124,7 @@ public partial class Main : Node
 
         _board2D = new Board2DView
         {
-            SizeFlagsHorizontal = Control.SizeFlags.Expand,
+            SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
             SizeFlagsStretchRatio = 0.38f,
         };
         hbox.AddChild(_board2D);
