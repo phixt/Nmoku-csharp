@@ -8,8 +8,8 @@ M4 第一轮壳全通 + **M4R 路由重构**完结（2026-09-19：SceneRouter �
 背板/首中即吞输入/KeymapTable 单一数据源+F1 帮助屏；251 测试全绿，无头自测 ALL PASS）。
 **第二轮开工必读**：本文件全文 + CHANGELOG「M4R」「M4 第一轮」节 + `docs/keymap.md` + 04-contracts §4/§6.3-6.5。
 
-- [ ] **待人类**：M4R 真实窗口走查——ESC/R 单击单义、暂停/结算模糊背板、路由进出视觉、
-      继续对局保留现场、F1 帮助屏、存档菜单浮层（无头不渲染，布局类问题须真实窗口确认——M3 教训）
+- [ ] **待人类**：M4R 修复批复查——存档浮层取消/Esc 路径、暂停/结算模糊背板、Q/E 连按不抽搐（已加 0.2s
+      冷却）、2D 高光是否仍溢出、1080p/高分屏清晰度（显示配置首次设置，需真实窗口确认）
 - [ ] M4：Palette 明暗系统——`T` 键切换（SaveData.isDarkTheme 已随档存取）、水绿宣纸 light 套色
       （GhostBlack/White 等透明度数值反转）、霞鹜文楷 TTF Godot 导入并应用到壳 UI（assets-src 已有字体文件）
 - [ ] M4：关卡系统——LevelConfig 数据驱动（tutorial/residual 为占位符需重设计）+ 沙盒自定义面板
