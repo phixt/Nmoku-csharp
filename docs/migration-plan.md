@@ -19,6 +19,7 @@
 | 6 | 文本 | 先建 `TextConstants` 字符常量文件，后续平滑扩展为 i18n（四语言） |
 | 7 | 音频 | 第一版用导入的 WAV/OGG 资产；**保留合成器接口**（`IMusicEngine`），以后可回填程序化合成 |
 | 8 | 文档未覆盖部分 | 辅助线系统与 2D 右面板与相机强耦合，**谨慎处理、放独立里程碑**；实现时允许局部读源码（`RightPanel.ts`、`LeftPanel.ts`、`main.ts` 输入部分） |
+| 9 | M2 自由相机（2026-09-19） | 在文档八步管道之上**超越源项目**：无级旋转（拖拽连续，非 90° 步进）、视角平移（源因 bug 移除，现恢复）、指数阻尼平滑（替代"设定即所得"，§3.2 原注记作废）；平移限幅防丢棋盘；X 复位回公式态。绑定：方向键/中键拖=平移、左键拖=旋转（InputMap 数据可调）。相机平移旋转与"棋盘平移旋转"互为对偶，实现取相机侧 | 人类指示 2026-09-19 |
 
 ---
 
@@ -101,7 +102,7 @@ Godot 项目文件（`project.godot`、场景、资产）与 csproj 同置于 `s
 
 - `CameraState/CameraRig`（Core 内纯数学）：03-camera §9 的 8 步管道逐行实现，输入 `(boardSize, layers, layerSpacing, aspect, yaw)`，输出 position/fov/near/far/center。缓存结构 `CameraCache` + `NeedsRecompute`（§8.1）保留，按增量脏标记重算。
 - **FOV 语义**：Three.js `PerspectiveCamera.fov` 与 Godot `Camera3D.Fov` 均按垂直方向定义，但 Godot 在 `keep_aspect` 覆盖与宽高比 <1 时行为不同——**M2 第一周用 13×13×6 默认棋盘做数值对照标定**（同一组输入打印两边参数），必要时把 §9 STEP 5 的 `fovLimit` 计算保持不变、只核对 `aspect` 传入方向（文档已自带水平 FOV 换算式，风险可控）。
-- 相机节点：`Camera3D` 直接设 transform，不用 `look_at` 之外的任何阻尼/平滑（源系统本就是"设定即所得"，交互平滑留给后续）。
+- 相机节点：`Camera3D` 直接设 transform；~~不用 look_at 之外的任何阻尼/平滑~~（**已由决策 #9 取代**：Core `CameraRig.Advance` 指数阻尼，无级旋转 + 视角平移）。
 - **坐标映射**：`LogicalToWorld(x, y, z) → new Vector3(x, z * layerSpacing, y)`。Three.js 与 Godot 同为 Y-up 右手系，但**源世界 Z（forward）与 Godot 观察朝向 -Z 的关系需在 M2 用贴边五连的可视化验证**（yaw=45° 对角视角下图象是否镜像）。若镜像，只翻转映射函数一处（集中在此函数，禁止散落）。
 - **棋子渲染**：`MultiMeshInstance3D` ×4（黑/白 × 不透明/ghost），几何用 `SphereMesh`（段数按性能调），实例数据每帧按需重建（13×13×6=1014 上限极小，全量重建成本可忽略，**不做增量**）。透明度按 `ComputeOpacity(worldY)`（§8.2，GHOST_OPACITY_MIN=0.25）。
 - **透明排序**：文档 §9.4 要求 ghost 按距离降序绘制。Godot 对同一 MultiMesh 内实例不做逐实例排序，方案：ghost 组使用 **`StandardMaterial3D` transparency = alpha_sc mix + `depth_draw` 调整**，接受逐实例混合的非严格排序（球体小、opacity 0.25–1.0，视觉误差极小）；若实测出现明显瑕疵，降级为"每 ghost 层一个 MultiMesh 按层排序"（层数 ≤ 视觉分组数，成本仍低）。**列为验证点，不提前优化。**
