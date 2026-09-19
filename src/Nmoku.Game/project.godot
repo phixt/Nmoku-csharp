@@ -21,11 +21,10 @@ default_bus_layout="res://default_bus_layout.tres"
 [display]
 
 ; 1080p 基准 + canvas_items 拉伸 + aspect expand：UI 矢量缩放渲染在窗口原生分辨率，
-; 高分屏/全屏不糊（M4R 反馈"全屏发糊"根因：Godot 默认 648p 基准 + 无拉伸配置）。
+; 高分屏/全屏不糊（M4R 反馈"全屏发糊"：Godot 默认 648p 基准 + 无拉伸配置；3D 子视口另在
+; Main.SyncViewport3DResolution 乘最终变换缩放至原生像素）。
 window/size/viewport_width=1920
 window/size/viewport_height=1080
-window/size/window_width_override=1600
-window/size/window_height_override=900
 window/stretch/mode="canvas_items"
 window/stretch/aspect="expand"
 window/dpi/allow_hidpi=true
