@@ -22,7 +22,7 @@ public class CameraRigTests
         Assert.Equal(35, rig.Target.Pitch, 9);
         Assert.Equal(FormulaDistance, rig.Target.Distance, 9);
         Assert.Equal(45, rig.Target.Yaw, 9);
-        Assert.Equal((6.0, 8.75, 6.0), (rig.Target.Center.X, rig.Target.Center.Y, rig.Target.Center.Z));
+        Assert.Equal((6.0, 6.0, 8.75), (rig.Target.Center.X, rig.Target.Center.Y, rig.Target.Center.Z));
         Assert.Equal(rig.Target.Position, rig.Current.Position);
     }
 
@@ -126,12 +126,37 @@ public class CameraRigTests
     {
         var rig = NewRig();
         rig.Pan(1, 0);
-        var pannedCenter = rig.Target.Center;
+        var offsetBefore = rig.Target.Center - CameraMath.ComputeCenter(13, 6, 3.5);
 
         rig.Update(13, 6, 3.0, Aspect, 45); // 层间距变化
 
-        Assert.Equal(pannedCenter.X, rig.Target.Center.X, 9); // 平移偏移保留
-        Assert.True(Math.Abs(rig.Target.Center.Y - 7.5) < 1e-9); // 公式中心 Y 随 spacing 更新
+        // 平移偏移（相对公式中心）原样保留，公式中心随 spacing 移动
+        var offsetAfter = rig.Target.Center - CameraMath.ComputeCenter(13, 6, 3.0);
+        Assert.Equal(offsetBefore, offsetAfter);
+    }
+
+    [Fact]
+    public void Zoom_PersistsAcrossSpacingRecompute()
+    {
+        // 人类反馈修复：Z/C 改层间距触发公式重算时，用户缩放不得被拉回初始态
+        var rig = NewRig();
+        rig.Zoom(5);
+        double zoomed = rig.Target.Distance;
+        Assert.True(zoomed < FormulaDistance);
+
+        rig.Update(13, 6, 3.0, Aspect, 45);
+
+        Assert.Equal(zoomed, rig.Target.Distance, 9); // 距离保留（未被公式覆盖）
+        Assert.Equal(7.5, rig.Target.Center.Z, 9);    // 层轴中心确实随 spacing 更新
+    }
+
+    [Fact]
+    public void Reset_ClearsDistanceOverride_BackToFormula()
+    {
+        var rig = NewRig();
+        rig.Zoom(5);
+        rig.Reset(13, 6, 3.5, Aspect);
+        Assert.Equal(FormulaDistance, rig.Target.Distance, 9);
     }
 
     // ---- 缩放 ----
@@ -240,7 +265,7 @@ public class CameraRigTests
         Assert.Equal(45, rig.Target.Yaw, 9);
         Assert.Equal(35, rig.Target.Pitch, 9);
         Assert.Equal(FormulaDistance, rig.Target.Distance, 9);
-        Assert.Equal((6.0, 8.75, 6.0), (rig.Target.Center.X, rig.Target.Center.Y, rig.Target.Center.Z));
+        Assert.Equal((6.0, 6.0, 8.75), (rig.Target.Center.X, rig.Target.Center.Y, rig.Target.Center.Z));
         Assert.NotEqual(rig.Target.Position, rig.Current.Position); // 渲染态尚未追上，平滑归位中
     }
 

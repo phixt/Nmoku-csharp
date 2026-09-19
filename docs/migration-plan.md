@@ -255,6 +255,7 @@ Godot 项目文件（`project.godot`、场景、资产）与 csproj 同置于 `s
 | B5 | PatternCollector 的 maxLen=4 | 4 格是**展示端**限制（README 性能约束），不是数据端裁剪。Core `Collect(board, layerZ)` 输出完整模式；渲染器用 `GameConfig.HelperLineMaxCells` 截断，保证"一份数据、两个渲染器" | README 特性节 + 02-rules §5.2 |
 | B6 | AI 等分候选的平局策略 | C# 在最高分等分池中按种子随机取一（可复现）；TS 取首个最高分（先到先得，`AIEngine.ts:104-107`）。两实现的候选枚举顺序本就不同，逐位对齐无意义，登记差异备查 | `AIEngine.ts` vs `AIEngine.GetScoredMove` |
 | B7 | 相机：文档 §9 管道 vs 源 `LeftPanel.ts` 实测差异 | **以文档为准**。源实测：① 对角线只算 w²+h²（缺第二个水平轴项，默认盘 targetDiag 21.22 vs 文档 24.38，距离差 ~15%）；② 距离只用垂直 FOV（无 min(fovV,fovH)，横屏 aspect≥1 时两者等价）；③ `rotateY`/`zoom` 的 lookAt 中心 Y/Z 互换（源 bug，文档 §2.4 为正确中心）；④ 缩放兜底路径直接调 fov（15–60 clamp）且锚点路径 minDist 硬编码 5.0、无上限；⑤ 棋子为 focusZ 离散透明双材质，文档 §8.2 连续 opacity 是重设计目标。M2 标定对照时按此解释构图差异 | `LeftPanel.ts:305-437` |
+| B8 | 世界朝向：文档 §2.2（层=世界Y 上）vs 源几何（`LeftPanel.ts:57-101` 层坐标在第三元） | **行=世界Y 竖直、层=世界Z 纵深**（源实际；人类确认 2026-09-19：源中"竖向格线"即行线，采用源朝向做标定对照）。相机中心用正确包围盒中心 `(w/2, w/2, h/2)`，不沿用源的 Y/Z 互换（B7③）；§8.2 透明度沿层轴（worldZ）衰减；CoordMapper 为唯一收敛点 | `LeftPanel.ts:57-101`、人类反馈 2026-09-19 |
 
 ## 11. M1 交付清单（2026-09-18）
 

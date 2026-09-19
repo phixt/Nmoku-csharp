@@ -224,18 +224,19 @@ public partial class Main : Node
         double bestT = double.MaxValue;
         for (int z = 0; z < _layers; z++)
         {
-            double planeY = z * _spacing;
-            if (Math.Abs(dir.Y) < 1e-6)
+            // B8 朝向：层 = 世界 Z 处的竖直 XY 平面
+            double planeZ = z * _spacing;
+            if (Math.Abs(dir.Z) < 1e-6)
             {
                 continue;
             }
-            double t = (planeY - origin.Y) / dir.Y;
+            double t = (planeZ - origin.Z) / dir.Z;
             if (t <= 0 || t >= bestT)
             {
                 continue;
             }
             double hitX = origin.X + dir.X * t;
-            double hitY = origin.Z + dir.Z * t;
+            double hitY = origin.Y + dir.Y * t;
             // 连续范围判定（含格心半格边距）：修"高亮出现在棋盘外任意位置"（人类反馈 2026-09-19）
             if (hitX >= -0.5 && hitX <= _boardSize - 0.5 && hitY >= -0.5 && hitY <= _boardSize - 0.5)
             {

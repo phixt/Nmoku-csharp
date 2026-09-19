@@ -13,6 +13,7 @@ public sealed class CameraRig
     private CameraState _current = null!;
     private WorldPoint _formulaCenter;
     private WorldPoint _panOffset;
+    private double? _distanceOverride; // 用户缩放（Z/C 改层间距等重算后保留；X 复位清除）
     private bool _userPitched;
     private bool _initialized;
 
@@ -65,7 +66,12 @@ public sealed class CameraRig
         double normalizedAspect = CameraMath.ComputeNormalizedAspect(boardSize, layers, layerSpacing);
         double fov = CameraMath.ComputeFov(normalizedAspect);
         double pitch = _initialized && _userPitched ? _target.Pitch : CameraMath.ComputePitch(normalizedAspect);
-        double distance = CameraMath.ComputeDistance(targetDiagonal, fov, aspect);
+        var (minDist, maxDist) = CameraMath.ComputeDistanceLimits(targetDiagonal, fov, aspect);
+        // 用户缩放优先于公式距离（修复：Z/C 改层间距触发重算时缩放被拉回初始态）
+        double distance = _distanceOverride is { } overridden
+            ? Math.Clamp(overridden, minDist, maxDist)
+            : CameraMath.ComputeDistance(targetDiagonal, fov, aspect);
+        _distanceOverride = distance;
         var (near, far) = CameraMath.ComputeClipPlanes(distance);
         double yaw = _initialized ? _target.Yaw : yawDeg;
         var center = _formulaCenter + _panOffset;
@@ -108,11 +114,12 @@ public sealed class CameraRig
         ApplyTarget(_target.Yaw, _target.Pitch, _target.Distance, _formulaCenter + _panOffset);
     }
 
-    /// <summary>径向缩放（§6.1）：delta&gt;0 拉近；范围 [base×0.3, base×3.0]。</summary>
+    /// <summary>径向缩放（§6.1）：delta&gt;0 拉近；范围 [base×0.3, base×3.0]。缩放跨公式重算保留。</summary>
     public void Zoom(double delta)
     {
         var (min, max) = CameraMath.ComputeDistanceLimits(_target.TargetDiagonal, _target.Fov, _target.AspectRatio);
         double distance = Math.Clamp(_target.Distance - delta * GameConfig.ZoomSpeed * _target.Distance, min, max);
+        _distanceOverride = distance;
         ApplyTarget(_target.Yaw, _target.Pitch, distance, _target.Center);
     }
 
@@ -132,14 +139,16 @@ public sealed class CameraRig
         var position = _target.Position + dir * ratio;
         var (pitch, yaw, radius) = CameraMath.DecomposePosition(position, _target.Center);
         var (min, max) = CameraMath.ComputeDistanceLimits(_target.TargetDiagonal, _target.Fov, _target.AspectRatio);
-        ApplyTarget(yaw, Math.Clamp(pitch, GameConfig.MinPitch, GameConfig.MaxPitch),
-            Math.Clamp(radius, min, max), _target.Center);
+        radius = Math.Clamp(radius, min, max);
+        _distanceOverride = radius;
+        ApplyTarget(yaw, Math.Clamp(pitch, GameConfig.MinPitch, GameConfig.MaxPitch), radius, _target.Center);
     }
 
-    /// <summary>复位（X 键 / 读档 §10.2）：清平移、回默认 yaw 与公式 pitch/distance；渲染态平滑归位。</summary>
+    /// <summary>复位（X 键 / 读档 §10.2）：清平移与缩放覆盖、回默认 yaw 与公式 pitch/distance；渲染态平滑归位。</summary>
     public void Reset(int boardSize, int layers, double layerSpacing, double aspect)
     {
         _panOffset = default;
+        _distanceOverride = null;
         _userPitched = false;
         _initialized = false;
         Update(boardSize, layers, layerSpacing, aspect, GameConfig.DefaultYaw);

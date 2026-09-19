@@ -97,13 +97,13 @@ public sealed partial class Board3DView : Node3D
         });
     }
 
-    /// <summary>悬停预选：比棋子略小的蓝色小球（源项目形态，人类反馈 2026-09-19），落格心与棋子同高。</summary>
+    /// <summary>悬停预选：比棋子略小的蓝色小球（源项目形态，人类反馈 2026-09-19），落格心（B8 朝向下与棋子同点）。</summary>
     public void SetHover(Coordinate3D? cell)
     {
         if (cell is { } c)
         {
             var world = CoordMapper.LogicalToWorld(c.X, c.Y, c.Z, _spacing);
-            _hover.Position = new Vector3((float)world.X, (float)world.Y + 0.4f, (float)world.Z);
+            _hover.Position = new Vector3((float)world.X, (float)world.Y, (float)world.Z);
             _hover.Visible = true;
         }
         else
@@ -145,52 +145,78 @@ public sealed partial class Board3DView : Node3D
         return instance;
     }
 
+    /// <summary>
+    /// 网格线（B8 朝向：层=世界 XY 竖直面、沿 Z 排布）+ 层连接立柱（四角+中心，源 GHOST_CONNECTOR_OPACITY=0.35）。
+    /// 细盒代替 1px 线（人类反馈：加粗+平滑）；配合 MSAA 4× 抗锯齿。
+    /// </summary>
     private MultiMeshInstance3D BuildGrid(int boardSize, double spacing)
     {
-        // 细盒代替 1px 线（人类反馈：加粗+平滑）；配合 MSAA 4× 抗锯齿
         const float thickness = 0.05f;
         float length = boardSize - 1;
         float mid = length / 2;
 
-        var mesh = new BoxMesh
-        {
-            Size = new Vector3(1, 1, 1),
-            Material = new StandardMaterial3D
-            {
-                ShadingMode = BaseMaterial3D.ShadingModeEnum.Unshaded,
-                AlbedoColor = new Color(0.62f, 0.66f, 0.70f),
-            },
-        };
-
-        var multimesh = new MultiMesh
+        var grid = new MultiMesh
         {
             TransformFormat = MultiMesh.TransformFormatEnum.Transform3D,
-            Mesh = mesh,
+            Mesh = new BoxMesh
+            {
+                Size = new Vector3(1, 1, 1),
+                Material = new StandardMaterial3D
+                {
+                    ShadingMode = BaseMaterial3D.ShadingModeEnum.Unshaded,
+                    AlbedoColor = new Color(0.62f, 0.66f, 0.70f),
+                },
+            },
             InstanceCount = 2 * boardSize * _layers,
         };
 
         int i = 0;
         for (int z = 0; z < _layers; z++)
         {
-            float height = (float)(z * spacing);
+            float depth = (float)(z * spacing);
             for (int y = 0; y < boardSize; y++)
             {
+                // 沿 X 的横线
                 var xAxis = new Basis(new Vector3(length, 0, 0), new Vector3(0, thickness, 0), new Vector3(0, 0, thickness));
-                multimesh.SetInstanceTransform(i++, new Transform3D(xAxis, new Vector3(mid, y, height)));
+                grid.SetInstanceTransform(i++, new Transform3D(xAxis, new Vector3(mid, y, depth)));
             }
             for (int x = 0; x < boardSize; x++)
             {
-                var zAxis = new Basis(new Vector3(thickness, 0, 0), new Vector3(0, thickness, 0), new Vector3(0, 0, length));
-                multimesh.SetInstanceTransform(i++, new Transform3D(zAxis, new Vector3(x, mid, height)));
+                // 沿 Y 的竖线（源 buildGridGeometry 第二族，行线竖直）
+                var yAxis = new Basis(new Vector3(thickness, 0, 0), new Vector3(0, length, 0), new Vector3(0, 0, thickness));
+                grid.SetInstanceTransform(i++, new Transform3D(yAxis, new Vector3(x, mid, depth)));
             }
         }
 
-        return new MultiMeshInstance3D
+        var connectors = new MultiMesh
         {
-            Name = "grid",
-            Multimesh = multimesh,
-            CastShadow = GeometryInstance3D.ShadowCastingSetting.Off,
+            TransformFormat = MultiMesh.TransformFormatEnum.Transform3D,
+            Mesh = new BoxMesh
+            {
+                Size = new Vector3(1, 1, 1),
+                Material = new StandardMaterial3D
+                {
+                    ShadingMode = BaseMaterial3D.ShadingModeEnum.Unshaded,
+                    AlbedoColor = new Color(0.62f, 0.66f, 0.70f, 0.35f),
+                    Transparency = BaseMaterial3D.TransparencyEnum.Alpha,
+                },
+            },
+            InstanceCount = 5,
         };
+
+        float maxDepth = (float)((_layers - 1) * spacing);
+        (int, int)[] railPoints = [(0, 0), (boardSize - 1, 0), (0, boardSize - 1), (boardSize - 1, boardSize - 1), (boardSize / 2, boardSize / 2)];
+        for (int r = 0; r < railPoints.Length; r++)
+        {
+            var (rx, ry) = railPoints[r];
+            var zAxis = new Basis(new Vector3(thickness, 0, 0), new Vector3(0, thickness, 0), new Vector3(0, 0, maxDepth));
+            connectors.SetInstanceTransform(r, new Transform3D(zAxis, new Vector3(rx, ry, maxDepth / 2)));
+        }
+
+        var gridNode = new MultiMeshInstance3D { Name = "grid", Multimesh = grid, CastShadow = GeometryInstance3D.ShadowCastingSetting.Off };
+        var connectorNode = new MultiMeshInstance3D { Name = "connectors", Multimesh = connectors, CastShadow = GeometryInstance3D.ShadowCastingSetting.Off };
+        AddChild(connectorNode);
+        return gridNode;
     }
 
     /// <summary>悬停预选球：半径略小于棋子（0.32 vs 0.4），空位格上可见。</summary>

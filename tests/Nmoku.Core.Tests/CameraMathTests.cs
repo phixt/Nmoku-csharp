@@ -25,8 +25,9 @@ public class CameraMathTests
     [Fact]
     public void ComputeCenter_IsBoundingBoxMidpoint()
     {
+        // B8 朝向：行=Y、层=Z → 中心 (6, 6, 8.75)
         var center = CameraMath.ComputeCenter(13, 6, 3.5);
-        Assert.Equal((6.0, 8.75, 6.0), (center.X, center.Y, center.Z));
+        Assert.Equal((6.0, 6.0, 8.75), (center.X, center.Y, center.Z));
     }
 
     // ---- STEP 2 归一化纵横比 ----
@@ -214,7 +215,7 @@ public class CameraMathTests
         Assert.Equal(60, state.Fov, 9);
         Assert.Equal(35, state.Pitch, 9);
         Assert.Equal(DefaultDiagonal * 1.3, state.Distance, 9);
-        Assert.Equal((6.0, 8.75, 6.0), (state.Center.X, state.Center.Y, state.Center.Z));
+        Assert.Equal((6.0, 6.0, 8.75), (state.Center.X, state.Center.Y, state.Center.Z));
         // yaw=45、pitch=35：X/Z 偏移相等且为正（对角视角）
         Assert.True(state.Position.X > state.Center.X);
         Assert.Equal(state.Position.X - state.Center.X, state.Position.Z - state.Center.Z, 9);

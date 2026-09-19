@@ -14,9 +14,9 @@ public static class CameraMath
         return Math.Sqrt(w * w + w * w + h * h);
     }
 
-    /// <summary>STEP 1 包围盒几何中心（§2.4），即公式态观察目标。</summary>
+    /// <summary>STEP 1 包围盒几何中心（B8 朝向：行=Y 竖直、层=Z 纵深），即公式态观察目标。</summary>
     public static WorldPoint ComputeCenter(int boardSize, int layers, double layerSpacing) =>
-        new((boardSize - 1) / 2.0, (layers - 1) * layerSpacing / 2.0, (boardSize - 1) / 2.0);
+        new((boardSize - 1) / 2.0, (boardSize - 1) / 2.0, (layers - 1) * layerSpacing / 2.0);
 
     /// <summary>STEP 2 归一化纵横比（§3.1：高/宽 × 敏感度，clamp 0..1）。扁盘=0，默认盘=1。</summary>
     public static double ComputeNormalizedAspect(int boardSize, int layers, double layerSpacing)
@@ -83,22 +83,22 @@ public static class CameraMath
     public static (double Near, double Far) ComputeClipPlanes(double distance) =>
         (Math.Max(0.1, distance * 0.01), distance * 10.0);
 
-    /// <summary>连续透明度（§8.2）：距盘心 Y 越远越透明，最低 GHOST_OPACITY_MIN；单层盘恒 1。</summary>
-    public static double ComputeOpacity(double worldY, double centerY, double maxDelta)
+    /// <summary>连续透明度（§8.2）：沿层轴（B8 朝向 = worldZ）离盘心越远越透明，最低 GHOST_OPACITY_MIN；单层盘恒 1。</summary>
+    public static double ComputeOpacity(double worldZ, double centerZ, double maxDelta)
     {
         if (maxDelta < GameConfig.CameraEpsilon)
         {
             return 1.0;
         }
-        double normalized = Math.Abs(worldY - centerY) / maxDelta;
+        double normalized = Math.Abs(worldZ - centerZ) / maxDelta;
         return GameConfig.GhostOpacityMin + (1.0 - GameConfig.GhostOpacityMin) * (1 - normalized);
     }
 
     /// <summary>透明度便捷重载：按层数/层间距自行求中心与最大偏移。</summary>
-    public static double ComputeOpacity(double worldY, int layers, double layerSpacing)
+    public static double ComputeOpacity(double worldZ, int layers, double layerSpacing)
     {
         double center = (layers - 1) * layerSpacing / 2.0;
-        return ComputeOpacity(worldY, center, center);
+        return ComputeOpacity(worldZ, center, center);
     }
 
     /// <summary>平移轴（屏幕对齐的地面系）：right 与 groundForward 由 yaw 决定（拖拽平移用）。</summary>
