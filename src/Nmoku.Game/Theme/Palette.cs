@@ -27,6 +27,14 @@ public sealed class Palette
         GhostWhite = 0.14f,
         GhostMarkedBlack = 0.70f,                // 辅助线标记到的子：强化显示
         GhostMarkedWhite = 0.50f,
+        PanelBg = new Color(0.13f, 0.14f, 0.17f, 0.97f),
+        PanelBorder = new Color(0.45f, 0.50f, 0.55f, 0.80f),
+        TextPrimary = new Color(0.92f, 0.93f, 0.95f),
+        TextDim = new Color(0.62f, 0.66f, 0.70f),
+        ButtonBg = new Color(0.20f, 0.22f, 0.26f),
+        ButtonHover = new Color(0.28f, 0.31f, 0.36f),
+        Accent = new Color(0.30f, 0.55f, 1.00f),
+        Error = new Color(1.00f, 0.35f, 0.30f),
     };
 
     /// <summary>色弱组（V 键切换）：辅助线红绿 → 黄蓝（§10.5 R4-6），星位红→蓝，最后手环红→黄。棋子透明度同组。</summary>
@@ -47,6 +55,14 @@ public sealed class Palette
         GhostWhite = Default.GhostWhite,
         GhostMarkedBlack = Default.GhostMarkedBlack,
         GhostMarkedWhite = Default.GhostMarkedWhite,
+        PanelBg = Default.PanelBg,
+        PanelBorder = Default.PanelBorder,
+        TextPrimary = Default.TextPrimary,
+        TextDim = Default.TextDim,
+        ButtonBg = Default.ButtonBg,
+        ButtonHover = Default.ButtonHover,
+        Accent = Default.Accent,
+        Error = Default.Error,
     };
 
     public Color Background { get; init; }
@@ -68,4 +84,15 @@ public sealed class Palette
     /// <summary>非焦点但被辅助线标记到的黑/白棋子透明度（强化显示）。</summary>
     public float GhostMarkedBlack { get; init; }
     public float GhostMarkedWhite { get; init; }
+
+    // ---- UI 语义色（M4 壳界面：面板/文字/按钮/toast；色弱组沿用同值，红绿问题只涉及棋盘辅助线）----
+
+    public Color PanelBg { get; init; }
+    public Color PanelBorder { get; init; }
+    public Color TextPrimary { get; init; }
+    public Color TextDim { get; init; }
+    public Color ButtonBg { get; init; }
+    public Color ButtonHover { get; init; }
+    public Color Accent { get; init; }
+    public Color Error { get; init; }
 }
