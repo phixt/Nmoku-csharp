@@ -414,7 +414,8 @@ public sealed partial class Board3DView : Node3D
                 InstanceCount = 2 * boardSize,
             };
 
-            float depth = (float)(z * spacing);
+            // B10：与 CoordMapper 同步旋转——层 z 的格面须与该层棋子同深度，否则显隐错位
+            float depth = (float)((_layers - 1 - z) * spacing);
             int i = 0;
             for (int y = 0; y < boardSize; y++)
             {
