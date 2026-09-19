@@ -5,9 +5,30 @@
 
 ## 当前状态（2026-09-19）
 
-- **里程碑**：M0–M3 ✅（tag `m0`–`m3`）；M4 🚧 第一轮壳全通 + **M4R 路由重构**（人类验收反馈返工，见下节）；剩 Palette 明暗/关卡/字体/验收轮。
-- **质量门禁**：`dotnet test` 251 例全绿；build 0 警告；无头自测 AUTOTEST ALL PASS（M3 对局 + M4 状态机/存档/复盘 + M4R 路由/输入回归）。
+- **里程碑**：M0–M3 ✅（tag `m0`–`m3`）；M4 🚧 收尾轮工程项完结（见下节），**只待人类全流程验收 → tag `m4`**。
+- **质量门禁**：`dotnet test` 270 例全绿；build 0 警告；无头自测 55 步 ALL PASS（M3 对局 + M4 状态机/存档/复盘 +
+  M4R 路由/输入回归 + M4 收尾 B14/契约/真实旧档恢复）。
 - **架构红线**：`src/Nmoku.Core` 零 Godot 依赖（KeymapTable/GameStateMachine 均在 Core），xUnit 秒级运行。
+
+## M4 收尾轮 — 工程项全清（2026-09-19）
+
+- **B14 winLength 外圈元数据双通道**（登记 migration-plan §10）：v2.0.0 内层不增删字段——
+  ① `.nzsave` manifest 可选 `winLength`（null 省键、越界视为缺失不毙档）；② 槽位 index.json 的
+  SlotMeta 可选 `winLength`（§3.1.2 超集兼容，旧 index 无键→默认 5）。`LoadFrom(data, winLength)`
+  恢复引擎/AI/关卡；快存/读档/复盘/导入导出全链路接线；无头自测连珠 7 快存→读档→连 6 不胜/连 7 胜。
+- **R6 双向闭环**：跑源项目 `npm run dev` + 浏览器 UI 真实落子 8 手 → Esc 保存 → localStorage 抓取，
+  样本入库 `Fixtures/browser_real_export_v2_standard.{json,b64.txt}`（= 源剪贴板字节）；反向把本项目
+  Base64 经源「填写」对话框导入成功（toast 已保存到存档 2）。行为级回归 `SaveFixtureTests.BrowserRealExport_*`。
+- **§6.3–6.5 契约核对**（结果登记 migration-plan §10.6）：逐条核对并补自动化证据——
+  `m4c-overlay-contract`（确认恰好一次/取消不触发 onYes/输入 trim/CloseAll 丢回调，合成信号断言）、
+  `m4c-modifier-quicksave`（合成 Ctrl+S 真触发快存、裸 S 不触发）、`Save_MultipleSlots_RoundTripIndependently`。
+  **登记偏差**：适配器 GetIndex 只返回非空槽 meta，固定 6 槽投影在 SaveManager 层（无消费方依赖字面形状）。
+- **真实旧档端到端恢复**：`m4c-real-old-restore` 读仓库内真实样本 → ImportText 完整导入路径 →
+  读档恢复 8 手 → 续弈第 9 手成五 → GameOver。自测夹具定位：**Godot 启动会把进程 CWD 切到项目目录**，
+  用 `CurrentDirectory` 与其上跳两级双候选探测（CI 从仓库根跑、本地同布局）。
+- **教训**：ImplicitUsings 的 `FileAccess`/`Environment` 歧义在 Main.cs 再次各踩一次（全限定名收敛）——
+  Godot 项目里 System 类名一律写全称。浏览器自动化经验：源项目落子=合成 mousemove+click（悬停门控）、
+  暂停菜单=合成 KeyboardEvent（cua.keypress 在 IAB 挂起）、存档真源=localStorage `gomoku_save_<uuid>`。
 
 ## M4R — 路由重构（2026-09-19，人类验收反馈返工）
 
