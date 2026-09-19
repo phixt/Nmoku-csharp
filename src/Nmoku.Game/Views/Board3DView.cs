@@ -15,7 +15,7 @@ namespace Nmoku.Game.Views;
 public sealed partial class Board3DView : Node3D
 {
     /// <summary>语义调色板（色弱切换时由 Main 推送 ApplyPalette）。</summary>
-    public Palette Theme { get; private set; } = Palette.Default;
+    public Palette Theme { get; private set; } = Palette.Dark;
 
     private MultiMeshInstance3D _focusBlack = null!;
     private MultiMeshInstance3D _focusWhite = null!;

@@ -184,8 +184,8 @@ public sealed partial class OverlayManager : CanvasLayer, IOverlayManager
     {
         var box = new StyleBoxFlat
         {
-            BgColor = Palette.Default.PanelBg,
-            BorderColor = isError ? Palette.Default.Error : Palette.Default.Accent,
+            BgColor = Palette.Active.PanelBg,
+            BorderColor = isError ? Palette.Active.Error : Palette.Active.Accent,
             CornerRadiusBottomLeft = 6,
             CornerRadiusBottomRight = 6,
             CornerRadiusTopLeft = 6,
@@ -203,7 +203,7 @@ public sealed partial class OverlayManager : CanvasLayer, IOverlayManager
             Text = message,
             MouseFilter = Control.MouseFilterEnum.Ignore,
         };
-        label.AddThemeColorOverride("font_color", isError ? Palette.Default.Error : Palette.Default.TextPrimary);
+        label.AddThemeColorOverride("font_color", isError ? Palette.Active.Error : Palette.Active.TextPrimary);
         panel.AddChild(label);
         return panel;
     }

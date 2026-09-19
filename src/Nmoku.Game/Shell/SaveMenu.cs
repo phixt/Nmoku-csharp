@@ -32,8 +32,8 @@ public sealed partial class SaveMenu : Control
         var panel = new PanelContainer();
         panel.AddThemeStyleboxOverride("panel", new StyleBoxFlat
         {
-            BgColor = Palette.Default.PanelBg,
-            BorderColor = Palette.Default.PanelBorder,
+            BgColor = Palette.Active.PanelBg,
+            BorderColor = Palette.Active.PanelBorder,
             CornerRadiusTopLeft = 8,
             CornerRadiusTopRight = 8,
             CornerRadiusBottomLeft = 8,
@@ -53,7 +53,7 @@ public sealed partial class SaveMenu : Control
         box.AddChild(header);
         var title = new Label { Text = Text.Save.ManageTitle, SizeFlagsHorizontal = SizeFlags.Expand };
         title.AddThemeFontSizeOverride("font_size", 24);
-        title.AddThemeColorOverride("font_color", Palette.Default.TextPrimary);
+        title.AddThemeColorOverride("font_color", Palette.Active.TextPrimary);
         header.AddChild(title);
         header.AddChild(MakeButton(Text.Save.Import, () => ImportRequested?.Invoke()));
         header.AddChild(MakeButton(Text.Overlay.Cancel, () => CloseRequested?.Invoke()));
@@ -103,7 +103,7 @@ public sealed partial class SaveMenu : Control
             SizeFlagsStretchRatio = 2.2f,
             MouseFilter = MouseFilterEnum.Ignore,
         };
-        nameLabel.AddThemeColorOverride("font_color", data != null ? Palette.Default.TextPrimary : Palette.Default.TextDim);
+        nameLabel.AddThemeColorOverride("font_color", data != null ? Palette.Active.TextPrimary : Palette.Active.TextDim);
         row.AddChild(nameLabel);
 
         if (data != null)
@@ -119,7 +119,7 @@ public sealed partial class SaveMenu : Control
     private Button MakeButton(string text, Action onPressed)
     {
         var button = new Button { Text = text };
-        button.AddThemeColorOverride("font_color", Palette.Default.TextPrimary);
+        button.AddThemeColorOverride("font_color", Palette.Active.TextPrimary);
         button.Pressed += () => onPressed();
         return button;
     }

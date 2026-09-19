@@ -25,8 +25,8 @@ public sealed partial class GameOverModal : Control
         var panel = new PanelContainer();
         panel.AddThemeStyleboxOverride("panel", new StyleBoxFlat
         {
-            BgColor = Palette.Default.PanelBg,
-            BorderColor = Palette.Default.Accent,
+            BgColor = Palette.Active.PanelBg,
+            BorderColor = Palette.Active.Accent,
             CornerRadiusTopLeft = 10,
             CornerRadiusTopRight = 10,
             CornerRadiusBottomLeft = 10,
@@ -44,11 +44,11 @@ public sealed partial class GameOverModal : Control
 
         _result = new Label { HorizontalAlignment = HorizontalAlignment.Center };
         _result.AddThemeFontSizeOverride("font_size", 34);
-        _result.AddThemeColorOverride("font_color", Palette.Default.TextPrimary);
+        _result.AddThemeColorOverride("font_color", Palette.Active.TextPrimary);
         box.AddChild(_result);
 
         _subtitle = new Label { HorizontalAlignment = HorizontalAlignment.Center };
-        _subtitle.AddThemeColorOverride("font_color", Palette.Default.TextDim);
+        _subtitle.AddThemeColorOverride("font_color", Palette.Active.TextDim);
         box.AddChild(_subtitle);
 
         var buttons = new HBoxContainer { Alignment = BoxContainer.AlignmentMode.Center };
@@ -67,7 +67,7 @@ public sealed partial class GameOverModal : Control
     private Button MakeButton(string text, Action onPressed)
     {
         var button = new Button { Text = text };
-        button.AddThemeColorOverride("font_color", Palette.Default.TextPrimary);
+        button.AddThemeColorOverride("font_color", Palette.Active.TextPrimary);
         button.Pressed += () => onPressed();
         return button;
     }

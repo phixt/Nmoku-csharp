@@ -24,8 +24,8 @@ public sealed partial class ReplayBar : Control
         var panel = new PanelContainer { MouseFilter = MouseFilterEnum.Stop };
         panel.AddThemeStyleboxOverride("panel", new StyleBoxFlat
         {
-            BgColor = Palette.Default.PanelBg,
-            BorderColor = Palette.Default.PanelBorder,
+            BgColor = Palette.Active.PanelBg,
+            BorderColor = Palette.Active.PanelBorder,
             CornerRadiusTopLeft = 8,
             CornerRadiusTopRight = 8,
             CornerRadiusBottomLeft = 8,
@@ -42,7 +42,7 @@ public sealed partial class ReplayBar : Control
         panel.AddChild(row);
 
         var title = new Label { Text = Text.Replay.Label };
-        title.AddThemeColorOverride("font_color", Palette.Default.TextPrimary);
+        title.AddThemeColorOverride("font_color", Palette.Active.TextPrimary);
         row.AddChild(title);
 
         row.AddChild(MakeButton("上一步", () => StepRequested?.Invoke(-1)));
@@ -61,7 +61,7 @@ public sealed partial class ReplayBar : Control
         row.AddChild(MakeButton("下一步", () => StepRequested?.Invoke(1)));
 
         _position = new Label { Text = "0 / 0" };
-        _position.AddThemeColorOverride("font_color", Palette.Default.TextPrimary);
+        _position.AddThemeColorOverride("font_color", Palette.Active.TextPrimary);
         row.AddChild(_position);
 
         row.AddChild(MakeButton(Text.Replay.Exit, () => ExitRequested?.Invoke()));
@@ -78,7 +78,7 @@ public sealed partial class ReplayBar : Control
     private Button MakeButton(string text, Action onPressed)
     {
         var button = new Button { Text = text };
-        button.AddThemeColorOverride("font_color", Palette.Default.TextPrimary);
+        button.AddThemeColorOverride("font_color", Palette.Active.TextPrimary);
         button.Pressed += () => onPressed();
         return button;
     }

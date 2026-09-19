@@ -19,6 +19,13 @@ public sealed partial class GameStore : Node
     public IOverlayManager Overlay { get; set; } = null!;
     public bool IsDarkTheme { get; set; } = true;
 
+    /// <summary>T 键主题切换：EventBus 通知壳层换肤（视图/背板/壳屏重建）。</summary>
+    public void ToggleTheme()
+    {
+        IsDarkTheme = !IsDarkTheme;
+        EventBus.EmitThemeToggled(IsDarkTheme);
+    }
+
     /// <summary>状态变化（壳层切换屏幕可见性）。</summary>
     public event Action<GameState>? StateChanged;
     /// <summary>槽位内容变化（存档菜单刷新）。</summary>
@@ -118,6 +125,16 @@ public sealed partial class GameStore : Node
         return LoadSlot(idx);
     }
 
+    /// <summary>存档主题随档恢复（SaveData.isDarkTheme）：与当前不同则经 EventBus 触发壳层换肤。</summary>
+    private void ApplySavedTheme(SaveData data)
+    {
+        if (IsDarkTheme != data.IsDarkTheme)
+        {
+            IsDarkTheme = data.IsDarkTheme;
+            EventBus.EmitThemeToggled(IsDarkTheme);
+        }
+    }
+
     public bool LoadSlot(int index)
     {
         var data = Saves.Load(index);
@@ -126,6 +143,7 @@ public sealed partial class GameStore : Node
             Overlay?.ShowToast(Text.Save.LoadSlotFailed, isError: true);
             return false;
         }
+        ApplySavedTheme(data); // 存档主题随档恢复（SaveData.isDarkTheme）
         var to = GameStateMachine.Transition(State, GameTrigger.LoadLatest);
         if (to == null)
         {
@@ -145,6 +163,7 @@ public sealed partial class GameStore : Node
             Overlay?.ShowToast(Text.Save.LoadSlotFailed, isError: true);
             return false;
         }
+        ApplySavedTheme(data);
         var to = GameStateMachine.Transition(State, GameTrigger.EnterReplay);
         if (to == null)
         {

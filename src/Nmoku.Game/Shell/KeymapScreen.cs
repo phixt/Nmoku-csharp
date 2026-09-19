@@ -28,8 +28,8 @@ public sealed partial class KeymapScreen : Control
         var panel = new PanelContainer();
         panel.AddThemeStyleboxOverride("panel", new StyleBoxFlat
         {
-            BgColor = Palette.Default.PanelBg,
-            BorderColor = Palette.Default.PanelBorder,
+            BgColor = Palette.Active.PanelBg,
+            BorderColor = Palette.Active.PanelBorder,
             CornerRadiusTopLeft = 10,
             CornerRadiusTopRight = 10,
             CornerRadiusBottomLeft = 10,
@@ -49,7 +49,7 @@ public sealed partial class KeymapScreen : Control
         outer.AddChild(header);
         var title = new Label { Text = "快捷键说明（F1）", SizeFlagsHorizontal = SizeFlags.Expand };
         title.AddThemeFontSizeOverride("font_size", 26);
-        title.AddThemeColorOverride("font_color", Palette.Default.TextPrimary);
+        title.AddThemeColorOverride("font_color", Palette.Active.TextPrimary);
         header.AddChild(title);
         var close = new Button { Text = Text.Overlay.Cancel + " (Esc)" };
         close.Pressed += () => CloseRequested?.Invoke();
@@ -71,7 +71,7 @@ public sealed partial class KeymapScreen : Control
         {
             var head = new Label { Text = category };
             head.AddThemeFontSizeOverride("font_size", 18);
-            head.AddThemeColorOverride("font_color", Palette.Default.Accent);
+            head.AddThemeColorOverride("font_color", Palette.Active.Accent);
             box.AddChild(head);
 
             foreach (var row in rows)
@@ -84,14 +84,14 @@ public sealed partial class KeymapScreen : Control
                     CustomMinimumSize = new Vector2(240, 0),
                     SizeFlagsHorizontal = SizeFlags.ShrinkBegin,
                 };
-                keys.AddThemeColorOverride("font_color", Palette.Default.TextPrimary);
+                keys.AddThemeColorOverride("font_color", Palette.Active.TextPrimary);
                 var desc = new Label
                 {
                     Text = row.Description,
                     SizeFlagsHorizontal = SizeFlags.ExpandFill,
                     AutowrapMode = TextServer.AutowrapMode.WordSmart,
                 };
-                desc.AddThemeColorOverride("font_color", Palette.Default.TextDim);
+                desc.AddThemeColorOverride("font_color", Palette.Active.TextDim);
                 line.AddChild(keys);
                 line.AddChild(desc);
                 box.AddChild(line);

@@ -114,6 +114,22 @@ public sealed partial class SceneRouter : Node
     /// <summary>最顶浮层（Esc 逐层冒泡的落点）。</summary>
     public string? TopOverlay => _overlays.Count > 0 ? _overlays[^1] : null;
 
+    /// <summary>当前在树内的路由（含隐藏的 KeepAlive 基座）。</summary>
+    public IReadOnlyList<string> Mounted => _inTree;
+
+    /// <summary>重建路由实例（工厂重跑、事件重接线）：主题切换等需要壳屏整体换肤时用。</summary>
+    public void Rebuild(string id)
+    {
+        if (!_inTree.Contains(id) || !_content.TryGetValue(id, out var content))
+        {
+            return;
+        }
+        bool wasVisible = content.Visible;
+        Unmount(id);
+        Mount(id);
+        SetRouteVisible(id, wasVisible);
+    }
+
     private bool _primed;
 
     private void Apply()
@@ -222,7 +238,7 @@ public sealed partial class SceneRouter : Node
         Control backdrop = def.Backdrop switch
         {
             BackdropKind.Dim => new ColorRect { Color = new Color(0f, 0f, 0f, def.DimAlpha) },
-            BackdropKind.Opaque => new ColorRect { Color = Palette.Default.Background },
+            BackdropKind.Opaque => new ColorRect { Color = Palette.Active.Background },
             BackdropKind.Blur => MakeBlurBackdrop(def.DimAlpha),
             _ => new ColorRect(),
         };

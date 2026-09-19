@@ -33,7 +33,7 @@ public sealed partial class PauseMenu : Control
 
         var label = new Label { Text = Text.Menu.Paused, HorizontalAlignment = HorizontalAlignment.Center };
         label.AddThemeFontSizeOverride("font_size", 28);
-        label.AddThemeColorOverride("font_color", Palette.Default.TextPrimary);
+        label.AddThemeColorOverride("font_color", Palette.Active.TextPrimary);
         box.AddChild(label);
 
         box.AddChild(MakeButton(Text.Menu.Resume, () => ResumeRequested?.Invoke()));
@@ -45,8 +45,8 @@ public sealed partial class PauseMenu : Control
 
     private StyleBoxFlat MakePanelBox() => new()
     {
-        BgColor = Palette.Default.PanelBg,
-        BorderColor = Palette.Default.PanelBorder,
+        BgColor = Palette.Active.PanelBg,
+        BorderColor = Palette.Active.PanelBorder,
         CornerRadiusTopLeft = 8,
         CornerRadiusTopRight = 8,
         CornerRadiusBottomLeft = 8,
@@ -60,7 +60,7 @@ public sealed partial class PauseMenu : Control
     private Button MakeButton(string text, Action onPressed)
     {
         var button = new Button { Text = text };
-        button.AddThemeColorOverride("font_color", Palette.Default.TextPrimary);
+        button.AddThemeColorOverride("font_color", Palette.Active.TextPrimary);
         button.Pressed += () => onPressed();
         return button;
     }

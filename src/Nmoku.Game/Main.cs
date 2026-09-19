@@ -60,6 +60,12 @@ public partial class Main : Node
 
     public override void _Ready()
     {
+        // 全局字体：霞鹜文楷 Lite（OFL，assets-src/fonts 本地转换版）——根窗口 Theme 全体控件生效
+        var uiTheme = new Theme();
+        uiTheme.DefaultFont = GD.Load<FontFile>("res://assets/fonts/LXGWWenKaiLite-Regular.ttf");
+        uiTheme.DefaultFontSize = 15;
+        GetWindow().Theme = uiTheme;
+
         // F1 帮助屏 action 运行时注册（KeymapTable 已登记语义；不进 project.godot 以免 --import 回写风险）
         if (!InputMap.HasAction("toggle_help"))
         {
@@ -118,6 +124,7 @@ public partial class Main : Node
         _gm.StateChanged += Refresh;
         _gm.FocusChanged += _ => Refresh();
         _gm.HoverChanged += OnHoverChanged;
+        EventBus.ThemeToggled += ApplyTheme;
 
         _gm.Configure(_boardSize, _layers, _rules, _pve, _aiDifficulty);
         _store.InitializeSaves();
@@ -133,6 +140,18 @@ public partial class Main : Node
                  $"(诊断高分屏：window 应为物理像素；3D 视口={_viewport3D.Size})");
         GD.Print($"Nmoku M4R: game ready (board={_boardSize}x{_boardSize}x{_layers}, spacing={_spacing:0.0}, " +
                  $"rules={_rules}, mode={(_pve ? "pve" : "pvp")}, distance={_rig.Current.Distance:0.00})");
+    }
+
+    /// <summary>T 键/存档恢复触发的主题换肤：调色板切套 → 3D 环境 → 已挂载壳屏重建（game 基座除外，其视图走 ApplyPalette 通道）。</summary>
+    private void ApplyTheme(bool isDark)
+    {
+        Palette.Active = isDark ? Palette.Dark : Palette.Light;
+        _gameScreen.ApplyTheme();
+        foreach (string id in _router.Mounted.Where(id => id != "game").ToList())
+        {
+            _router.Rebuild(id); // 壳屏按新套重建（工厂重跑读 Active；未挂载的屏幕打开时自动生效）
+        }
+        Refresh();
     }
 
     /// <summary>
@@ -635,6 +654,7 @@ public partial class Main : Node
     private IEnumerable<(string Action, Action Run)> SingleActions()
     {
         yield return ("toggle_help", ToggleHelp);
+        yield return ("toggle_theme", () => _store.ToggleTheme());
         yield return ("rotate_left", () => _rig.Orbit(-90));
         yield return ("rotate_right", () => _rig.Orbit(90));
         yield return ("pause", () => _store.Pause());
@@ -894,7 +914,7 @@ public partial class Main : Node
     /// <summary>统一刷新：调色板 → 棋子重建（含辅助线标记桶）→ 网格显隐 → 辅助线 → 状态栏。</summary>
     private void Refresh()
     {
-        var palette = _gm.Colorblind ? Palette.Colorblind : Palette.Default;
+        var palette = Palette.For(_gm.Colorblind);
         _board3D.ApplyPalette(palette);
         _board2D.Palette = palette;
         var aux = _gm.ComputeAux(_gm.Hover);

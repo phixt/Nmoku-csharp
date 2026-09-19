@@ -35,7 +35,7 @@ public sealed partial class GuideScreen : Control
 
         var title = new Label { Text = Text.Guide.Title, HorizontalAlignment = HorizontalAlignment.Center };
         title.AddThemeFontSizeOverride("font_size", 32);
-        title.AddThemeColorOverride("font_color", Palette.Default.TextPrimary);
+        title.AddThemeColorOverride("font_color", Palette.Active.TextPrimary);
         box.AddChild(title);
 
         var body = new Label
@@ -45,7 +45,7 @@ public sealed partial class GuideScreen : Control
             AutowrapMode = TextServer.AutowrapMode.WordSmart,
             CustomMinimumSize = new Vector2(640, 0),
         };
-        body.AddThemeColorOverride("font_color", Palette.Default.TextDim);
+        body.AddThemeColorOverride("font_color", Palette.Active.TextDim);
         box.AddChild(body);
 
         var buttons = new HBoxContainer { Alignment = BoxContainer.AlignmentMode.Center };
@@ -70,7 +70,7 @@ public sealed partial class GuideScreen : Control
     private Button MakeButton(string text, Action onPressed)
     {
         var button = new Button { Text = text };
-        button.AddThemeColorOverride("font_color", Palette.Default.TextPrimary);
+        button.AddThemeColorOverride("font_color", Palette.Active.TextPrimary);
         button.Pressed += () => onPressed();
         return button;
     }

@@ -21,7 +21,7 @@ public sealed partial class Board2DView : Control
     public GameManager? Game { get; set; }
 
     /// <summary>调色板（色弱切换时由 Main 换实例）。命名避开 Control.Theme。</summary>
-    public Palette Palette { get; set; } = Palette.Default;
+    public Palette Palette { get; set; } = Palette.Dark;
 
     /// <summary>悬停格变化（界内格或 null）→ GameManager.SetHover。</summary>
     public event Action<Coordinate3D?>? HoverChanged;

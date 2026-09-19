@@ -17,6 +17,8 @@ public sealed partial class GameScreen : Control
     public Board2DView Board2D { get; private set; } = null!;
     public Label StatusLabel { get; private set; } = null!;
 
+    private Godot.Environment _environment = null!;
+
     private readonly int _boardSize;
     private readonly int _layers;
     private readonly double _spacing;
@@ -50,17 +52,15 @@ public sealed partial class GameScreen : Control
         Viewport3D = new SubViewport { OwnWorld3D = true, Msaa3D = Viewport.Msaa.Msaa8X };
         viewportContainer.AddChild(Viewport3D);
 
-        Viewport3D.AddChild(new WorldEnvironment
+        _environment = new Godot.Environment
         {
-            Environment = new Godot.Environment
-            {
-                BackgroundMode = Godot.Environment.BGMode.Color,
-                BackgroundColor = Palette.Default.Background,
-                AmbientLightSource = Godot.Environment.AmbientSource.Color,
-                AmbientLightColor = Palette.Default.AmbientLight,
-                AmbientLightEnergy = 0.55f,
-            },
-        });
+            BackgroundMode = Godot.Environment.BGMode.Color,
+            BackgroundColor = Palette.Active.Background,
+            AmbientLightSource = Godot.Environment.AmbientSource.Color,
+            AmbientLightColor = Palette.Active.AmbientLight,
+            AmbientLightEnergy = 0.55f,
+        };
+        Viewport3D.AddChild(new WorldEnvironment { Environment = _environment });
         Viewport3D.AddChild(new DirectionalLight3D { RotationDegrees = new Vector3(-55, 35, 0) });
 
         Board3D = new Board3DView { Name = "Board3DView" };
@@ -87,5 +87,12 @@ public sealed partial class GameScreen : Control
         StatusLabel.GrowHorizontal = GrowDirection.Both;
         StatusLabel.OffsetTop = -64;
         AddChild(StatusLabel);
+    }
+
+    /// <summary>主题切换（T）：3D 背景与环境光随套更新；棋盘/棋子由 Main.Refresh 经 ApplyPalette 通道刷新。</summary>
+    public void ApplyTheme()
+    {
+        _environment.BackgroundColor = Palette.Active.Background;
+        _environment.AmbientLightColor = Palette.Active.AmbientLight;
     }
 }

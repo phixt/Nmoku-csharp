@@ -33,11 +33,11 @@ public sealed partial class TitleScreen : Control
 
         var title = new Label { Text = Text.Title.GameName, HorizontalAlignment = HorizontalAlignment.Center };
         title.AddThemeFontSizeOverride("font_size", 48);
-        title.AddThemeColorOverride("font_color", Palette.Default.TextPrimary);
+        title.AddThemeColorOverride("font_color", Palette.Active.TextPrimary);
         box.AddChild(title);
 
         var subtitle = new Label { Text = Text.Title.Subtitle, HorizontalAlignment = HorizontalAlignment.Center };
-        subtitle.AddThemeColorOverride("font_color", Palette.Default.TextDim);
+        subtitle.AddThemeColorOverride("font_color", Palette.Active.TextDim);
         box.AddChild(subtitle);
 
         box.AddChild(MakeSpacer(16));
@@ -67,7 +67,7 @@ public sealed partial class TitleScreen : Control
             Text = text,
             CustomMinimumSize = new Vector2(220, 40),
         };
-        button.AddThemeColorOverride("font_color", Palette.Default.TextPrimary);
+        button.AddThemeColorOverride("font_color", Palette.Active.TextPrimary);
         button.Pressed += () => onPressed();
         return button;
     }
