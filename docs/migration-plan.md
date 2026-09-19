@@ -247,11 +247,12 @@ Godot 项目文件（`project.godot`、场景、资产）与 csproj 同置于 `s
 
 | # | 议题 | 结论 | 依据 |
 |---|---|---|---|
-| B1 | Swap2 `getNextTurnState` 的 `currentPlayer` 是谁 | **刚行棋方**。swap 分支返回 `nextPlayer=刚行棋方(黑)`，shell 在决策期不改写 currentPlayer → 黑连下第 2、3 手，即官方 Swap2 节奏；pass 与 swap 的唯一区别是棋子归属换不换 | `main.ts:341-366`、`SwapEngine.ts:18-34` |
+| B1 | Swap2 `getNextTurnState` 的 `currentPlayer` 是谁 | **刚行棋方**。swap 分支返回 `nextPlayer=刚行棋方(黑)`，shell 在决策期不改写 currentPlayer → 黑连下第 1、2 手（换色决策弹窗插在两子之间），第 3 手起白方行棋；pass 与 swap 的唯一区别是棋子归属换不换 | `main.ts:341-366`、`SwapEngine.ts:18-34` |
 | B2 | 预置子跳过 swap 的守卫 | 源 TS 引擎**没有** levelConfig 参数，属隐式行为（有预置子时点击后 history 恒 ≥2，永远撞不到 `length=1` 分支）。C# 按 04-contracts §2.1.3 的显式签名实现，守卫结果与源等价 | `SwapEngine.ts` vs 02-rules §2.4 |
 | B3 | 旧单体档拆分（`gomoku_saves_v3`） | 条目为 null **或缺 `id`** 都被跳过，但数组下标照常递增（下标即槽位号） | `LocalStorageAdapter.tryMigrate` |
 | B4 | AI `attack + 1.1*defense` 的次序副作用 | 严格按文档表实现：当 AI 的成五点与对方的成五点**不在同一格**时，AI 会优先堵而不自己胜（defense 1.1e6 > attack 1e6）。源项目同式，保持忠实，M3 接线后如体感过弱再议 | 02-rules §4.4 |
 | B5 | PatternCollector 的 maxLen=4 | 4 格是**展示端**限制（README 性能约束），不是数据端裁剪。Core `Collect(board, layerZ)` 输出完整模式；渲染器用 `GameConfig.HelperLineMaxCells` 截断，保证"一份数据、两个渲染器" | README 特性节 + 02-rules §5.2 |
+| B6 | AI 等分候选的平局策略 | C# 在最高分等分池中按种子随机取一（可复现）；TS 取首个最高分（先到先得，`AIEngine.ts:104-107`）。两实现的候选枚举顺序本就不同，逐位对齐无意义，登记差异备查 | `AIEngine.ts` vs `AIEngine.GetScoredMove` |
 
 ## 11. M1 交付清单（2026-09-18）
 
