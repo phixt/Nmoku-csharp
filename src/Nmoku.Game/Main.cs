@@ -20,7 +20,6 @@ public partial class Main : Node
     private const double ZoomPerSecond = 3.0;
     private const double SpacingPerSecond = 1.2;
     private const double PanPerSecond = 0.6; // ×当前距离，键盘平移速度
-    private const double RotateCooldownSeconds = 0.2; // Q/E ±90° 冷却（连按/键回显防抖，M4R 反馈）
 
     private SubViewport _viewport3D = null!;
     private Camera3D _camera = null!;
@@ -128,6 +127,10 @@ public partial class Main : Node
         _rig = new CameraRig(_boardSize, _layers, _spacing, _lastViewportSize.X / _lastViewportSize.Y);
         ApplyCamera();
         Refresh();
+        int screen = DisplayServer.WindowGetCurrentScreen();
+        GD.Print($"display: window={DisplayServer.WindowGetSize()}, screen={DisplayServer.ScreenGetSize(screen)}, " +
+                 $"dpi={DisplayServer.ScreenGetDpi(screen)}, canvasScale={GetWindow().GetFinalTransform().Scale} " +
+                 $"(诊断高分屏：window 应为物理像素；3D 视口={_viewport3D.Size})");
         GD.Print($"Nmoku M4R: game ready (board={_boardSize}x{_boardSize}x{_layers}, spacing={_spacing:0.0}, " +
                  $"rules={_rules}, mode={(_pve ? "pve" : "pvp")}, distance={_rig.Current.Distance:0.00})");
     }
@@ -257,7 +260,6 @@ public partial class Main : Node
 
     public override void _Process(double delta)
     {
-        _nowSeconds += delta;
         if (_autotestArmed)
         {
             RunAutotest();
@@ -489,6 +491,39 @@ public partial class Main : Node
             bool freed = !IsInstanceValid(_staleProbe); // QueueFree 跨帧生效
             return freed ? "ok" : "FAIL";
         }));
+        _autotestSteps.Enqueue(("m4r-key-echo-filter", AutotestKeyEchoFilter));
+    }
+
+    /// <summary>M4R-2 自测：合成真实按键事件验证 echo 过滤——非 echo 按键转 90°，echo 按键不再触发。</summary>
+    private int _echoPhase;
+    private double _yawAtStart, _yawAfterPress, _yawAfterEcho;
+
+    private string AutotestKeyEchoFilter()
+    {
+        switch (_echoPhase)
+        {
+            case 0:
+                _gm.Configure(9, 3, RuleSet.Gomoku, false, AIDifficulty.Medium);
+                _store.StartGame();
+                _yawAtStart = _rig.Target.Yaw;
+                Input.ParseInputEvent(new InputEventKey { PhysicalKeycode = Key.Q, Pressed = true, Echo = false });
+                _echoPhase = 1;
+                return "wait"; // 事件经输入管线下一帧 flush → _Input
+            case 1:
+                _yawAfterPress = _rig.Target.Yaw;
+                Input.ParseInputEvent(new InputEventKey { PhysicalKeycode = Key.Q, Pressed = true, Echo = true });
+                _echoPhase = 2;
+                return "wait";
+            case 2:
+                _yawAfterEcho = _rig.Target.Yaw;
+                Input.ParseInputEvent(new InputEventKey { PhysicalKeycode = Key.Q, Pressed = false });
+                _echoPhase = 0;
+                bool pressed = Math.Abs(_yawAfterPress - _yawAtStart + 90) < 1e-6; // Q = -90°
+                bool echoIgnored = Math.Abs(_yawAfterEcho - _yawAfterPress) < 1e-6;
+                return pressed && echoIgnored ? "ok" : $"FAIL pressΔ={_yawAfterPress - _yawAtStart:0.0} echoΔ={_yawAfterEcho - _yawAfterPress:0.0}";
+            default:
+                return "FAIL";
+        }
     }
 
     private Control? _staleProbe;
@@ -552,6 +587,13 @@ public partial class Main : Node
         bool cameraAllowed = _store != null && _store.State is GameState.Playing or GameState.Replay;
         switch (@event)
         {
+            case InputEventKey { Pressed: true, Echo: false } key:
+                // 单次动作事件驱动：echo 直接忽略（按住不重复，与 A/D 同语义）；匹配即吞
+                if (TryDispatchKey(key))
+                {
+                    GetViewport().SetInputAsHandled();
+                }
+                break;
             case InputEventMouseButton { ButtonIndex: MouseButton.Left } button:
                 _rotating = button.Pressed && cameraAllowed && !IsOver2DPanel();
                 break;
@@ -582,11 +624,7 @@ public partial class Main : Node
         }
     }
 
-    /// <summary>context 门控后的单次触发（ShortcutRouter 拒绝则不产生效果）。</summary>
-    private bool Want(string action) =>
-        ShortcutRouter.Allows(action, _store.State) && Input.IsActionJustPressed(action, true);
-
-    /// <summary>context 门控后的持续按住（相机/间距类）。</summary>
+    /// <summary>context 门控后的持续按住（相机/间距类，§4.2.2 按住生效）。</summary>
     private bool Held(string action) =>
         ShortcutRouter.Allows(action, _store.State) && Input.IsActionPressed(action, true);
 
@@ -597,8 +635,8 @@ public partial class Main : Node
     private IEnumerable<(string Action, Action Run)> SingleActions()
     {
         yield return ("toggle_help", ToggleHelp);
-        yield return ("rotate_left", () => CooledOrbit(-90));
-        yield return ("rotate_right", () => CooledOrbit(90));
+        yield return ("rotate_left", () => _rig.Orbit(-90));
+        yield return ("rotate_right", () => _rig.Orbit(90));
         yield return ("pause", () => _store.Pause());
         yield return ("resume", () => _store.Resume());
         yield return ("confirm", ConfirmAction);
@@ -617,6 +655,11 @@ public partial class Main : Node
         yield return ("toggle_colorblind", () => _gm.ToggleColorblind());
         yield return ("toggle_grid_all", () => _board3D.ToggleGridAll());
         yield return ("undo", () => _gm.Undo());
+        yield return ("spacing_reset", () =>
+        {
+            _spacing = GameConfig.DefaultLayerSpacing;
+            _rig.Reset(_boardSize, _layers, _spacing, ViewportAspect());
+        });
     }
 
     private void ConfirmAction()
@@ -633,45 +676,35 @@ public partial class Main : Node
         }
     }
 
-    private double _nowSeconds;
-    private double _nextOrbitAt;
-
-    /// <summary>Q/E 冷却：冷却期内吞掉触发（连按/键回显防抖），Q/E 共享一个节拍。</summary>
-    private void CooledOrbit(double degrees)
-    {
-        if (_nowSeconds < _nextOrbitAt)
-        {
-            return;
-        }
-        _nextOrbitAt = _nowSeconds + RotateCooldownSeconds;
-        _rig.Orbit(degrees);
-    }
-
-    private void HandleHeldInput(double delta)
+    /// <summary>
+    /// 键盘单次动作的事件驱动分发（M4R-2：echo 过滤=按一下动一下，键回显不再重复触发，
+    /// Q/E 与 A/D 同为单击语义）。返回 true 表示事件已消费（§4.2.4 匹配即吞）。
+    /// </summary>
+    private bool TryDispatchKey(InputEventKey key)
     {
         if (_overlay.IsModalOpen)
         {
-            return; // 模态框吞掉一切游戏快捷键（Esc/Enter 由对话框自身处理，§4.1）
+            return false; // 模态框优先：按键交给对话框自身处理（不吞）
         }
-
-        // ---- L2 浮层作用域（KeymapTable AllowWhenOverlay）：只响应 F1 切帮助、Esc 关最顶浮层 ----
         if (_router.HasOverlay)
         {
-            if (Input.IsActionJustPressed("toggle_help"))
+            // L2 浮层作用域：只响应 AllowWhenOverlay 键（KeymapTable）
+            if (InputMap.EventIsAction(key, "toggle_help", exactMatch: true))
             {
                 ToggleHelp();
+                return true;
             }
-            else if (Input.IsActionJustPressed("ui_cancel"))
+            if (InputMap.EventIsAction(key, "ui_cancel", exactMatch: true) && _router.TopOverlay is { } top)
             {
-                _router.PopOverlay(_router.TopOverlay!); // Esc 逐层冒泡：先关最顶浮层
+                _router.PopOverlay(top); // Esc 逐层冒泡：先关最顶浮层
+                return true;
             }
-            return;
+            return false;
         }
-
-        // 引导态 Esc（§3.4 两行的 Esc 语义）：标题入口=返回，对局入口=回对局
         if (_store.State is GameState.GuideFromTitle or GameState.GuideFromGame
-            && Input.IsActionJustPressed("ui_cancel"))
+            && InputMap.EventIsAction(key, "ui_cancel", exactMatch: true))
         {
+            // 引导态 Esc（§3.4 两行的 Esc 语义）：标题入口=返回，对局入口=回对局
             if (_store.State == GameState.GuideFromGame)
             {
                 _store.Resume();
@@ -680,30 +713,33 @@ public partial class Main : Node
             {
                 _store.GuideBack();
             }
-            return;
+            return true;
         }
-
-        // ---- 单次动作：首中即吞（04-contracts §4.2.4"匹配即吞掉事件"）----
-        // 每帧至多执行一个：状态在同帧变化后不再求值后续动作，
-        // 根除 ESC(pause+resume 同帧互抵) 与 R(pause+restart 同帧双弹) 的双触发。
         foreach (var (action, run) in SingleActions())
         {
-            if (Want(action))
+            // 同键跨态（如 R=pause/restart）：被门控的匹配跳过，继续找本状态下的合法动作
+            if (InputMap.EventIsAction(key, action, exactMatch: true)
+                && ShortcutRouter.Allows(action, _store.State))
             {
                 run();
-                return;
+                return true;
             }
         }
+        return false;
+    }
 
-        // ---- 相机/间距：持续按住类，不参与首中互斥（exact match 防 Shift 平移串线，M2 决策 #9）----
-        if (Held("rotate_left"))
+    /// <summary>
+    /// 持续按住类键（zoom/pan/spacing，§4.2.2 按住生效）。单次动作已改 _Input 事件驱动
+    /// （echo 过滤），此处不再轮询 JustPressed——按住不重复的键不会从这里触发。
+    /// </summary>
+    private void HandleHeldInput(double delta)
+    {
+        if (_overlay.IsModalOpen || _router.HasOverlay)
         {
-            _rig.Orbit(-90);
+            return; // 模态框/浮层吞掉一切持续键（单次键在 _Input 按作用域分发）
         }
-        if (Held("rotate_right"))
-        {
-            _rig.Orbit(90);
-        }
+
+        // exact match 防 Shift 平移串线（M2 决策 #9）
         if (Held("zoom_in"))
         {
             _rig.Zoom(ZoomPerSecond * delta);
@@ -741,11 +777,6 @@ public partial class Main : Node
             _spacing += SpacingPerSecond * delta;
         }
         _spacing = Math.Clamp(_spacing, GameConfig.MinLayerSpacing, GameConfig.MaxLayerSpacing);
-        if (Want("spacing_reset"))
-        {
-            _spacing = GameConfig.DefaultLayerSpacing;
-            _rig.Reset(_boardSize, _layers, _spacing, ViewportAspect());
-        }
         if (Math.Abs(_spacing - before) > 1e-9)
         {
             OnSpacingChanged();
@@ -784,6 +815,27 @@ public partial class Main : Node
         {
             _lastViewportSize = size;
             _rig.Update(_boardSize, _layers, _spacing, size.X / size.Y, GameConfig.DefaultYaw);
+        }
+        SyncViewport3DResolution();
+    }
+
+    /// <summary>
+    /// 子视口原生分辨率（M4R-2 高分屏修复）：SubViewportContainer.stretch 只给逻辑像素尺寸，
+    /// 高分屏上 3D 视图渲染在低于原生的分辨率再被放大（"全屏发糊"主因）。
+    /// 手动乘上窗口最终变换缩放（含 stretch/DPI），让 3D 与 2D 一样按原生像素渲染。
+    /// </summary>
+    private void SyncViewport3DResolution()
+    {
+        if (_viewport3D.GetParent() is not SubViewportContainer container)
+        {
+            return;
+        }
+        var scale = GetWindow().GetFinalTransform().Scale;
+        float factor = MathF.Min(scale.X, scale.Y);
+        var desired = (Vector2I)(((Vector2)container.Size * factor).Floor());
+        if (desired.X > 0 && desired.Y > 0 && _viewport3D.Size != desired)
+        {
+            _viewport3D.Size = desired;
         }
     }
 
