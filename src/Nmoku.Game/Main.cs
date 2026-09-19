@@ -1,6 +1,7 @@
 using Godot;
 using Nmoku.Core;
 using Nmoku.Core.Camera;
+using Nmoku.Game.Theme;
 using Nmoku.Game.Views;
 
 /// <summary>
@@ -14,6 +15,7 @@ public partial class Main : Node
     private const double SpacingPerSecond = 1.2;
     private const double PanPerSecond = 0.6; // ×当前距离，键盘平移速度
 
+    private readonly Palette _palette = Palette.Default;
     private Camera3D _camera = null!;
     private Board3DView _boardView = null!;
     private CameraRig _rig = null!;
@@ -53,15 +55,15 @@ public partial class Main : Node
             Environment = new Godot.Environment
             {
                 BackgroundMode = Godot.Environment.BGMode.Color,
-                BackgroundColor = new Color(0.10f, 0.11f, 0.13f),
+                BackgroundColor = _palette.Background,
                 AmbientLightSource = Godot.Environment.AmbientSource.Color,
-                AmbientLightColor = Colors.White,
+                AmbientLightColor = _palette.AmbientLight,
                 AmbientLightEnergy = 0.55f,
             },
         });
         AddChild(new DirectionalLight3D { RotationDegrees = new Vector3(-55, 35, 0) });
 
-        _boardView = new Board3DView { Name = "Board3DView" };
+        _boardView = new Board3DView { Name = "Board3DView", Theme = _palette };
         AddChild(_boardView);
         _boardView.Configure(_boardSize, _layers, _spacing);
 
@@ -260,15 +262,15 @@ public partial class Main : Node
     /// <summary>M2 演示棋子（占位，M3 接 GameManager 后删除）：中层横五连 + 竖列跨层展示透明度梯度。</summary>
     private void PlaceDemoStones()
     {
-        int midX = _boardSize / 2;
-        int midY = _boardSize / 2;
-        for (int x = midX - 2; x <= midX + 2; x++)
+        // 格心一律由 (size-1)/2 推导（天元/地元公式语义），禁止写死
+        int mid = (_boardSize - 1) / 2;
+        for (int x = mid - 2; x <= mid + 2; x++)
         {
-            _demoBoard.Set(x, midY, _layers / 2, CellState.Black);
+            _demoBoard.Set(x, mid, _layers / 2, CellState.Black);
         }
         for (int i = 0; i < 3; i++)
         {
-            _demoBoard.Set(midX - 2 + i, midY + 2, _layers / 2, CellState.White);
+            _demoBoard.Set(mid - 2 + i, mid + 2, _layers / 2, CellState.White);
         }
         for (int z = 0; z < _layers; z++)
         {

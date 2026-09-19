@@ -1,16 +1,20 @@
 using Godot;
 using Nmoku.Core;
 using Nmoku.Core.Camera;
+using Nmoku.Game.Theme;
 
 namespace Nmoku.Game.Views;
 
 /// <summary>
 /// 3D 左视图（migration-plan §3.2）：MultiMesh 黑/白实体 + 每层 ghost（逐层透明度，§8.2/B7），
-/// 网格线单 ArrayMesh（§8.3 合批），悬停高亮占位（R4：精确拾取联动 M3 做）。
-/// 棋子全量重建（≤1014 实例，成本可忽略，不做增量）；ghost 按层分桶是计划 §3.2 认可的排序降级方案（R3）。
+/// 网格线 + 层连接立柱 MultiMesh（B8 朝向），悬停预选球（R4：精确拾取联动 M3 做）。
+/// 颜色一律取自 <see cref="Theme"/>（语义调色板），棋子全量重建（≤1014 实例，成本可忽略，不做增量）。
 /// </summary>
 public sealed partial class Board3DView : Node3D
 {
+    /// <summary>语义调色板（色弱/明暗/主题系统的唯一取色点）。</summary>
+    public Palette Theme { get; set; } = Palette.Default;
+
     private MultiMeshInstance3D _blackOpaque = null!;
     private MultiMeshInstance3D _whiteOpaque = null!;
     private readonly List<MultiMeshInstance3D> _ghostBuckets = new(); // 下标 = z*2+颜色
@@ -37,14 +41,14 @@ public sealed partial class Board3DView : Node3D
         }
         _ghostBuckets.Clear();
 
-        _blackOpaque = BuildStoneBucket("black_opaque", new Color(0.09f, 0.09f, 0.10f), 1f, transparent: false);
-        _whiteOpaque = BuildStoneBucket("white_opaque", new Color(0.92f, 0.93f, 0.95f), 1f, transparent: false);
+        _blackOpaque = BuildStoneBucket("black_opaque", Theme.StoneBlack, 1f, transparent: false);
+        _whiteOpaque = BuildStoneBucket("white_opaque", Theme.StoneWhite, 1f, transparent: false);
         for (int z = 0; z < layers; z++)
         {
-            // 同层 worldY 相同 → 层内透明度一致，材质按层设置（§8.2 连续透明度的 MultiMesh 化）
+            // 同层 worldZ 相同 → 层内透明度一致，材质按层设置（§8.2 连续透明度的 MultiMesh 化）
             float alpha = (float)CameraMath.ComputeOpacity(z * spacing, layers, spacing);
-            _ghostBuckets.Add(BuildStoneBucket($"black_ghost_{z}", new Color(0.09f, 0.09f, 0.10f), alpha, transparent: true));
-            _ghostBuckets.Add(BuildStoneBucket($"white_ghost_{z}", new Color(0.92f, 0.93f, 0.95f), alpha, transparent: true));
+            _ghostBuckets.Add(BuildStoneBucket($"black_ghost_{z}", Theme.StoneBlack, alpha, transparent: true));
+            _ghostBuckets.Add(BuildStoneBucket($"white_ghost_{z}", Theme.StoneWhite, alpha, transparent: true));
         }
 
         _grid = BuildGrid(boardSize, spacing);
@@ -146,7 +150,8 @@ public sealed partial class Board3DView : Node3D
     }
 
     /// <summary>
-    /// 网格线（B8 朝向：层=世界 XY 竖直面、沿 Z 排布）+ 层连接立柱（四角+中心，源 GHOST_CONNECTOR_OPACITY=0.35）。
+    /// 网格线（B8 朝向：层=世界 XY 竖直面、沿 Z 排布）+ 层连接立柱（四角+中心=天元/地元锚点，
+    /// 一律由 boardSize 推导：(size-1)/2 与三界点，禁止硬编码）。
     /// 细盒代替 1px 线（人类反馈：加粗+平滑）；配合 MSAA 4× 抗锯齿。
     /// </summary>
     private MultiMeshInstance3D BuildGrid(int boardSize, double spacing)
@@ -164,7 +169,7 @@ public sealed partial class Board3DView : Node3D
                 Material = new StandardMaterial3D
                 {
                     ShadingMode = BaseMaterial3D.ShadingModeEnum.Unshaded,
-                    AlbedoColor = new Color(0.62f, 0.66f, 0.70f),
+                    AlbedoColor = Theme.GridLine,
                 },
             },
             InstanceCount = 2 * boardSize * _layers,
@@ -197,15 +202,17 @@ public sealed partial class Board3DView : Node3D
                 Material = new StandardMaterial3D
                 {
                     ShadingMode = BaseMaterial3D.ShadingModeEnum.Unshaded,
-                    AlbedoColor = new Color(0.62f, 0.66f, 0.70f, 0.35f),
+                    AlbedoColor = Theme.ConnectorLine,
                     Transparency = BaseMaterial3D.TransparencyEnum.Alpha,
                 },
             },
             InstanceCount = 5,
         };
 
+        // 天元/地元锚点：四角三界点 + 中心 (size-1)/2（偶数尺寸落在格间，与源 (bs-1)/2 一致）
         float maxDepth = (float)((_layers - 1) * spacing);
-        (int, int)[] railPoints = [(0, 0), (boardSize - 1, 0), (0, boardSize - 1), (boardSize - 1, boardSize - 1), (boardSize / 2, boardSize / 2)];
+        float center = (boardSize - 1) / 2f;
+        (float, float)[] railPoints = [(0f, 0f), (length, 0f), (0f, length), (length, length), (center, center)];
         for (int r = 0; r < railPoints.Length; r++)
         {
             var (rx, ry) = railPoints[r];
@@ -231,7 +238,7 @@ public sealed partial class Board3DView : Node3D
             Material = new StandardMaterial3D
             {
                 ShadingMode = BaseMaterial3D.ShadingModeEnum.Unshaded,
-                AlbedoColor = new Color(0.30f, 0.55f, 1.00f, 0.55f),
+                AlbedoColor = Theme.HoverHighlight,
                 Transparency = BaseMaterial3D.TransparencyEnum.Alpha,
             },
         };
