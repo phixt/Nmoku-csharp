@@ -137,7 +137,7 @@ public static class SaveArchive
             return trimmed;
         }
 
-        byte[] raw = DecodeBase64(trimmed) ?? DecodeLatin1Bytes(trimmed);
+        byte[]? raw = DecodeBase64(trimmed) ?? DecodeLatin1Bytes(trimmed);
         if (raw == null)
         {
             return null;
