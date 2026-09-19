@@ -62,6 +62,26 @@
   原生像素。启动日志新增 `display:` 行（window/screen/dpi/canvasScale/3D 视口）用于诊断 DPI 感知是否生效；
   若 window 为逻辑像素，须检查 exe 的 Windows 兼容性 DPI 设置（[Godot 论坛同款问题](https://forum.godotengine.org)）。
 
+## M4 第二轮 — 明暗主题/字体/关卡/文件存档（2026-09-19，代码完结）
+
+- **Palette 明暗双套**：`Dark`（既有基线）/`Light`（水绿宣纸：宣纸底、墨色字、水绿强调）；`Active` 运行时
+  当前套，`WithColorblind()` 色弱组随明暗各自校准（V 与 T 正交组合）；Ghost 透明度明暗反转
+  （浅底黑子低透/白子高透）。T 键→`GameStore.ToggleTheme`→EventBus→Main.ApplyTheme：3D 环境换肤 +
+  已挂载壳屏经 `SceneRouter.Rebuild` 重建（game 基座除外，视图走 ApplyPalette 通道）。
+  **SaveData.isDarkTheme 随档恢复**（LoadSlot/EnterReplay 时应用）。
+- **霞鹜文楷全局字体**：`assets/fonts/`（OFL 许可随附），根窗口 Theme 默认字体全体控件生效。
+- **关卡系统**：Core `LevelCatalog` 三预设（classic/tutorial 占位/residual 三预置子占位，重设计仍挂账）；
+  `GameManager.Configure(LevelConfig,…)` 随档装配 **WinLength 与预置子**（预置子落盘后引擎重推导回合/
+  决策期，与 LoadFrom 同口径）；标题屏"自定义对局"→ `SandboxPanel`（预设/尺寸奇数≥5/层数/连珠 4–9/
+  规则/模式/AI 难度表单，非法组合 toast）；命令行参数并入同一装配路径。
+- **.nzsave 文件级导入导出**：存档菜单新增"导入文件"与逐槽"文件"按钮，Godot FileDialog 选路径；
+  导出为 zip 容器字节，导入优先 `NzSaveContainer.TryUnpack` 直解、回退文本嗅探；无头自测覆盖文件往返。
+- **限制（登记）**：v2.0.0 schema 无 winLength 字段（§4 不增删），自定义连珠数存档读回后回默认 5——
+  后续走 .nzsave manifest 外圈元数据扩展（migration-plan §4 允许）。
+- **待人类验收**：T 明暗切换观感（水绿宣纸 light 为首发目视版）、文楷字体、自定义对局面板、
+  文件导入导出、残局/教学占位关。**剩余 M4 尾项**：真实浏览器样本闭环 R6（需跑源项目）、§6.3-6.5
+  清单核对、真实旧档恢复、验收 tag `m4`。
+
 ## M4R 修复批 3 — 切窗音频报错与远景锯齿（2026-09-19）
 
 - **WASAPI GetBufferSize/invalidated 报错（切窗口时）**：引擎驱动层已知行为——WASAPI 共享模式下默认

@@ -2,22 +2,19 @@
 
 > 维护规则见 `AGENTS.md`：本文件按"当前→近期→远期挂账"三层组织，收工必更新；总量 ≤300 行，已完成的尽快移入 CHANGELOG/git log，不丢当阶段关键教训。
 
-## 当前（M4 第二轮——建议新对话执行）
+## 当前（M4 收尾轮——建议新对话执行）
 
-M4 第一轮壳全通 + **M4R 路由重构**完结（2026-09-19：SceneRouter 三层栈/KeepAlive 保留现场/dim+blur
-背板/首中即吞输入/KeymapTable 单一数据源+F1 帮助屏；251 测试全绿，无头自测 ALL PASS）。
-**第二轮开工必读**：本文件全文 + CHANGELOG「M4R」「M4 第一轮」节 + `docs/keymap.md` + 04-contracts §4/§6.3-6.5。
+M4 第二轮完结（2026-09-19：Palette 明暗+文楷字体/关卡系统/.nzsave 文件导入导出/Guide 刷新；
+256 测试全绿，无头自测 ALL PASS）。**收尾轮开工必读**：本文件全文 + CHANGELOG「M4 第二轮」节
++ `docs/keymap.md`。
 
-- [ ] **待人类**：M4R 修复批复查——存档浮层取消/Esc 路径、暂停/结算模糊背板、Q/E 连按不抽搐（已加 0.2s
-      冷却）、2D 高光是否仍溢出、1080p/高分屏清晰度（显示配置首次设置，需真实窗口确认）
-- [ ] M4：Palette 明暗系统——`T` 键切换（SaveData.isDarkTheme 已随档存取）、水绿宣纸 light 套色
-      （GhostBlack/White 等透明度数值反转）、霞鹜文楷 TTF Godot 导入并应用到壳 UI（assets-src 已有字体文件）
-- [ ] M4：关卡系统——LevelConfig 数据驱动（tutorial/residual 为占位符需重设计）+ 沙盒自定义面板
-      （尺寸奇数≥5、层数、连珠 4–9；GameManager.Configure 需接 WinLength）+ `--rules/--board` 并入关卡选择
-- [ ] M4：`.nzsave` 文件级导入导出（FileDialog 存/取；容器与嗅探 Core 已就绪，现仅剪贴板路径）
-- [ ] M4：Guide 内容深化（现为静态占位文案）；偶数阶中心标注方案如涉及引导一并处理（低优先级）
-- [ ] M4：真实浏览器导出 Base64 样本入 Fixtures，闭环 R6（见 Fixtures/README.md 尾注；需跑源项目 `npm run dev`）
+- [ ] **待人类**：M4 第二轮走查——T 明暗观感（水绿宣纸 light 首发）、文楷字体、自定义对局面板
+      （连珠 4–9 / 残局预置子 / SWAP2）、文件导入导出、F1 帮助
+- [ ] M4：真实浏览器导出 Base64 样本入 Fixtures，闭环 R6（需跑源项目 `npm run dev` + 浏览器导出）
+- [ ] M4：winLength 存档缺口——v2.0.0 schema 无字段，自定义连珠读档回默认 5；走 .nzsave manifest
+      外圈元数据扩展（migration-plan §4 允许），与真实样本闭环同轮处理
 - [ ] M4 验收轮：04-contracts §6.3/6.4/6.5 逐条核对 + 真实 v2.0.0 旧档恢复棋局 + 人类全流程验收 → tag `m4`
+- [ ] M4 挂账：tutorial/residual 关卡占位重设计；偶数阶中心标注（低优先级）
 
 ## 近期（M4 之后与 M5 预备）
 
