@@ -5,9 +5,33 @@
 
 ## 当前状态（2026-09-19）
 
-- **里程碑**：M0–M3 ✅（tag `m0`–`m3`）；M4 🚧 第一轮「游戏壳全通」代码完结（2026-09-19，见下节），剩 Palette 明暗/关卡/字体/验收轮。
-- **质量门禁**：`dotnet test` 232 例全绿；全解决方案 build 0 警告；无头自测 AUTOTEST ALL PASS（M3 对局闭环 + M4 状态机/存档/复盘段已挂 CI 同款冒烟）。
-- **架构红线**：`src/Nmoku.Core` 零 Godot 依赖，纯 C#（net8.0），xUnit 秒级运行。
+- **里程碑**：M0–M3 ✅（tag `m0`–`m3`）；M4 🚧 第一轮壳全通 + **M4R 路由重构**（人类验收反馈返工，见下节）；剩 Palette 明暗/关卡/字体/验收轮。
+- **质量门禁**：`dotnet test` 251 例全绿；build 0 警告；无头自测 AUTOTEST ALL PASS（M3 对局 + M4 状态机/存档/复盘 + M4R 路由/输入回归）。
+- **架构红线**：`src/Nmoku.Core` 零 Godot 依赖（KeymapTable/GameStateMachine 均在 Core），xUnit 秒级运行。
+
+## M4R — 路由重构（2026-09-19，人类验收反馈返工）
+
+- **人类反馈三问题与根因**：①ESC 无响应——`HandleHeldInput` 顺序求值无 early-return，
+  对局中按 ESC 同帧命中 `pause`（切 Paused）后 `resume`（同为 Esc）同帧 `IsActionJustPressed` 仍真 → 切回
+  Playing，净效果为零；②R 一键弹暂停菜单+重启确认框——同根因（pause 后同帧 restart）；③标题屏能看见棋盘——
+  TitleScreen 背景 ColorRect 漏设 FullRect 实为 0×0，且无任何背板/模糊体系。
+- **修复与重构（参照 motion-cube 的 vue-router 模式）**：
+  - **首中即吞**（§4.2.4）：单次动作表顺序求值，命中即 return，每帧至多一个——同键跨态双触发根除；
+    `SimulateActionPress` 让 autotest 与真实输入共用同一分发路径（m4r-* 回归步）。
+  - **`SceneRouter` 三层路由栈**（状态机不动，只做视图投影）：L0 基座/L1 模态/L2 浮层三个 CanvasLayer
+    (0/10/20)，对话框层 30；`StackFor(GameState)` 唯一映射点取代散落的可见性硬编码；栈差分挂载/卸载；
+    **KeepAlive 基座常驻树内仅切可见性**（game 保留现场=人类拍板；首次 Apply 全部 KeepAlive 入树的坑：
+    只挂 target 会导致 game 从未 _Ready、_board2D 为 null，自测暴露）。
+  - **背板体系**：每路由声明 None/Dim/Blur/Opaque；Blur 为 screen-texture 九点高斯 shader（单节点
+    blur+dim）；各屏内部自带的背板节点全部移除（含 TitleScreen/GuideScreen 的 0×0 隐患）。
+  - **保留现场语义**：标题新增"继续对局"（不重置直达 Playing）；"开始游戏"遇进行中保留局先确认覆盖；
+    GuideFromTitle 的 Start 同走该确认。
+  - **浮层冒泡**：浮层打开只响应 AllowWhenOverlay 键（F1/Esc），Esc 关最顶浮层；引导态 Esc 按 §3.4 两行
+    语义（标题入口=返回/对局入口=回对局）。
+  - **`KeymapTable` 快捷键单一数据源**（Core）：门控/游戏内 F1 `KeymapScreen`/docs `keymap.md` 三处同源；
+    双作用域（状态/浮层）主键冲突检测 + "每个 InputMap action 必须登记"用例兜底漂移。
+- **待人类验收**：真实窗口走查 ESC/R 单击单义、每条路由进出视觉（暂停/结算应有模糊背板）、
+  标题→对局→标题→继续对局现场保留、F1 帮助屏、存档菜单浮层。
 
 ## M4 第一轮 — 游戏壳全通（2026-09-19，代码完结，M4 第二轮转新对话）
 

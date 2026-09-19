@@ -4,10 +4,12 @@
 
 ## 当前（M4 第二轮——建议新对话执行）
 
-M4 第一轮「游戏壳全通」已完结（2026-09-19：7 态状态机/Overlay/存档链路/壳屏六件/复盘闭环；232 测试全绿，
-无头自测 ALL PASS）。**第二轮开工必读**：本文件全文 + CHANGELOG「M4 第一轮」节 + migration-plan §3.4
-+ 04-contracts §4/§6.3-6.5。
+M4 第一轮壳全通 + **M4R 路由重构**完结（2026-09-19：SceneRouter 三层栈/KeepAlive 保留现场/dim+blur
+背板/首中即吞输入/KeymapTable 单一数据源+F1 帮助屏；251 测试全绿，无头自测 ALL PASS）。
+**第二轮开工必读**：本文件全文 + CHANGELOG「M4R」「M4 第一轮」节 + `docs/keymap.md` + 04-contracts §4/§6.3-6.5。
 
+- [ ] **待人类**：M4R 真实窗口走查——ESC/R 单击单义、暂停/结算模糊背板、路由进出视觉、
+      继续对局保留现场、F1 帮助屏、存档菜单浮层（无头不渲染，布局类问题须真实窗口确认——M3 教训）
 - [ ] M4：Palette 明暗系统——`T` 键切换（SaveData.isDarkTheme 已随档存取）、水绿宣纸 light 套色
       （GhostBlack/White 等透明度数值反转）、霞鹜文楷 TTF Godot 导入并应用到壳 UI（assets-src 已有字体文件）
 - [ ] M4：关卡系统——LevelConfig 数据驱动（tutorial/residual 为占位符需重设计）+ 沙盒自定义面板
@@ -15,9 +17,7 @@ M4 第一轮「游戏壳全通」已完结（2026-09-19：7 态状态机/Overlay
 - [ ] M4：`.nzsave` 文件级导入导出（FileDialog 存/取；容器与嗅探 Core 已就绪，现仅剪贴板路径）
 - [ ] M4：Guide 内容深化（现为静态占位文案）；偶数阶中心标注方案如涉及引导一并处理（低优先级）
 - [ ] M4：真实浏览器导出 Base64 样本入 Fixtures，闭环 R6（见 Fixtures/README.md 尾注；需跑源项目 `npm run dev`）
-- [ ] M4 验收轮：04-contracts §6.3/6.4/6.5 逐条核对（storage/overlay/shortcut 契约清单）+ 真实 v2.0.0 旧档恢复棋局
-      + 人类全流程验收（七态走查/快存读档/导出导入/复盘）→ tag `m4`
-- [ ] 待人类：M4 第一轮的视觉走查（无头不渲染，壳屏布局需真实窗口确认；本轮仅保证功能与键盘路径正确）
+- [ ] M4 验收轮：04-contracts §6.3/6.4/6.5 逐条核对 + 真实 v2.0.0 旧档恢复棋局 + 人类全流程验收 → tag `m4`
 
 ## 近期（M4 之后与 M5 预备）
 
