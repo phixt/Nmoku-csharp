@@ -33,39 +33,26 @@ public sealed partial class Board2DView : Control
     private Vector2 _origin;       // 格 (0,0) 的屏幕中心（含镜像）
     private float _scale = 20f;    // px/格
 
-    // 棋子径向渐变纹理（源 createPieceTexture；颜色从 Palette 派生，换调色板时重新生成）
-    private GradientTexture2D? _texBlack;
-    private GradientTexture2D? _texWhite;
-    private Palette? _texPalette;
+    // 高光光斑纹理（白色径向渐变到全透明——末档 alpha=0，四角不会出现方形色块）
+    private GradientTexture2D? _glowTex;
 
-    private void EnsureTextures()
+    private void EnsureGlowTexture()
     {
-        if (_texBlack != null && _texWhite != null && _texPalette == Palette)
+        if (_glowTex != null)
         {
             return;
         }
-        _texBlack = BuildStoneTexture(Palette.StoneBlack, isBlack: true);
-        _texWhite = BuildStoneTexture(Palette.StoneWhite, isBlack: false);
-        _texPalette = Palette;
-    }
-
-    /// <summary>径向渐变棋子纹理：高光偏左上 → 中间 → 边缘（源渐变形状，色值由 Palette 派生）。</summary>
-    private static GradientTexture2D BuildStoneTexture(Color baseColor, bool isBlack)
-    {
-        var hi = baseColor.Lightened(isBlack ? 0.35f : 0.12f);
-        var mid = isBlack ? baseColor.Darkened(0.55f) : baseColor.Darkened(0.15f);
-        var edge = isBlack ? Colors.Black : baseColor.Darkened(0.38f);
         var gradient = new Gradient
         {
-            Colors = [hi, mid, edge],
-            Offsets = [0f, 0.5f, 1f],
+            Colors = [new Color(1, 1, 1, 0.9f), new Color(1, 1, 1, 0f)],
+            Offsets = [0f, 1f],
         };
-        return new GradientTexture2D
+        _glowTex = new GradientTexture2D
         {
             Gradient = gradient,
             Fill = GradientTexture2D.FillEnum.Radial,
-            FillFrom = new Vector2(0.35f, 0.35f),
-            FillTo = new Vector2(1f, 1f),
+            FillFrom = new Vector2(0.5f, 0.5f),
+            FillTo = new Vector2(1f, 0.5f),
             Width = 64,
             Height = 64,
         };
@@ -175,13 +162,25 @@ public sealed partial class Board2DView : Control
 
     private void DrawStone(Vector2 pos, CellState state, float alpha)
     {
-        EnsureTextures();
-        var tex = state == CellState.Black ? _texBlack : _texWhite;
-        var diameter = StoneRadius * 2f * _scale;
-        var rect = new Rect2(pos - new Vector2(diameter / 2f, diameter / 2f), new Vector2(diameter, diameter));
-        DrawTextureRect(tex, rect, tile: false, modulate: new Color(1, 1, 1, alpha));
-        var baseColor = state == CellState.Black ? Palette.StoneBlack : Palette.StoneWhite;
-        var outline = new Color(baseColor.R, baseColor.G, baseColor.B, MathF.Min(1f, alpha + 0.2f));
+        // 三层绘制（源 canvas 质感）：体色圆 + 左上高光光斑 + 描边。
+        // 不用整张径向纹理直接铺方形——高光偏心时渐变边缘色会涂满四角（"奇怪方框"根因）。
+        bool isBlack = state == CellState.Black;
+        var baseColor = isBlack ? Palette.StoneBlack : Palette.StoneWhite;
+        var body = isBlack ? baseColor.Darkened(0.55f) : baseColor.Darkened(0.25f);
+        DrawCircle(pos, StoneRadius * _scale, new Color(body.R, body.G, body.B, alpha),
+            filled: true, width: -1f, antialiased: true);
+
+        EnsureGlowTexture();
+        var glowStrength = (isBlack ? 0.35f : 0.55f) * alpha;
+        float glowDiameter = StoneRadius * 1.1f * _scale;
+        var glowCenter = pos + new Vector2(-0.28f, -0.28f) * _scale;
+        var glowRect = new Rect2(glowCenter - new Vector2(glowDiameter / 2f, glowDiameter / 2f),
+            new Vector2(glowDiameter, glowDiameter));
+        DrawTextureRect(_glowTex, glowRect, tile: false, modulate: new Color(1, 1, 1, glowStrength));
+
+        var outline = isBlack
+            ? new Color(0.07f, 0.07f, 0.08f, alpha)
+            : new Color(baseColor.R, baseColor.G, baseColor.B, MathF.Min(1f, alpha + 0.2f));
         DrawArc(pos, StoneRadius * _scale, 0, MathF.Tau, 40, outline, 1.5f, true);
     }
 
