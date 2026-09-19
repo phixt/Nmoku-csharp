@@ -253,6 +253,7 @@ Godot 项目文件（`project.godot`、场景、资产）与 csproj 同置于 `s
 | B4 | AI `attack + 1.1*defense` 的次序副作用 | 严格按文档表实现：当 AI 的成五点与对方的成五点**不在同一格**时，AI 会优先堵而不自己胜（defense 1.1e6 > attack 1e6）。源项目同式，保持忠实，M3 接线后如体感过弱再议 | 02-rules §4.4 |
 | B5 | PatternCollector 的 maxLen=4 | 4 格是**展示端**限制（README 性能约束），不是数据端裁剪。Core `Collect(board, layerZ)` 输出完整模式；渲染器用 `GameConfig.HelperLineMaxCells` 截断，保证"一份数据、两个渲染器" | README 特性节 + 02-rules §5.2 |
 | B6 | AI 等分候选的平局策略 | C# 在最高分等分池中按种子随机取一（可复现）；TS 取首个最高分（先到先得，`AIEngine.ts:104-107`）。两实现的候选枚举顺序本就不同，逐位对齐无意义，登记差异备查 | `AIEngine.ts` vs `AIEngine.GetScoredMove` |
+| B7 | 相机：文档 §9 管道 vs 源 `LeftPanel.ts` 实测差异 | **以文档为准**。源实测：① 对角线只算 w²+h²（缺第二个水平轴项，默认盘 targetDiag 21.22 vs 文档 24.38，距离差 ~15%）；② 距离只用垂直 FOV（无 min(fovV,fovH)，横屏 aspect≥1 时两者等价）；③ `rotateY`/`zoom` 的 lookAt 中心 Y/Z 互换（源 bug，文档 §2.4 为正确中心）；④ 缩放兜底路径直接调 fov（15–60 clamp）且锚点路径 minDist 硬编码 5.0、无上限；⑤ 棋子为 focusZ 离散透明双材质，文档 §8.2 连续 opacity 是重设计目标。M2 标定对照时按此解释构图差异 | `LeftPanel.ts:305-437` |
 
 ## 11. M1 交付清单（2026-09-18）
 
