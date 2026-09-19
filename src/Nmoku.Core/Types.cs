@@ -26,7 +26,11 @@ public static class PlayerColorExtensions
 }
 
 /// <summary>棋盘三维逻辑坐标（00-domain §2.1）：x=列，y=行，z=层。</summary>
-public readonly record struct Coordinate3D(int X, int Y, int Z);
+public readonly record struct Coordinate3D(int X, int Y, int Z)
+{
+    public static Coordinate3D operator +(Coordinate3D a, Coordinate3D b) => new(a.X + b.X, a.Y + b.Y, a.Z + b.Z);
+    public static Coordinate3D operator *(Coordinate3D a, int k) => new(a.X * k, a.Y * k, a.Z * k);
+}
 
 /// <summary>
 /// 一手落子（01-core §2.1）。不可变为其默认语义，唯一允许的原地变更是
