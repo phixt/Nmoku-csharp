@@ -447,6 +447,7 @@ public partial class Main : Node
         _board3D.Rebuild(_gm.Board, _gm.FocusZ, aux);
         _board3D.SetGridFocus(_gm.FocusZ);
         _board3D.SetAuxData(aux);
+        _board3D.SetLastMove(_gm.History.Count > 0 ? _gm.History[^1].Coordinate : null);
         _board2D.QueueRedraw();
         UpdateStatus();
         if (!_gm.SwapPending)

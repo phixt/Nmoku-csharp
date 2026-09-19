@@ -33,6 +33,44 @@ public sealed partial class Board2DView : Control
     private Vector2 _origin;       // 格 (0,0) 的屏幕中心（含镜像）
     private float _scale = 20f;    // px/格
 
+    // 棋子径向渐变纹理（源 createPieceTexture；颜色从 Palette 派生，换调色板时重新生成）
+    private GradientTexture2D? _texBlack;
+    private GradientTexture2D? _texWhite;
+    private Palette? _texPalette;
+
+    private void EnsureTextures()
+    {
+        if (_texBlack != null && _texWhite != null && _texPalette == Palette)
+        {
+            return;
+        }
+        _texBlack = BuildStoneTexture(Palette.StoneBlack, isBlack: true);
+        _texWhite = BuildStoneTexture(Palette.StoneWhite, isBlack: false);
+        _texPalette = Palette;
+    }
+
+    /// <summary>径向渐变棋子纹理：高光偏左上 → 中间 → 边缘（源渐变形状，色值由 Palette 派生）。</summary>
+    private static GradientTexture2D BuildStoneTexture(Color baseColor, bool isBlack)
+    {
+        var hi = baseColor.Lightened(isBlack ? 0.35f : 0.12f);
+        var mid = isBlack ? baseColor.Darkened(0.55f) : baseColor.Darkened(0.15f);
+        var edge = isBlack ? Colors.Black : baseColor.Darkened(0.38f);
+        var gradient = new Gradient
+        {
+            Colors = [hi, mid, edge],
+            Offsets = [0f, 0.5f, 1f],
+        };
+        return new GradientTexture2D
+        {
+            Gradient = gradient,
+            Fill = GradientTexture2D.FillEnum.Radial,
+            FillFrom = new Vector2(0.35f, 0.35f),
+            FillTo = new Vector2(1f, 1f),
+            Width = 64,
+            Height = 64,
+        };
+    }
+
     public override void _Ready()
     {
         MouseFilter = MouseFilterEnum.Stop;
@@ -137,10 +175,13 @@ public sealed partial class Board2DView : Control
 
     private void DrawStone(Vector2 pos, CellState state, float alpha)
     {
+        EnsureTextures();
+        var tex = state == CellState.Black ? _texBlack : _texWhite;
+        var diameter = StoneRadius * 2f * _scale;
+        var rect = new Rect2(pos - new Vector2(diameter / 2f, diameter / 2f), new Vector2(diameter, diameter));
+        DrawTextureRect(tex, rect, tile: false, modulate: new Color(1, 1, 1, alpha));
         var baseColor = state == CellState.Black ? Palette.StoneBlack : Palette.StoneWhite;
-        var fill = new Color(baseColor.R, baseColor.G, baseColor.B, alpha);
         var outline = new Color(baseColor.R, baseColor.G, baseColor.B, MathF.Min(1f, alpha + 0.2f));
-        DrawCircle(pos, StoneRadius * _scale, fill, filled: true, width: -1f, antialiased: true);
         DrawArc(pos, StoneRadius * _scale, 0, MathF.Tau, 40, outline, 1.5f, true);
     }
 

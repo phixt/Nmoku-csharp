@@ -2,28 +2,30 @@
 
 > 维护规则见 `AGENTS.md`：本文件按"当前→近期→远期挂账"三层组织，收工必更新；总量 ≤300 行，已完成的尽快移入 CHANGELOG/git log，不丢当阶段关键教训。
 
-## 当前（M3 收尾：人类验收）
+## 当前（M4 开工就绪——建议新对话执行）
 
-- [x] M3-1：Core AuxScan 悬停扫描 + 测试（186 绿）
-- [x] M3-2：GameManager（回合/胜负/判和/悔棋/SWAP2 双分支/AI 应答）
-- [x] M3-3：Palette 辅助线配色扩展 + Board2DView 自绘（星位/悬停/最后手环/镜像）
-- [x] M3-4：分屏（SubViewport）接线、3D 焦点层显隐、3D 蓝点/辅助线联动、游戏键位
-- [x] M3-5：无头对局自测 ALL PASS 并挂入 CI 冒烟
-- [ ] **M3 人类验收**：双人对局全流程（落子/换层/辅助线/H/V/F/Ctrl+Z）、SWAP2 两条路径（`-- --rules=swap2`）、
-      PvE（`-- --mode=pve --ai=hard`）；与源项目对照辅助线颜色/开关/镜像（§10.5）；验收后 tag `m3`
-- [ ] M4 前：TODO「近期」剩余项按里程碑推进
-- [ ] M3：GameManager 接线（回合/合法性/胜负/判和）+ 2D 自绘面板 + 辅助线双渲染器 + 快捷键门控；**棋子/辅助线与棋盘紧密联动**（人类强调 2026-09-19）
-- [ ] M3：A/D 换层与焦点层显隐联动——焦点层棋子实体+面高亮、其余层 ghost（逐层透明度基础设施已就位），3D/2D 共享焦点态（人类反馈 2026-09-19，此前未单列）
-- [ ] M3：**天元/地元星位点**（2D 面板用）：位置一律由 boardSize 公式推导——中心 `(size-1)/2`、四角为三界点，禁止硬编码（3D 连接立柱已按此实现，人类指示 2026-09-19）
-- [ ] M3 后（低优先级）：**偶数阶中心标注方案待定**——偶数阶无单一格心，或省略天元、或改双格/十字标注，人类拍板后再做（人类指示 2026-09-19）
-- [ ] M3 后：辅助线/焦点层等所有配色从 `Game/Theme/Palette.cs` 语义字段取用（M2 已奠基），M3 增 LineOwn/LineOpp + 色弱组，M4 资源化
-- [ ] M3：恢复滚轮 zoom-to-anchor——锚点改为射线拾取的格/子（M2 无限地面锚点版有远锚点大步进与 pitch 钳制瞬移，已回退为径向缩放）
-- [ ] **AI 难度梯度可视化校验**（人类验收工具）：以可理解的方式呈现 Easy/Medium/Hard 的实力差距，
-      理想形态为不同难度 AI 互弈的批量对局 + 胜率/评分曲线。可能需要改 Core 的 AI 对局驱动与统计接口，
-      底层改动成本随 M2/M3 接线递增，**尽量在 M3 GameManager 接线前定夺接口形状**（本轮仅挂账，不动手）
-- [ ] M3 后：复核 B4——AI"堵优先于胜"的体感，必要时人类拍板是否偏离文档式
+M3 已完结（代码 + 无头自测全绿，2026-09-19；**tag `m3` 待人类确认后补打**）。
+**M4 开工必读**：本文件全文 + CHANGELOG「M1.5/M2/M3」节 + migration-plan §10.5（R4 行为清单与 D1–D4 决策）+ §10 B7–B9 + §3.4。
+
+- [ ] M4：7 态状态机 + 全转移表（01-core §3/§3.4），非法转移拒绝；现 GameManager 逻辑并入 GameStore
+- [ ] M4：OverlayManager（04-contracts §4.1 契约：确认框/输入框/toast/Esc、回调恰好一次）——替换 M3 的 SWAP2 ConfirmationDialog 占位与状态栏 Label
+- [ ] M4：FileSystemStorageAdapter(user://) + SaveManager 槽位接线（Core 门面已就绪）+ `.nzsave` zip 容器 + Base64 导入导出（DisplayServer 剪贴板）
 - [ ] M4：真实浏览器导出 Base64 样本入 Fixtures，闭环 R6（见 Fixtures/README.md 尾注）
-- [ ] M4：.nzsave zip 容器 + user:// FileSystemStorageAdapter + 剪贴板互通验证
+- [ ] M4：复盘 REPLAY（←/→ 步进出/入 + 进度条；InputMap 已有 replay_prev/next/exit_replay）
+- [ ] M4：Palette 资源化 + 明暗切换（T 键事件已挂；明暗数值反转 GhostBlack/White 等字段）+ 霞鹜文楷 TTF 导入
+- [ ] M4：关卡系统（LevelConfig 数据驱动 + `--rules/--board` 命令行并入关卡选择；tutorial/residual 视为占位符重设计）
+- [ ] M4 验收：04-contracts §6.3/6.4/6.5 全勾；真实 v2.0.0 旧档恢复棋局；验收后 tag `m4`
+- [ ] 待人类：M3 tag `m3` 确认补打；偶数阶中心标注方案（低优先级）；AI 难度梯度可视化接口形状（M4 期间定夺，见近期）
+
+## 近期（M4 期间与 M5 预备）
+
+- [ ] **AI 难度梯度可视化校验**（人类验收工具）：以可理解的方式呈现 Easy/Medium/Hard 的实力差距，
+      理想形态为不同难度 AI 互弈的批量对局 + 胜率/评分曲线。Core 的 AI 对局驱动与统计接口形状**需人类定夺**（挂账至今）
+- [ ] M3 后：复核 B4——AI"堵优先于胜"的体感，必要时人类拍板是否偏离文档式
+- [ ] M4 后：恢复滚轮 zoom-to-anchor——锚点改为射线拾取的格/子（M2 无限地面锚点版有远锚点大步进与
+      pitch 钳制瞬移，已回退为径向缩放；B9 首子即停后拾取锚点与辅助线标记可共用）
+- [ ] M5：AudioManager + 采样版 BGM（4 轨循环）+ SFX 全集 + M 静音（action 已挂）+ `IMusicEngine`/`SetIntensity` 接口就位
+- [ ] M5：TextConstants → CSV 四语言 + 语言切换；导出配置、Windows 打包 zip、README 收尾
 
 ## 远期挂账
 

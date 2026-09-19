@@ -27,6 +27,7 @@ public sealed partial class Board3DView : Node3D
     private readonly List<StandardMaterial3D> _gridLayerMats = new();
     private MultiMeshInstance3D _connectors = null!;
     private MeshInstance3D _hover = null!;
+    private MeshInstance3D _lastMoveRing = null!;
     private Node3D _auxRoot = null!;
 
     // 材质引用（ApplyPalette 原地换色，避免整棵重建）
@@ -38,6 +39,7 @@ public sealed partial class Board3DView : Node3D
     private StandardMaterial3D _fadedWhiteMat = null!;
     private StandardMaterial3D _connectorMat = null!;
     private StandardMaterial3D _hoverMat = null!;
+    private StandardMaterial3D _lastMoveRingMat = null!;
 
     private int _boardSize;
     private int _layers;
@@ -72,6 +74,8 @@ public sealed partial class Board3DView : Node3D
 
         _hover = BuildHover();
         AddChild(_hover);
+        _lastMoveRing = BuildLastMoveRing();
+        AddChild(_lastMoveRing);
         _auxRoot = new Node3D { Name = "aux" };
         AddChild(_auxRoot);
     }
@@ -88,6 +92,7 @@ public sealed partial class Board3DView : Node3D
         _fadedWhiteMat.AlbedoColor = WithAlpha(theme.StoneWhite, theme.GhostWhite);
         _connectorMat.AlbedoColor = theme.ConnectorLine;
         _hoverMat.AlbedoColor = theme.HoverHighlight;
+        _lastMoveRingMat.AlbedoColor = theme.LastMoveRing;
     }
 
     private static Color WithAlpha(Color c, float alpha) => new(c.R, c.G, c.B, alpha);
@@ -211,6 +216,69 @@ public sealed partial class Board3DView : Node3D
         {
             _hover.Visible = false;
         }
+    }
+
+    /// <summary>
+    /// 最后手标记（源 LeftPanel lastMoveRing：红环 0.45–0.55、色弱换黄、压顶渲染）：
+    /// 公告板圆环始终面朝摄像机、套在棋子中心，与蓝色悬停球/辅助线小点在形状上区分。
+    /// </summary>
+    public void SetLastMove(Coordinate3D? cell)
+    {
+        if (cell is { } c)
+        {
+            var world = CoordMapper.LogicalToWorld(c.X, c.Y, c.Z, _spacing);
+            _lastMoveRing.Position = new Vector3((float)world.X, (float)world.Y, (float)world.Z);
+            _lastMoveRing.Visible = true;
+        }
+        else
+        {
+            _lastMoveRing.Visible = false;
+        }
+    }
+
+    /// <summary>径向渐变圆环纹理（白色环带，颜色由 AlbedoColor 着色）。</summary>
+    private static GradientTexture2D BuildRingTexture()
+    {
+        var gradient = new Gradient
+        {
+            Colors = new[]
+            {
+                new Color(1, 1, 1, 0), new Color(1, 1, 1, 0),
+                new Color(1, 1, 1, 1), new Color(1, 1, 1, 0),
+            },
+            Offsets = new[] { 0f, 0.78f, 0.88f, 1f },
+        };
+        return new GradientTexture2D
+        {
+            Gradient = gradient,
+            Fill = GradientTexture2D.FillEnum.Radial,
+            FillFrom = new Vector2(0.5f, 0.5f),
+            FillTo = new Vector2(1f, 0.5f),
+            Width = 128,
+            Height = 128,
+        };
+    }
+
+    /// <summary>最后手环：公告板四边形 + 圆环纹理，无深度测试压顶（源 renderOrder 998 语义）。</summary>
+    private MeshInstance3D BuildLastMoveRing()
+    {
+        _lastMoveRingMat = new StandardMaterial3D
+        {
+            ShadingMode = BaseMaterial3D.ShadingModeEnum.Unshaded,
+            AlbedoColor = Theme.LastMoveRing,
+            AlbedoTexture = BuildRingTexture(),
+            Transparency = BaseMaterial3D.TransparencyEnum.Alpha,
+            BillboardMode = BaseMaterial3D.BillboardModeEnum.Enabled,
+            NoDepthTest = true,
+            RenderPriority = 10,
+        };
+        return new MeshInstance3D
+        {
+            Name = "last_move_ring",
+            Mesh = new QuadMesh { Size = new Vector2(1.15f, 1.15f), Material = _lastMoveRingMat },
+            Visible = false,
+            CastShadow = GeometryInstance3D.ShadowCastingSetting.Off,
+        };
     }
 
     /// <summary>
