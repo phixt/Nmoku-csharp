@@ -23,9 +23,13 @@ public sealed class Palette
         LineEnemy = new Color(1f, 0f, 0f),       // 0xFF0000
         StarPoint = new Color(0.8f, 0f, 0f),     // 0xCC0000
         LastMoveRing = new Color(1f, 0f, 0f),    // 0xFF0000
+        GhostBlack = 0.30f,                      // 非焦点未被标记：暗背景黑子需更高才可辨（人类反馈 2026-09-19）
+        GhostWhite = 0.14f,
+        GhostMarkedBlack = 0.70f,                // 辅助线标记到的子：强化显示
+        GhostMarkedWhite = 0.50f,
     };
 
-    /// <summary>色弱组（V 键切换）：辅助线红绿 → 黄蓝（§10.5 R4-6），星位红→蓝，最后手环红→黄。</summary>
+    /// <summary>色弱组（V 键切换）：辅助线红绿 → 黄蓝（§10.5 R4-6），星位红→蓝，最后手环红→黄。棋子透明度同组。</summary>
     public static readonly Palette Colorblind = new()
     {
         Background = Default.Background,
@@ -39,6 +43,10 @@ public sealed class Palette
         LineEnemy = new Color(1f, 0.8f, 0f),     // 0xFFCC00
         StarPoint = new Color(0f, 0.533f, 1f),
         LastMoveRing = new Color(1f, 0.8f, 0f),
+        GhostBlack = Default.GhostBlack,
+        GhostWhite = Default.GhostWhite,
+        GhostMarkedBlack = Default.GhostMarkedBlack,
+        GhostMarkedWhite = Default.GhostMarkedWhite,
     };
 
     public Color Background { get; init; }
@@ -52,4 +60,12 @@ public sealed class Palette
     public Color LineEnemy { get; init; }
     public Color StarPoint { get; init; }
     public Color LastMoveRing { get; init; }
+
+    /// <summary>非焦点且未被辅助线标记的黑/白棋子透明度（浅色主题接入时黑白数值反转）。</summary>
+    public float GhostBlack { get; init; }
+    public float GhostWhite { get; init; }
+
+    /// <summary>非焦点但被辅助线标记到的黑/白棋子透明度（强化显示）。</summary>
+    public float GhostMarkedBlack { get; init; }
+    public float GhostMarkedWhite { get; init; }
 }

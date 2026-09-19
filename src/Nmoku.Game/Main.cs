@@ -406,9 +406,8 @@ public partial class Main : Node
     private void OnSpacingChanged()
     {
         _board3D.Configure(_boardSize, _layers, _spacing);
-        _board3D.Rebuild(_gm.Board, _gm.FocusZ);
         _rig.Update(_boardSize, _layers, _spacing, ViewportAspect(), GameConfig.DefaultYaw);
-        RecomputeAux();
+        Refresh();
     }
 
     private void HandleViewportChange()
@@ -434,14 +433,17 @@ public partial class Main : Node
 
     // ---- GameManager 事件 → 视图联动 ----
 
+    /// <summary>统一刷新：调色板 → 棋子重建（含辅助线标记桶）→ 网格显隐 → 辅助线 → 状态栏。</summary>
     private void Refresh()
     {
         var palette = _gm.Colorblind ? Palette.Colorblind : Palette.Default;
         _board3D.ApplyPalette(palette);
         _board2D.Palette = palette;
-        _board3D.Rebuild(_gm.Board, _gm.FocusZ);
+        var aux = _gm.ComputeAux(_gm.Hover);
+        _board3D.Rebuild(_gm.Board, _gm.FocusZ, aux);
+        _board3D.SetGridFocus(_gm.FocusZ);
+        _board3D.SetAuxData(aux);
         _board2D.QueueRedraw();
-        RecomputeAux();
         UpdateStatus();
         if (!_gm.SwapPending)
         {
@@ -452,13 +454,7 @@ public partial class Main : Node
     private void OnHoverChanged(Coordinate3D? cell)
     {
         _board3D.SetHover(cell); // 3D 蓝点跟随 2D 悬停（R4-12）
-        RecomputeAux();
-        _board2D.QueueRedraw();
-    }
-
-    private void RecomputeAux()
-    {
-        _board3D.SetAuxData(_gm.ComputeAux(_gm.Hover));
+        Refresh();               // 标记桶随辅助线变化重建
     }
 
     private void ShowSwapDialog()
