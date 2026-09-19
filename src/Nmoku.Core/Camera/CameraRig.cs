@@ -152,13 +152,18 @@ public sealed class CameraRig
         _userPitched = false;
         _initialized = false;
         Update(boardSize, layers, layerSpacing, aspect, GameConfig.DefaultYaw);
+        // yaw 参考系就近归位：把 current 搬进 target 的 ±180° 邻域（等效角差整圈时归零，
+        // 避免 Reset 后线性追踪空转 N 整圈）；最短路径回家，之后 Advance 线性追踪（累积意图语义，M4R）
+        _current = _current with { Yaw = _target.Yaw + ShortestArc(_current.Yaw - _target.Yaw) };
     }
 
     /// <summary>指数阻尼逼近（帧率无关）：Game 每帧调用，返回平滑后的渲染态。</summary>
     public CameraState Advance(double dtSeconds)
     {
         double t = 1 - Math.Exp(-GameConfig.CameraSmoothRate * Math.Max(dtSeconds, 0));
-        double yaw = Step(_current.Yaw, _target.Yaw, ShortestArc(_target.Yaw - _current.Yaw) * t);
+        // yaw 线性追踪原始差值：Target 由 Orbit 无界累积，Current 连续跟随同一参考系，
+        // 差值恒等于"本次意图转角"。不可用最短弧——跨 ±180° 后方向翻转（Q/E 连续旋转抽搐根因）。
+        double yaw = Step(_current.Yaw, _target.Yaw, (_target.Yaw - _current.Yaw) * t);
         double pitch = Step(_current.Pitch, _target.Pitch, (_target.Pitch - _current.Pitch) * t);
         double distance = Step(_current.Distance, _target.Distance, (_target.Distance - _current.Distance) * t);
         double fov = Step(_current.Fov, _target.Fov, (_target.Fov - _current.Fov) * t);
@@ -209,6 +214,7 @@ public sealed class CameraRig
         return Math.Abs(to - from) <= Math.Abs(delta) + GameConfig.CameraEpsilon ? to : from + delta;
     }
 
+    /// <summary>仅 Reset 参考系归位使用（把 current 搬到 target 的 ±180° 邻域）；Advance 不做回绕。</summary>
     private static double ShortestArc(double deltaDeg)
     {
         deltaDeg %= 360;

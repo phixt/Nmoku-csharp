@@ -232,12 +232,29 @@ public class CameraRigTests
     }
 
     [Fact]
-    public void Advance_YawTakesShortestArc()
+    public void Advance_YawChasesAccumulatedIntent_NotShortestArc()
+    {
+        // M4R 行为变更：Orbit 的转角是累积意图，Advance 线性追踪原始差值。
+        // 旧"最短弧"语义在连续 ±90° 跨 ±180° 时方向翻转（Q/E 抽搐根因），弃用；
+        // 最短路径仅保留在 Reset（就近归位），见 Reset_YawReferenceFrameSnapsToNearestAngle。
+        var rig = NewRig();
+        rig.Orbit(305); // 目标 350：按字面意图 +305° 逼近（递增），不回绕抄近路
+        var current = rig.Advance(0.01);
+        Assert.True(current.Yaw > 45, "累积意图语义：应沿 +305° 方向（递增）逼近");
+    }
+
+    [Fact]
+    public void Reset_YawReferenceFrameSnapsToNearestAngle()
     {
         var rig = NewRig();
-        rig.Orbit(305); // 目标 350°：最短路径是 -55°（经 0° 回绕）
-        var current = rig.Advance(0.01);
-        Assert.True(current.Yaw < 45, "应向 350° 反方向（递减）逼近，而不是 +305°");
+        for (int i = 0; i < 20; i++)
+        {
+            rig.Orbit(-90);
+            rig.Advance(1.0 / 60);
+        }
+        Assert.True(Math.Abs(rig.Current.Yaw) > 360, "前置：参考系已远离初始角");
+        rig.Reset(13, 6, 3.5, Aspect);
+        Assert.InRange(rig.Current.Yaw - rig.Target.Yaw, -180, 180); // 就近归位，回家走最短路径
     }
 
     [Fact]
@@ -277,5 +294,29 @@ public class CameraRigTests
         var rig = NewRig();
         Assert.Equal(CameraMath.ComputeOpacity(0, 6, 3.5), rig.ComputeOpacity(0), 9);
         Assert.Equal(CameraMath.ComputeOpacity(8.75, 6, 3.5), rig.ComputeOpacity(8.75), 9);
+    }
+
+    // ---- yaw 连续累积追踪（M4R：Q/E 跨 ±180° 抽搐根因——Advance 不得用最短弧）----
+
+    [Fact]
+    public void Advance_YawAccumulationAcrossBoundary_ChaseNeverReverses()
+    {
+        var rig = NewRig();
+        for (int i = 0; i < 60; i++)
+        {
+            if (i % 3 == 0)
+            {
+                rig.Orbit(-90); // 目标持续越过 ±180°（45 → -45 → … → -1665）
+            }
+            double before = rig.Current.Yaw;
+            rig.Advance(1.0 / 60);
+            Assert.True(rig.Current.Yaw <= before + 1e-9,
+                $"第 {i} 帧 yaw 反向：{before:0.00} → {rig.Current.Yaw:0.00}（最短弧翻转抽搐）");
+        }
+        for (int i = 0; i < 300; i++)
+        {
+            rig.Advance(1.0 / 60); // 充分收敛
+        }
+        Assert.Equal(rig.Target.Yaw, rig.Current.Yaw, 6);
     }
 }
