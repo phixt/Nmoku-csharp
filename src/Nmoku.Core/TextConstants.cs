@@ -87,9 +87,10 @@ public static class Text
     {
         public const string Title = "游戏引导";
         public const string Body = "在三维棋盘的任意层连成 N 子直线即获胜：同层横竖斜、跨层斜线（13 个方向）均可。\n" +
-            "A/D 循环切换焦点层，F 镜像，H 开关辅助线，V 色弱模式。\n" +
-            "点击右侧面板落子；Ctrl+Z 悔棋；Ctrl+S 快存；L 读最新存档。\n" +
-            "SWAP2 规则：黑下首子后，白方可选择交换执黑或继续执白。";
+            "标题屏可进入自定义对局：选预设关卡或自定尺寸（奇数 ≥5）、层数、连珠数（4–9）、规则与 AI 难度。\n" +
+            "对局中：A/D 循环换层，F 镜像，H 辅助线，V 色弱，O 网格全亮；Ctrl+Z 悔棋，Ctrl+S 快存，L 读最新档。\n" +
+            "Q/E 旋转视角（按一下 90°），W/S 或方向键缩放，Shift+WASD 平移，Z/C 调层间距，X 复位。\n" +
+            "存档管理支持剪贴板与 .nzsave 文件两种导入导出；T 切换明暗主题；按 F1 查看全部快捷键。";
         public const string StartFromGuide = "开始游戏";
         public const string ResumeFromGuide = "回到对局";
         public const string Back = "返回";
