@@ -59,6 +59,26 @@ public class SaveBehaviorTests
         Assert.Equal(SaveValidator.InvalidStructure, SaveValidator.Validate(data));
     }
 
+    [Fact]
+    public void Validate_MidLayerRowWidthMismatch_ReturnsError()
+    {
+        var data = NewSave();
+        data.BoardState[1][5] = new int[4]; // y>0 行错配：旧实现只查 layer[0] 会放行
+        Assert.Equal(SaveValidator.InvalidStructure, SaveValidator.Validate(data));
+    }
+
+    [Fact]
+    public void Validate_JsonElementMidRowWidthMismatch_ReturnsError()
+    {
+        // 第 0 层第 1 行宽度 2 ≠ boardSize 3：首行正常，旧实现放行
+        const string json = """
+            {"version":"2.0.0","boardSize":3,"layers":2,"moves":[],
+             "boardState":[[[0,0,0],[0,0],[0,0,0]],[[0,0,0],[0,0,0],[0,0,0]]]}
+            """;
+        using var doc = System.Text.Json.JsonDocument.Parse(json);
+        Assert.Equal(SaveValidator.InvalidStructure, SaveValidator.Validate(doc.RootElement));
+    }
+
     // ---- migrateData（v1 → v2） ----
 
     [Fact]

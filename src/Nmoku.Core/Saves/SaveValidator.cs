@@ -39,10 +39,13 @@ public static class SaveValidator
             {
                 return InvalidStructure;
             }
-            var firstRow = layer.EnumerateArray().First();
-            if (firstRow.ValueKind != JsonValueKind.Array || firstRow.GetArrayLength() != boardSize)
+            // 行宽必须逐行检查：只查首行会放行 y>0 的错配行
+            foreach (var row in layer.EnumerateArray())
             {
-                return InvalidStructure;
+                if (row.ValueKind != JsonValueKind.Array || row.GetArrayLength() != boardSize)
+                {
+                    return InvalidStructure;
+                }
             }
         }
 
@@ -60,9 +63,16 @@ public static class SaveValidator
         }
         foreach (var layer in data.BoardState)
         {
-            if (layer.Length != data.BoardSize || layer[0].Length != data.BoardSize)
+            if (layer.Length != data.BoardSize)
             {
                 return InvalidStructure;
+            }
+            foreach (var row in layer)
+            {
+                if (row.Length != data.BoardSize)
+                {
+                    return InvalidStructure;
+                }
             }
         }
         return null;

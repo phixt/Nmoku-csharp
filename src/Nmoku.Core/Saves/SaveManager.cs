@@ -104,9 +104,9 @@ public sealed class SaveManager
                     continue;
                 }
                 var parsed = SaveMigrator.Normalize(raw); // 内部吞 JSON 异常时返回 null
-                if (parsed == null)
+                if (parsed == null || SaveValidator.Validate(parsed) != null)
                 {
-                    continue; // 损坏存档：跳过、槽位保持 null
+                    continue; // 损坏存档（含 v2 直通档的维度错配）：跳过、槽位保持 null
                 }
                 _slots[meta.Index] = parsed;
                 _slotIds[meta.Index] = parsed.Id;

@@ -184,6 +184,21 @@ public class SaveManagerTests : IDisposable
     }
 
     [Fact]
+    public async Task Init_DimensionMismatchedV2Save_SkippedWithoutThrow()
+    {
+        // v2 直通档维度错配（boardState 1 层 vs layers 3）：旧实现不过 Validate 会穿透进槽位
+        const string json = """{"id":"bad-dims","version":"2.0.0","boardSize":9,"layers":3,"moves":[],"boardState":[[[0,0,0]]]}""";
+        var storage = new MemoryStorageAdapter();
+        storage.Poison("bad-dims", json, 2);
+
+        var manager = new SaveManager(storage);
+        await manager.InitAsync();
+
+        Assert.True(manager.IsSlotEmpty(2));
+        Assert.True(manager.Ready);
+    }
+
+    [Fact]
     public async Task Init_StorageUnavailable_SlotsStayEmpty()
     {
         var storage = new MemoryStorageAdapter { ThrowOnInit = true };
