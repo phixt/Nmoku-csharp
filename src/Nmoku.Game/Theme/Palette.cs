@@ -9,7 +9,7 @@ namespace Nmoku.Game.Theme;
 /// </summary>
 public sealed class Palette
 {
-    /// <summary>首发暗色（M4 明暗系统接入前唯一实例）。</summary>
+    /// <summary>首发暗色（M4 明暗系统接入前的基础组）。</summary>
     public static readonly Palette Default = new()
     {
         Background = new Color(0.10f, 0.11f, 0.13f),
@@ -19,6 +19,26 @@ public sealed class Palette
         GridLine = new Color(0.62f, 0.66f, 0.70f),
         ConnectorLine = new Color(0.62f, 0.66f, 0.70f, 0.35f), // 同源 GHOST_CONNECTOR_OPACITY
         HoverHighlight = new Color(0.30f, 0.55f, 1.00f, 0.55f),
+        LineSelf = new Color(0f, 1f, 0f),        // 0x00FF00（R4-6）
+        LineEnemy = new Color(1f, 0f, 0f),       // 0xFF0000
+        StarPoint = new Color(0.8f, 0f, 0f),     // 0xCC0000
+        LastMoveRing = new Color(1f, 0f, 0f),    // 0xFF0000
+    };
+
+    /// <summary>色弱组（V 键切换）：辅助线红绿 → 黄蓝（§10.5 R4-6），星位红→蓝，最后手环红→黄。</summary>
+    public static readonly Palette Colorblind = new()
+    {
+        Background = Default.Background,
+        AmbientLight = Default.AmbientLight,
+        StoneBlack = Default.StoneBlack,
+        StoneWhite = Default.StoneWhite,
+        GridLine = Default.GridLine,
+        ConnectorLine = Default.ConnectorLine,
+        HoverHighlight = Default.HoverHighlight,
+        LineSelf = new Color(0f, 0.533f, 1f),    // 0x0088FF
+        LineEnemy = new Color(1f, 0.8f, 0f),     // 0xFFCC00
+        StarPoint = new Color(0f, 0.533f, 1f),
+        LastMoveRing = new Color(1f, 0.8f, 0f),
     };
 
     public Color Background { get; init; }
@@ -28,4 +48,8 @@ public sealed class Palette
     public Color GridLine { get; init; }
     public Color ConnectorLine { get; init; }
     public Color HoverHighlight { get; init; }
+    public Color LineSelf { get; init; }
+    public Color LineEnemy { get; init; }
+    public Color StarPoint { get; init; }
+    public Color LastMoveRing { get; init; }
 }
