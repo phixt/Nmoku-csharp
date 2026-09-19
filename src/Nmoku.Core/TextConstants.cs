@@ -30,5 +30,69 @@ public static class Text
     {
         public const string QuickSaved = "已快存";
         public const string LoadFailed = "存档无效或已损坏";
+        public const string NoSaveToLoad = "暂无存档";
+        public const string ManageTitle = "存档管理";
+        public const string DeleteTitle = "删除存档";
+        public const string SlotLabel = "槽位 {0}";
+        public const string QuickSlotLabel = "槽位 {0}（快存）";
+        public const string SlotEmpty = "空";
+        public const string SlotInfo = "{0}×{1}×{2} · {3} 手 · {4}";
+        public const string SlotFinished = "已结束";
+        public const string SlotPlaying = "进行中";
+        public const string ImportedToSlot = "已导入到槽位 {0}";
+        public const string ImportFailed = "剪贴板中无有效存档";
+        public const string ImportNoEmptySlot = "没有空槽位可导入";
+        public const string Exported = "已导出到剪贴板";
+        public const string Import = "导入";
+        public const string Export = "导出";
+        public const string Delete = "删除";
+        public const string DeleteConfirm = "确定删除槽位 {0} 的存档？";
+        public const string LoadSlotFailed = "该存档无法读取";
+    }
+
+    public static class Title
+    {
+        public const string GameName = "立体五子棋";
+        public const string Start = "开始游戏";
+        public const string LoadGame = "读档";
+        public const string Guide = "引导";
+        public const string Quit = "退出";
+        public const string Subtitle = "13×13×6 三维连珠 · Nmoku";
+    }
+
+    public static class Menu
+    {
+        public const string Paused = "已暂停";
+        public const string Resume = "继续游戏";
+        public const string Restart = "重新开始";
+        public const string BackToTitle = "返回标题";
+        public const string RestartConfirm = "确定重新开始？当前对局进度将丢失。";
+    }
+
+    public static class Replay
+    {
+        public const string Label = "复盘";
+        public const string Exit = "退出复盘";
+        public const string StepInfo = "{0} / {1}";
+    }
+
+    public static class Guide
+    {
+        public const string Title = "游戏引导";
+        public const string Body = "在三维棋盘的任意层连成 N 子直线即获胜：同层横竖斜、跨层斜线（13 个方向）均可。\n" +
+            "A/D 循环切换焦点层，F 镜像，H 开关辅助线，V 色弱模式。\n" +
+            "点击右侧面板落子；Ctrl+Z 悔棋；Ctrl+S 快存；L 读最新存档。\n" +
+            "SWAP2 规则：黑下首子后，白方可选择交换执黑或继续执白。";
+        public const string StartFromGuide = "开始游戏";
+        public const string ResumeFromGuide = "回到对局";
+        public const string Back = "返回";
+    }
+
+    public static class Overlay
+    {
+        public const string Confirm = "确认";
+        public const string Cancel = "取消";
+        public const string SwapYes = "交换黑白";
+        public const string SwapNo = "继续执白";
     }
 }

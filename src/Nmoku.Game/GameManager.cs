@@ -336,10 +336,10 @@ public sealed partial class GameManager : Node
         HoverChanged?.Invoke(cell);
     }
 
-    /// <summary>辅助线数据装配（一份数据、两个渲染器）：H 关闭或悬停非空格时返回空。</summary>
+    /// <summary>辅助线数据装配（一份数据、两个渲染器）：H 关闭、悬停非空格或复盘态时返回空。</summary>
     public AuxScanResult ComputeAux(Coordinate3D? hover)
     {
-        if (!_auxEnabled || hover is not { } h || _board.Get(h) != CellState.Empty)
+        if (!_auxEnabled || InReplay || hover is not { } h || _board.Get(h) != CellState.Empty)
         {
             return AuxScanResult.Empty;
         }

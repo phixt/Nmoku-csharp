@@ -2,15 +2,17 @@ using Godot;
 using Nmoku.Core;
 using Nmoku.Core.AI;
 using Nmoku.Core.Camera;
+using Nmoku.Core.Saves;
 using Nmoku.Game;
+using Nmoku.Game.Shell;
 using Nmoku.Game.Theme;
 using Nmoku.Game.Views;
 
 /// <summary>
-/// M3 场景根：左右分屏（3D 左视图 + 2D 右面板）+ GameManager 接线。
-/// 悬停唯一来源是 2D 面板，3D 蓝点/辅助线跟随（紧密联动）；相机自由交互保留 M2 方案（决策 #9）。
-/// 状态机/菜单 UI 在 M4；命令行参数为 M3 关卡入口：--board=13 --layers=6 --spacing=3.5
-/// --rules=gomoku|swap2 --mode=pvp|pve --ai=easy|medium|hard。
+/// M4 场景根：分屏对局视图（M3）+ 游戏壳——GameStore 持有 7 态状态机（01-core §3.4），
+/// OverlayManager 承接模态/toast，六屏（标题/暂停/结算/存档/引导/复盘条）按状态切换可见性。
+/// 悬停唯一来源是 2D 面板；相机自由交互保留 M2 方案（决策 #9）。
+/// 命令行参数：--board=13 --layers=6 --spacing=3.5 --rules=gomoku|swap2 --mode=pvp|pve --ai=easy|medium|hard
 /// </summary>
 public partial class Main : Node
 {
@@ -23,9 +25,16 @@ public partial class Main : Node
     private Camera3D _camera = null!;
     private Board3DView _board3D = null!;
     private Board2DView _board2D = null!;
+    private GameStore _store = null!;
     private GameManager _gm = null!;
     private CameraRig _rig = null!;
-    private ConfirmationDialog _swapDialog = null!;
+    private OverlayManager _overlay = null!;
+    private TitleScreen _titleScreen = null!;
+    private PauseMenu _pauseMenu = null!;
+    private GameOverModal _gameOverModal = null!;
+    private SaveMenu _saveMenu = null!;
+    private GuideScreen _guideScreen = null!;
+    private ReplayBar _replayBar = null!;
     private Label _statusLabel = null!;
 
     private readonly int _boardSize;
@@ -58,25 +67,26 @@ public partial class Main : Node
         GD.Print($"Nmoku M0: engine boot OK (custom input actions={custom}, audio buses={AudioServer.BusCount})");
 
         BuildLayout();
-        BuildDialogs();
+        BuildShell();
 
-        _gm = new GameManager { Name = "GameManager" };
-        AddChild(_gm);
+        _store = new GameStore { Name = "GameStore" };
+        AddChild(_store); // 触发 GameStore._Ready → GM 入树
+        _store.Overlay = _overlay;
+        _gm = _store.GM;
+        _gm.LayerSpacing = _spacing;
         _gm.Configure(_boardSize, _layers, _rules, _pve, _aiDifficulty);
         _board2D.Game = _gm; // 2D 面板状态源（此前遗漏导致右半屏空白）
         Wire2DPanel();
-
-        _gm.StateChanged += Refresh;
-        _gm.FocusChanged += _ => Refresh();
-        _gm.HoverChanged += OnHoverChanged;
-        _gm.SwapPhaseStarted += ShowSwapDialog;
+        WireShell();
+        _store.InitializeSaves();
 
         _lastViewportSize = _viewport3D.GetVisibleRect().Size;
         _rig = new CameraRig(_boardSize, _layers, _spacing, _lastViewportSize.X / _lastViewportSize.Y);
         ApplyCamera();
 
+        ShowState(_store.State);
         Refresh();
-        GD.Print($"Nmoku M3: game ready (board={_boardSize}x{_boardSize}x{_layers}, spacing={_spacing:0.0}, " +
+        GD.Print($"Nmoku M4: game ready (board={_boardSize}x{_boardSize}x{_layers}, spacing={_spacing:0.0}, " +
                  $"rules={_rules}, mode={(_pve ? "pve" : "pvp")}, distance={_rig.Current.Distance:0.00})");
     }
 
@@ -137,26 +147,81 @@ public partial class Main : Node
         AddChild(_statusLabel);
     }
 
-    private void BuildDialogs()
+    /// <summary>OverlayManager（layer 20）+ 六个壳屏（layer 10，默认全隐藏，ShowState 按态切换）。</summary>
+    private void BuildShell()
     {
-        // SWAP2 决策（M3 占位 UI，M4 换 OverlayManager）：确定=交换、取消/Esc=继续执白
-        _swapDialog = new ConfirmationDialog
-        {
-            Title = "SWAP2",
-            DialogText = Text.Swap.ChooseSwapOrDefault,
-            OkButtonText = "交换黑白",
-            CancelButtonText = "继续执白",
-            Exclusive = true,
-        };
-        _swapDialog.Confirmed += () => _gm.ResolveSwap(true);
-        _swapDialog.Canceled += () => _gm.ResolveSwap(false);
-        AddChild(_swapDialog);
+        _overlay = new OverlayManager();
+        AddChild(_overlay);
+
+        _titleScreen = new TitleScreen { Visible = false };
+        _pauseMenu = new PauseMenu { Visible = false };
+        _gameOverModal = new GameOverModal { Visible = false };
+        _saveMenu = new SaveMenu { Visible = false };
+        _guideScreen = new GuideScreen { Visible = false };
+        _replayBar = new ReplayBar { Visible = false };
+
+        var uiLayer = new CanvasLayer { Layer = 10 };
+        AddChild(uiLayer);
+        uiLayer.AddChild(_titleScreen);
+        uiLayer.AddChild(_pauseMenu);
+        uiLayer.AddChild(_gameOverModal);
+        uiLayer.AddChild(_saveMenu);
+        uiLayer.AddChild(_guideScreen);
+        uiLayer.AddChild(_replayBar);
     }
 
     private void Wire2DPanel()
     {
         _board2D.HoverChanged += cell => _gm.SetHover(cell);
         _board2D.PlaceRequested += cell => _gm.TryPlace(cell.X, cell.Y, cell.Z);
+    }
+
+    private void WireShell()
+    {
+        // ---- 壳屏意图 → GameStore 动作 ----
+        _titleScreen.StartRequested += () => _store.StartGame();
+        _titleScreen.LoadRequested += OpenSaveMenu;
+        _titleScreen.GuideRequested += () => _store.OpenGuide();
+        _titleScreen.QuitRequested += () => GetTree().Quit();
+
+        _pauseMenu.ResumeRequested += () => _store.Resume();
+        _pauseMenu.RestartRequested += () => _store.RequestRestart();
+        _pauseMenu.SaveMenuRequested += OpenSaveMenu;
+        _pauseMenu.GuideRequested += () => _store.OpenGuide();
+        _pauseMenu.TitleRequested += () => _store.ReturnToTitle();
+
+        _gameOverModal.RestartRequested += () => _store.RequestRestart();
+        _gameOverModal.TitleRequested += () => _store.ReturnToTitle();
+
+        _saveMenu.LoadSlotRequested += i => { CloseSaveMenu(); _store.LoadSlot(i); };
+        _saveMenu.ReplaySlotRequested += i => { CloseSaveMenu(); _store.EnterReplay(i); };
+        _saveMenu.ExportSlotRequested += i => _store.ExportSlot(i);
+        _saveMenu.DeleteSlotRequested += i => _store.DeleteSlot(i);
+        _saveMenu.ImportRequested += () => _store.ImportFromClipboard();
+        _saveMenu.CloseRequested += CloseSaveMenu;
+
+        _guideScreen.StartRequested += () => _store.StartGame();
+        _guideScreen.ResumeRequested += () => _store.Resume();
+        _guideScreen.BackRequested += () => _store.GuideBack();
+
+        _replayBar.StepRequested += d => _gm.StepReplay(d);
+        _replayBar.SeekRequested += i => _gm.SetReplayIndex(i);
+        _replayBar.ExitRequested += () => _store.ExitReplay();
+
+        // ---- 状态机 / 对局事件 → 壳 ----
+        _store.StateChanged += ShowState;
+        _store.SavesChanged += () =>
+        {
+            if (_saveMenu.Visible)
+            {
+                _saveMenu.RefreshSlots(_store.Saves.GetSlots());
+            }
+        };
+        _gm.GameOver += _ => _store.NotifyGameOver();
+        _gm.SwapPhaseStarted += ShowSwapDialog;
+        _gm.StateChanged += Refresh;
+        _gm.FocusChanged += _ => Refresh();
+        _gm.HoverChanged += OnHoverChanged;
     }
 
     public override void _Process(double delta)
@@ -172,7 +237,7 @@ public partial class Main : Node
         ApplyCamera();
     }
 
-    // ---- 无头对局自测（-- --autotest）：胜负/判和/悔棋/SWAP2 双分支/AI 落子；CI 冒烟依赖 AUTOTEST ALL PASS ----
+    // ---- 无头对局自测（-- --autotest）：M3 对局闭环 + M4 状态机/存档/复盘；CI 冒烟依赖 AUTOTEST ALL PASS ----
     private bool _autotestArmed;
     private bool _autotestBuilt;
     private readonly Queue<(string Name, Func<string> Run)> _autotestSteps = new();
@@ -282,24 +347,120 @@ public partial class Main : Node
             }
             return _gm.History.Count == 2 ? "ok" : "wait";
         }));
+
+        // ---- M4：状态机 + 存档往返 + 复盘（隔离目录 user://saves_autotest，不污染真实存档）----
+        _autotestSteps.Enqueue(("m4-cfg", () =>
+        {
+            _gm.Configure(9, 3, RuleSet.Gomoku, false, AIDifficulty.Medium);
+            _gm.TryPlace(4, 4, 0);
+            _gm.TryPlace(3, 3, 0);
+            return _gm.History.Count == 2 ? "ok" : "FAIL";
+        }));
+        _autotestSteps.Enqueue(("m4-start", () =>
+            _store.StartGame() && _store.State == GameState.Playing ? "ok" : "FAIL"));
+        _autotestSteps.Enqueue(("m4-pause", () =>
+            _store.Pause() && _store.State == GameState.Paused ? "ok" : "FAIL"));
+        _autotestSteps.Enqueue(("m4-illegal-reject", () =>
+            !_store.Fire(GameTrigger.Pause) && _store.State == GameState.Paused ? "ok" : "FAIL"));
+        _autotestSteps.Enqueue(("m4-resume", () =>
+            _store.Resume() && _store.State == GameState.Playing ? "ok" : "FAIL"));
+        _autotestSteps.Enqueue(("m4-save-load-replay", AutotestSaveLoadReplay));
+        _autotestSteps.Enqueue(("m4-win-gameover", () =>
+        {
+            // 承 m4-cfg（黑 (4,4)，白 (3,3)）：黑在 y=5 凑五连
+            (int x, int y)[] b = [(0, 5), (1, 5), (2, 5), (3, 5), (4, 5)];
+            (int x, int y)[] w = [(0, 6), (1, 6), (2, 6), (3, 6)];
+            for (int k = 0; k < 4; k++)
+            {
+                if (!_gm.TryPlace(b[k].x, b[k].y, 0) || !_gm.TryPlace(w[k].x, w[k].y, 0))
+                {
+                    return "FAIL place";
+                }
+            }
+            return _gm.TryPlace(b[4].x, b[4].y, 0)
+                && _gm.IsOver && _gm.Winner == 1
+                && _store.State == GameState.GameOver ? "ok" : "FAIL";
+        }));
+        _autotestSteps.Enqueue(("m4-gameover-newgame", () =>
+            _store.Fire(GameTrigger.NewGame) && _store.State == GameState.Playing && _gm.History.Count == 0
+                ? "ok"
+                : "FAIL"));
+        _autotestSteps.Enqueue(("m4-back-to-title", () =>
+            _store.Pause() && _store.ReturnToTitle() && _store.State == GameState.Title ? "ok" : "FAIL"));
+        _autotestSteps.Enqueue(("m4-import", AutotestImportClipboardPath));
+    }
+
+    /// <summary>M4 自测：存档落盘 → 模拟重启恢复 → 载入转 Playing → 复盘步进 → 退出回 Title。</summary>
+    private string AutotestSaveLoadReplay()
+    {
+        var sm = new SaveManager(new FileSystemStorageAdapter("user://saves_autotest"));
+        sm.InitAsync().GetAwaiter().GetResult();
+        var data = _gm.BuildSaveData(true);
+        sm.SaveAsync(2, data).GetAwaiter().GetResult();
+
+        // 模拟重启：全新 store 从磁盘恢复槽位
+        var reborn = new GameStore(new FileSystemStorageAdapter("user://saves_autotest"));
+        reborn.InitializeSaves();
+        var loaded = reborn.Saves.Load(2);
+        bool saved = loaded != null && loaded.Id == data.Id && loaded.Moves.Count == data.Moves.Count
+            && reborn.Saves.GetLatestIndex() == 2;
+
+        // 载入（Title→Playing）→ 复盘步进 → 退出回 Title（§3.4 REPLAY 行）
+        bool flow = reborn.LoadSlot(2) && reborn.State == GameState.Playing
+            && reborn.GM.History.Count == data.Moves.Count
+            && reborn.GM.Board.MoveCount() == data.Moves.Count
+            && reborn.EnterReplay(2) && reborn.State == GameState.Replay
+            && reborn.GM.Board.MoveCount() == 0;
+        reborn.GM.StepReplay(1);
+        flow = flow && reborn.GM.ReplayIndex == 1 && reborn.GM.Board.MoveCount() == 1;
+        flow = flow && reborn.ExitReplay() && reborn.State == GameState.Title;
+
+        sm.DeleteAsync(2).GetAwaiter().GetResult();
+        return saved && flow ? "ok" : "FAIL";
+    }
+
+    /// <summary>M4 自测：Base64 导入路径（统一嗅探入口）落入首个空槽。</summary>
+    private string AutotestImportClipboardPath()
+    {
+        var data = _gm.BuildSaveData(false);
+        var isoStore = new GameStore(new FileSystemStorageAdapter("user://saves_autotest"));
+        isoStore.InitializeSaves();
+        isoStore.ImportText(SaveData.SerializeToBase64(data));
+        int filled = -1;
+        for (int i = 0; i < GameConfig.SaveSlotCount; i++)
+        {
+            if (!isoStore.Saves.IsSlotEmpty(i))
+            {
+                filled = i;
+                break;
+            }
+        }
+        bool ok = filled == 0 && isoStore.Saves.Load(0)!.Id == data.Id;
+        if (filled >= 0)
+        {
+            isoStore.Saves.DeleteAsync(filled).GetAwaiter().GetResult();
+        }
+        return ok ? "ok" : "FAIL";
     }
 
     public override void _Input(InputEvent @event)
     {
+        // 相机鼠标交互仅在 PLAYING/REPLAY 开放（§4.2.3 context 语义）
+        bool cameraAllowed = _store != null && _store.State is GameState.Playing or GameState.Replay;
         switch (@event)
         {
             case InputEventMouseButton { ButtonIndex: MouseButton.Left } button:
-                _rotating = button.Pressed && !IsOver2DPanel();
+                _rotating = button.Pressed && cameraAllowed && !IsOver2DPanel();
                 break;
             case InputEventMouseButton { ButtonIndex: MouseButton.Middle } middle:
-                _panning = middle.Pressed && !IsOver2DPanel();
+                _panning = middle.Pressed && cameraAllowed && !IsOver2DPanel();
                 break;
             case InputEventMouseButton { ButtonIndex: MouseButton.WheelUp, Pressed: true }:
-                // 径向缩放：与 W/S 同路径，单调无跳变（zoom-to-anchor 待 M3 拾取恢复）
-                if (!IsOver2DPanel()) _rig.Zoom(1);
+                // 径向缩放：与 W/S 同路径，单调无跳变（zoom-to-anchor 待拾取恢复）
+                if (cameraAllowed && !IsOver2DPanel()) _rig.Zoom(1);
                 break;
             case InputEventMouseButton { ButtonIndex: MouseButton.WheelDown, Pressed: true }:
-                if (!IsOver2DPanel()) _rig.Zoom(-1);
+                if (cameraAllowed && !IsOver2DPanel()) _rig.Zoom(-1);
                 break;
             case InputEventMouseMotion motion:
             {
@@ -318,85 +479,161 @@ public partial class Main : Node
         }
     }
 
+    /// <summary>context 门控后的单次触发（ShortcutRouter 拒绝则不产生效果）。</summary>
+    private bool Want(string action) =>
+        ShortcutRouter.Allows(action, _store.State) && Input.IsActionJustPressed(action, true);
+
+    /// <summary>context 门控后的持续按住（相机/间距类）。</summary>
+    private bool Held(string action) =>
+        ShortcutRouter.Allows(action, _store.State) && Input.IsActionPressed(action, true);
+
     private void HandleHeldInput(double delta)
     {
-        // exact match：Shift+WASD/方向键是平移，不得与无修饰键的 zoom_in/out 串线
-        if (Input.IsActionJustPressed("rotate_left", true))
+        if (_overlay.IsModalOpen)
+        {
+            return; // 模态框吞掉一切游戏快捷键（Esc/Enter 由对话框自身处理，§4.1）
+        }
+        if (_saveMenu.Visible)
+        {
+            if (Input.IsActionJustPressed("ui_cancel"))
+            {
+                CloseSaveMenu();
+            }
+            return;
+        }
+
+        // ---- 壳状态动作（04-contracts §4.2.2）----
+        if (Want("pause"))
+        {
+            _store.Pause();
+        }
+        if (Want("resume"))
+        {
+            _store.Resume();
+        }
+        if (Want("confirm"))
+        {
+            switch (_store.State)
+            {
+                case GameState.Title:
+                case GameState.GuideFromTitle:
+                    _store.StartGame();
+                    break;
+                case GameState.GuideFromGame:
+                    _store.Resume();
+                    break;
+            }
+        }
+        if (Want("load_latest"))
+        {
+            _store.LoadLatest();
+        }
+        if (Want("quick_save"))
+        {
+            _store.QuickSave();
+        }
+        if (Want("restart"))
+        {
+            _store.RequestRestart();
+        }
+        if (Want("return_to_title"))
+        {
+            _store.ReturnToTitle();
+        }
+        if (Want("open_guide"))
+        {
+            _store.OpenGuide();
+        }
+        if (Want("replay_prev"))
+        {
+            _gm.StepReplay(-1);
+        }
+        if (Want("replay_next"))
+        {
+            _gm.StepReplay(1);
+        }
+        if (Want("exit_replay"))
+        {
+            _store.ExitReplay();
+        }
+
+        // ---- 相机（PLAYING + REPLAY；exact match 防 Shift 平移串线，M2 决策 #9）----
+        if (Want("rotate_left"))
         {
             _rig.Orbit(-90);
         }
-        if (Input.IsActionJustPressed("rotate_right", true))
+        if (Want("rotate_right"))
         {
             _rig.Orbit(90);
         }
-        if (Input.IsActionPressed("zoom_in", true))
+        if (Held("zoom_in"))
         {
             _rig.Zoom(ZoomPerSecond * delta);
         }
-        if (Input.IsActionPressed("zoom_out", true))
+        if (Held("zoom_out"))
         {
             _rig.Zoom(-ZoomPerSecond * delta);
         }
 
         double panStep = PanPerSecond * delta * _rig.Current.Distance;
-        if (Input.IsActionPressed("pan_left", true))
+        if (Held("pan_left"))
         {
             _rig.Pan(-panStep, 0);
         }
-        if (Input.IsActionPressed("pan_right", true))
+        if (Held("pan_right"))
         {
             _rig.Pan(panStep, 0);
         }
-        if (Input.IsActionPressed("pan_up", true))
+        if (Held("pan_up"))
         {
             _rig.Pan(0, panStep);
         }
-        if (Input.IsActionPressed("pan_down", true))
+        if (Held("pan_down"))
         {
             _rig.Pan(0, -panStep);
         }
 
-        // ---- M3 游戏键位（§10.5 R4-15..18；Z/C/X 相机语义保留 M2 方案）----
-        if (Input.IsActionJustPressed("layer_prev", true))
+        // ---- M3 游戏键位（PLAYING）----
+        if (Want("layer_prev"))
         {
             _gm.CycleFocus(-1);
         }
-        if (Input.IsActionJustPressed("layer_next", true))
+        if (Want("layer_next"))
         {
             _gm.CycleFocus(1);
         }
-        if (Input.IsActionJustPressed("mirror_2d", true))
+        if (Want("mirror_2d"))
         {
             _board2D.ToggleMirror();
         }
-        if (Input.IsActionJustPressed("toggle_helper_lines", true))
+        if (Want("toggle_helper_lines"))
         {
             _gm.ToggleAux();
         }
-        if (Input.IsActionJustPressed("toggle_colorblind", true))
+        if (Want("toggle_colorblind"))
         {
             _gm.ToggleColorblind();
         }
-        if (Input.IsActionJustPressed("toggle_grid_all", true))
+        if (Want("toggle_grid_all"))
         {
             _board3D.ToggleGridAll();
         }
-        if (Input.IsActionJustPressed("undo", true))
+        if (Want("undo"))
         {
             _gm.Undo();
         }
 
         double before = _spacing;
-        if (Input.IsActionPressed("spacing_compress", true))
+        if (Held("spacing_compress"))
         {
             _spacing -= SpacingPerSecond * delta;
         }
-        if (Input.IsActionPressed("spacing_expand", true))
+        if (Held("spacing_expand"))
         {
             _spacing += SpacingPerSecond * delta;
         }
         _spacing = Math.Clamp(_spacing, GameConfig.MinLayerSpacing, GameConfig.MaxLayerSpacing);
-        if (Input.IsActionJustPressed("spacing_reset", true))
+        if (Want("spacing_reset"))
         {
             _spacing = GameConfig.DefaultLayerSpacing;
             _rig.Reset(_boardSize, _layers, _spacing, ViewportAspect());
@@ -411,6 +648,7 @@ public partial class Main : Node
     {
         _board3D.Configure(_boardSize, _layers, _spacing);
         _rig.Update(_boardSize, _layers, _spacing, ViewportAspect(), GameConfig.DefaultYaw);
+        _gm.LayerSpacing = _spacing; // 存档快照字段随动
         Refresh();
     }
 
@@ -435,6 +673,39 @@ public partial class Main : Node
         _camera.Far = (float)s.FarPlane;
     }
 
+    // ---- 状态机 → 屏幕可见性 ----
+
+    private void ShowState(GameState state)
+    {
+        _titleScreen.Visible = state == GameState.Title;
+        _pauseMenu.Visible = state == GameState.Paused;
+        _gameOverModal.Visible = state == GameState.GameOver;
+        if (state == GameState.GameOver)
+        {
+            _gameOverModal.SetResult(_gm.Winner, _gm.History.Count);
+        }
+        _guideScreen.Visible = state is GameState.GuideFromTitle or GameState.GuideFromGame;
+        if (_guideScreen.Visible)
+        {
+            _guideScreen.FromGame = state == GameState.GuideFromGame;
+            _guideScreen.ApplyMode();
+        }
+        _replayBar.Visible = state == GameState.Replay;
+        _statusLabel.Visible = state is GameState.Playing or GameState.Paused;
+        if (state is not (GameState.Title or GameState.Paused))
+        {
+            CloseSaveMenu(); // 换态时安全收起存档菜单（正常路径已在按钮回调先行关闭）
+        }
+    }
+
+    private void OpenSaveMenu()
+    {
+        _saveMenu.RefreshSlots(_store.Saves.GetSlots());
+        _saveMenu.Visible = true;
+    }
+
+    private void CloseSaveMenu() => _saveMenu.Visible = false;
+
     // ---- GameManager 事件 → 视图联动 ----
 
     /// <summary>统一刷新：调色板 → 棋子重建（含辅助线标记桶）→ 网格显隐 → 辅助线 → 状态栏。</summary>
@@ -450,9 +721,9 @@ public partial class Main : Node
         _board3D.SetLastMove(_gm.History.Count > 0 ? _gm.History[^1].Coordinate : null);
         _board2D.QueueRedraw();
         UpdateStatus();
-        if (!_gm.SwapPending)
+        if (_gm.InReplay)
         {
-            _swapDialog.Hide();
+            _replayBar.Sync(_gm.ReplayIndex, _gm.ReplayCount);
         }
     }
 
@@ -462,9 +733,14 @@ public partial class Main : Node
         Refresh();               // 标记桶随辅助线变化重建
     }
 
+    /// <summary>SWAP2 决策（§4.1 扩展：取消=继续执白，是有效决策而非放弃）。</summary>
     private void ShowSwapDialog()
     {
-        _swapDialog.PopupCentered();
+        _overlay.ShowConfirmDialog("SWAP2", Text.Swap.ChooseSwapOrDefault,
+            onYes: () => _gm.ResolveSwap(true),
+            onCancel: () => _gm.ResolveSwap(false),
+            yesText: Text.Overlay.SwapYes,
+            noText: Text.Overlay.SwapNo);
     }
 
     private void UpdateStatus()
