@@ -2,23 +2,33 @@ using Nmoku.Core.Camera;
 
 namespace Nmoku.Core.Tests;
 
-/// <summary>03-camera §2：逻辑→世界映射与逆映射（镜像收敛单点）。</summary>
+/// <summary>B8+B10：逻辑→世界映射（行=Y 竖直、层沿 Z 且层 0 最近摄像机、列绕 Y 翻转）与逆映射。</summary>
 public class CoordMapperTests
 {
     [Fact]
-    public void LogicalToWorld_MapsAxesPerSourceOrientation()
+    public void LogicalToWorld_Rotates180AroundY_PerB10()
     {
-        // B8：x=列→X，y=行→Y（竖直），z=层→Z（纵深，×spacing）——与源 LeftPanel 一致
-        var world = CoordMapper.LogicalToWorld(3, 5, 2, 3.5);
-        Assert.Equal(3, world.X);
+        // worldX = size-1-x，worldZ = (layers-1-z)×spacing，worldY = y
+        var world = CoordMapper.LogicalToWorld(3, 5, 2, 3.5, boardSize: 13, layers: 6);
+        Assert.Equal(9, world.X);      // 13-1-3
         Assert.Equal(5, world.Y);
-        Assert.Equal(7.0, world.Z);
+        Assert.Equal(10.5, world.Z);   // (6-1-2)×3.5 → 层 2 位于中层
+    }
+
+    [Fact]
+    public void LogicalToWorld_LayerZeroIsNearestFace()
+    {
+        // 层 0 → 最大 worldZ（最靠近 +Z 侧摄像机）；层 5 → worldZ = 0（最里）
+        var first = CoordMapper.LogicalToWorld(0, 0, 0, 3.5, 13, 6);
+        var last = CoordMapper.LogicalToWorld(0, 0, 5, 3.5, 13, 6);
+        Assert.Equal(17.5, first.Z);
+        Assert.Equal(0, last.Z);
     }
 
     [Fact]
     public void LogicalToWorld_ZeroSpacing_PutsAllLayersOnFrontPlane()
     {
-        var world = CoordMapper.LogicalToWorld(4, 6, 3, 0);
+        var world = CoordMapper.LogicalToWorld(4, 6, 3, 0, 13, 6);
         Assert.Equal(0, world.Z);
         Assert.Equal(6, world.Y);
     }
@@ -26,15 +36,16 @@ public class CoordMapperTests
     [Fact]
     public void WorldToLogical_RoundTrips()
     {
-        var world = CoordMapper.LogicalToWorld(4, 7, 3, 3.5);
-        var (x, y, z) = CoordMapper.WorldToLogical(world, 3.5);
+        var world = CoordMapper.LogicalToWorld(4, 7, 3, 3.5, 13, 6);
+        var (x, y, z) = CoordMapper.WorldToLogical(world, 3.5, 13, 6);
         Assert.Equal((4, 7, 3), (x, y, z));
     }
 
     [Fact]
     public void WorldToLogical_RoundsLayerDepthToNearestLayer()
     {
-        var (_, _, z) = CoordMapper.WorldToLogical(new WorldPoint(1, 2, 10.4), 3.5);
-        Assert.Equal(3, z); // 10.4/3.5 = 2.97 → 3
+        // x 翻转：13-1-1 = 11；层深 10.4/3.5 = 2.97 → 3，翻转后 6-1-3 = 2
+        var (x, y, z) = CoordMapper.WorldToLogical(new WorldPoint(1, 2, 10.4), 3.5, 13, 6);
+        Assert.Equal((11, 2, 2), (x, y, z));
     }
 }

@@ -196,13 +196,14 @@ public sealed partial class Board2DView : Control
         float total = (size - 1) + GridPadding * 2;
         _scale = MathF.Min(Size.X, Size.Y) / total;
         float half = (size - 1) / 2f;
+        // 纵向镜像（B10）：行 0 在底部，与 3D 竖直平面（行=世界Y 向上）一致
         _origin = new Vector2(
             Size.X / 2f + (_mirrored ? half : -half) * _scale,
-            Size.Y / 2f - half * _scale);
+            Size.Y / 2f + half * _scale);
     }
 
     private Vector2 CellToScreen(float x, float y) =>
-        new(_origin.X + x * _scale * (_mirrored ? -1 : 1), _origin.Y + y * _scale);
+        new(_origin.X + x * _scale * (_mirrored ? -1 : 1), _origin.Y - y * _scale);
 
     private Coordinate3D? ScreenToCell(Vector2 pos)
     {
@@ -212,7 +213,7 @@ public sealed partial class Board2DView : Control
         }
         ComputeLayout();
         float x = (pos.X - _origin.X) * (_mirrored ? -1 : 1) / _scale;
-        float y = (pos.Y - _origin.Y) / _scale;
+        float y = (_origin.Y - pos.Y) / _scale;
         int gx = (int)MathF.Round(x);
         int gy = (int)MathF.Round(y);
         if (gx < 0 || gx >= Game.Board.BoardSize || gy < 0 || gy >= Game.Board.BoardSize)

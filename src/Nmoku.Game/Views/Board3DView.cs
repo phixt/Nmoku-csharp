@@ -159,7 +159,7 @@ public sealed partial class Board3DView : Node3D
                 return;
             }
             BucketBy(x, y, z, out int bucket);
-            var world = CoordMapper.LogicalToWorld(x, y, z, _spacing);
+            var world = CoordMapper.LogicalToWorld(x, y, z, _spacing, _boardSize, _layers);
             buckets[bucket].Multimesh!.SetInstanceTransform(
                 cursors[bucket]++,
                 Transform3D.Identity.Translated(new Vector3((float)world.X, (float)world.Y, (float)world.Z)));
@@ -208,7 +208,7 @@ public sealed partial class Board3DView : Node3D
     {
         if (cell is { } c)
         {
-            var world = CoordMapper.LogicalToWorld(c.X, c.Y, c.Z, _spacing);
+            var world = CoordMapper.LogicalToWorld(c.X, c.Y, c.Z, _spacing, _boardSize, _layers);
             _hover.Position = new Vector3((float)world.X, (float)world.Y, (float)world.Z);
             _hover.Visible = true;
         }
@@ -226,7 +226,7 @@ public sealed partial class Board3DView : Node3D
     {
         if (cell is { } c)
         {
-            var world = CoordMapper.LogicalToWorld(c.X, c.Y, c.Z, _spacing);
+            var world = CoordMapper.LogicalToWorld(c.X, c.Y, c.Z, _spacing, _boardSize, _layers);
             _lastMoveRing.Position = new Vector3((float)world.X, (float)world.Y, (float)world.Z);
             _lastMoveRing.Visible = true;
         }
@@ -299,8 +299,8 @@ public sealed partial class Board3DView : Node3D
             var colors = new List<Color>();
             foreach (var line in data.SpaceLines)
             {
-                var s = CoordMapper.LogicalToWorld(line.Start.X, line.Start.Y, line.Start.Z, _spacing);
-                var e = CoordMapper.LogicalToWorld(line.End.X, line.End.Y, line.End.Z, _spacing);
+                var s = CoordMapper.LogicalToWorld(line.Start.X, line.Start.Y, line.Start.Z, _spacing, _boardSize, _layers);
+                var e = CoordMapper.LogicalToWorld(line.End.X, line.End.Y, line.End.Z, _spacing, _boardSize, _layers);
                 verts.Add(ToVector3(s));
                 verts.Add(ToVector3(e));
                 var c = line.Role == AuxRole.Self ? Theme.LineSelf : Theme.LineEnemy;
@@ -340,7 +340,7 @@ public sealed partial class Board3DView : Node3D
                     Transparency = BaseMaterial3D.TransparencyEnum.Alpha,
                 },
             };
-            var world = CoordMapper.LogicalToWorld(marker.Position.X, marker.Position.Y, marker.Position.Z, _spacing);
+            var world = CoordMapper.LogicalToWorld(marker.Position.X, marker.Position.Y, marker.Position.Z, _spacing, _boardSize, _layers);
             _auxRoot.AddChild(new MeshInstance3D
             {
                 Mesh = mesh,
