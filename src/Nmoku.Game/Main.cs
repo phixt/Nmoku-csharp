@@ -679,6 +679,73 @@ public partial class Main : Node
             _store.ReturnToTitle();
             return ok ? "ok" : "FAIL";
         }));
+
+        // ---- M4 收尾轮：04-contracts §6.4/§6.5 清单自动化证据 ----
+        _autotestSteps.Enqueue(("m4c-overlay-contract", () =>
+        {
+            // §6.4 四项：确认回调恰好一次 / 取消不触发 onYes / 输入 trim 提交 / CloseAll 丢弃挂起回调
+            int yes = 0, cancel = 0, submit = 0;
+            string submitted = "";
+            _overlay.ShowConfirmDialog("t", "m", () => yes++, () => cancel++);
+            _overlay.ConfirmDialogForTests.EmitSignal("confirmed");
+            bool confirmOnce = yes == 1 && cancel == 0 && !_overlay.IsModalOpen;
+            _overlay.ShowConfirmDialog("t", "m", () => yes++, () => cancel++);
+            _overlay.ConfirmDialogForTests.EmitSignal("canceled");
+            bool cancelPath = yes == 1 && cancel == 1;
+            _overlay.ShowInputDialog("t", "m", "p", s => { submit++; submitted = s; });
+            _overlay.InputFieldForTests.Text = "  ab  ";
+            _overlay.InputDialogForTests.EmitSignal("confirmed");
+            bool trimOk = submit == 1 && submitted == "ab";
+            _overlay.ShowInputDialog("t", "m", "p", s => submit++);
+            _overlay.CloseAll();
+            _overlay.InputDialogForTests.EmitSignal("confirmed");
+            bool discardOk = submit == 1 && !_overlay.IsModalOpen;
+            return confirmOnce && cancelPath && trimOk && discardOk
+                ? "ok" : $"FAIL y={yes} c={cancel} s={submit} sub={submitted}";
+        }));
+        _autotestSteps.Enqueue(("m4c-modifier-quicksave", AutotestModifierQuickSave));
+    }
+
+    private int _qsPhase;
+
+    /// <summary>§6.5 修饰键检测：Ctrl+S 触发快存、裸 S 不触发（exact match + 直通不误吞）。</summary>
+    private string AutotestModifierQuickSave()
+    {
+        switch (_qsPhase)
+        {
+            case 0:
+                _gm.Configure(9, 3, RuleSet.Gomoku, false, AIDifficulty.Medium);
+                if (!_store.StartGame() || _store.State != GameState.Playing)
+                {
+                    return "FAIL start";
+                }
+                Input.ParseInputEvent(new InputEventKey
+                {
+                    PhysicalKeycode = Key.S, CtrlPressed = true, Pressed = true, Echo = false,
+                });
+                _qsPhase = 1;
+                return "wait";
+            case 1:
+                Input.ParseInputEvent(new InputEventKey { PhysicalKeycode = Key.S, Pressed = false });
+                bool saved = !_store.Saves.IsSlotEmpty(GameConfig.QuickSaveIndex);
+                _store.Saves.DeleteAsync(GameConfig.QuickSaveIndex).GetAwaiter().GetResult();
+                // 裸 S：无快捷键匹配（exact match 下 ctrl_pressed 不符）→ 只落 zoom_out 持续键，快存不得触发
+                Input.ParseInputEvent(new InputEventKey
+                {
+                    PhysicalKeycode = Key.S, Pressed = true, Echo = false,
+                });
+                _qsPhase = 2;
+                return saved ? "wait" : "FAIL ctrl+s no save";
+            case 2:
+                Input.ParseInputEvent(new InputEventKey { PhysicalKeycode = Key.S, Pressed = false });
+                bool untouched = _store.Saves.IsSlotEmpty(GameConfig.QuickSaveIndex);
+                _store.Pause();
+                _store.ReturnToTitle();
+                _qsPhase = 0;
+                return untouched ? "ok" : "FAIL plain s saved";
+            default:
+                return "FAIL";
+        }
     }
 
     /// <summary>M4R-2 自测：合成真实按键事件验证 echo 过滤——非 echo 按键转 90°，echo 按键不再触发。</summary>

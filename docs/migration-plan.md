@@ -299,6 +299,29 @@ Godot 项目文件（`project.godot`、场景、资产）与 csproj 同置于 `s
 | D3 | 蓝点配色 | 源固定 0x0088FF 不随色弱变；建议接入 Palette.HoverHighlight（同为蓝），色弱时可选换色 |
 | D4 | 辅助线镜像 | F 镜像默认开（isMirrored=true）并按源实现于相机层；镜像对辅助线 2D 扫描无影响（只翻转呈现） |
 
+## 10.6 契约核对：04-contracts §6.3/6.4/6.5（M4 收尾轮，2026-09-19）
+
+**§6.3 IStorageAdapter（FileSystemStorageAdapter + SaveManager）**
+- ✅ Initialize 先于其他方法：SaveManager.InitAsync 首步 await storage.InitAsync，唯一消费方 GameStore.InitializeSaves 先 await 再开放读档 UI（结构保证）。
+- ✅ SetSave+GetSave 往返一致：`SaveThenLoad_RoundTripsThroughStorage`。
+- ✅ DeleteSave 后 GetSave 为 null：`Delete_ClearsSlotAndStorage`。
+- ✅ GetIndex 槽位数：**登记偏差**——适配器只返回非空槽 meta（`IReadOnlyList<SlotMeta>` 非 nullable 装不下空位），
+  固定 6 槽投影在 SaveManager 层完成（`GetSlots()`/`IsSlotEmpty`），无消费方依赖"长度恰为 6 含 null"的字面形状（B3 同源行为）。
+- ✅ 多槽写入互不破坏：适配器方法内部同步、无 await 交错点；`Save_MultipleSlots_RoundTripIndependently`。
+
+**§6.4 IOverlayManager（Godot 实现）**
+- ✅ 确认回调只在确认触发、取消不触发 onYes：`m4c-overlay-contract`（合成 confirmed/canceled 信号断言回调计数）。
+- ✅ ShowInputDialog 回调收到 trim 后输入：同上自测（"  ab  " → "ab"，§4.1.2）。
+- ✅ ShowToast 自动消退不挡输入：2.5s 定时自清 + MouseFilter Ignore（代码审计 + 人类走查多轮）。
+- ✅ CloseAll 丢弃挂起回调（不调用不转移）：同上自测（CloseAll 后补发 confirmed 无回调）。
+
+**§6.5 KeyboardShortcutMap（KeymapTable + ShortcutRouter）**
+- ✅ 同 context 无冲突绑定：Core `KeymapTable.FindConflicts` + 19 例测试（双作用域主键冲突检测）。
+- ✅ 未匹配按键直通：分发为"首中即吞"，未匹配返回 false 落回持续键轮询/引擎默认；`m4c-modifier-quicksave`
+  证明裸 S 不触发 Ctrl+S 快存（直通给 zoom_out）。
+- ✅ 修饰键组合正确检测：InputMap `EventIsAction(exactMatch:true)`；`m4c-modifier-quicksave`
+  合成 Ctrl+S（物理键 S+ctrl）真实触发快存、裸 S 不触发——修饰键既不漏检也不误吞。
+
 ## 11. M1 交付清单（2026-09-18）
 
 `src/Nmoku.Core`：Types / GameConfig / Board / Rules / PatternCollector / RuleEngines(IRuleEngine,StandardEngine,SwapEngine) / Saves(SaveData,SaveValidator,SaveMigrator,IStorageAdapter,SaveManager) / EventBus / TextConstants(Text) / AI(AIEngine)。测试 113 例全绿（test-and-cicd §4.1–4.5 + contracts §6.1/6.2/6.3 全覆盖，AI vs AI 100 手为固定种子可复现用例）。

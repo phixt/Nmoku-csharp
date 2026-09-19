@@ -216,4 +216,10 @@ public sealed partial class OverlayManager : CanvasLayer, IOverlayManager
         CloseConfirm();
         CloseInput();
     }
+
+    // ---- 无头自测钩子（internal：同一程序集的 autotest 合成对话框信号用，非公共 API）----
+
+    internal ConfirmationDialog ConfirmDialogForTests => _confirm;
+    internal ConfirmationDialog InputDialogForTests => _inputDialog;
+    internal LineEdit InputFieldForTests => _inputField;
 }

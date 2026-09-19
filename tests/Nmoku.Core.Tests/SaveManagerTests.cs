@@ -181,6 +181,31 @@ public class SaveManagerTests : IDisposable
     }
 
     [Fact]
+    public async Task Save_MultipleSlots_RoundTripIndependently()
+    {
+        // §6.3「不同下标的并发写互不破坏」：适配器内部同步执行（无 await 交错点），
+        // 多槽连写后逐槽读回互不串档
+        var storage = new MemoryStorageAdapter();
+        var manager = new SaveManager(storage);
+        await manager.InitAsync();
+
+        for (int i = 0; i < 3; i++)
+        {
+            await manager.SaveAsync(i, NewSave(100 + i, boardSize: 9 + 2 * i, layers: 1 + i));
+        }
+
+        for (int i = 0; i < 3; i++)
+        {
+            var loaded = manager.Load(i);
+            Assert.NotNull(loaded);
+            Assert.Equal(9 + 2 * i, loaded!.BoardSize);
+            Assert.Equal(1 + i, loaded.Layers);
+            Assert.Equal(100 + i, loaded.Timestamp);
+        }
+        Assert.Equal(3, storage.Index.Count);
+    }
+
+    [Fact]
     public async Task GetLatestIndex_PicksMaxTimestamp()
     {
         var manager = new SaveManager(new MemoryStorageAdapter());
