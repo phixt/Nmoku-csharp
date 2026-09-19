@@ -51,7 +51,8 @@ public class RulesTests
             int y = mainDiagonal ? i : 4 - i;
             board.Set(i, y, 2, CellState.White);
         }
-        Assert.Equal(CellState.White, Rules.CheckWinner(board, 2, mainDiagonal ? 2 : 2, 2));
+        // 两条平面对角线都穿过中心 (2,2)
+        Assert.Equal(CellState.White, Rules.CheckWinner(board, 2, 2, 2));
     }
 
     [Fact]

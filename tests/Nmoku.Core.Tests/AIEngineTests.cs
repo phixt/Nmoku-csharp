@@ -38,7 +38,7 @@ public class AIEngineTests
     }
 
     [Fact]
-    public void GetBestMove_HardWithOwnFour_BlocksOpponentRushFour()
+    public void GetBestMove_Hard_BlocksOpponentRushFour()
     {
         // 白有 RUSH_FOUR（左端贴边被断、右端 (4,2,0) 是唯一防点）；黑应落该点
         var board = new Board(13, 6);

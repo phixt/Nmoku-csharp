@@ -3,12 +3,6 @@ namespace Nmoku.Core.Tests;
 /// <summary>04-contracts §6.1 IRuleEngine 合规清单 + test plan §4.4。</summary>
 public class RuleEngineTests
 {
-    private static readonly IRuleEngine[] AllEngines =
-    [
-        new StandardEngine(),
-        new SwapEngine(),
-    ];
-
     [Theory]
     [MemberData(nameof(Engines))]
     public void CheckWin_OutOfBounds_ReturnsFalse(IRuleEngine engine)
