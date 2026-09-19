@@ -62,6 +62,16 @@
   原生像素。启动日志新增 `display:` 行（window/screen/dpi/canvasScale/3D 视口）用于诊断 DPI 感知是否生效；
   若 window 为逻辑像素，须检查 exe 的 Windows 兼容性 DPI 设置（[Godot 论坛同款问题](https://forum.godotengine.org)）。
 
+## M4R 修复批 3 — 切窗音频报错与远景锯齿（2026-09-19）
+
+- **WASAPI GetBufferSize/invalidated 报错（切窗口时）**：引擎驱动层已知行为——WASAPI 共享模式下默认
+  输出设备失效/切换时音频线程关闭重连（[godotengine/godot#18732](https://github.com/godotengine/godot/issues/18732)
+  一脉），设备重连抖动共享混音即"其他窗口音频撕裂"。本项目代码零音频（M0 只建总线），无触发点也无修复点。
+  **处置**：`driver_type="Dummy"` 临时让引擎不占用音频设备（报错与撕裂即消失）；**M5 恢复 WASAPI 并复测**
+  （TODO 已挂账）。若 M5 仍复现，查 `audio/driver/output_latency` 与上游修复版次。
+- **3D 远景底端锯齿/发糊**：细网格线盒（0.05 格）+ MSAA 4× 在掠射角下不足。MSAA 4×→**8×**
+  （场景极小，开销可忽略）+ 线厚 0.05→**0.06**。若目视仍不满意，下一档是网格线距离淡出（设计项，走 R4 流程）。
+
 ## M4 第一轮 — 游戏壳全通（2026-09-19，代码完结，M4 第二轮转新对话）
 
 - **Core**：`GameStateMachine` 7 态 + §3.4 全转移表（非法组合拒绝，穷举测试）；

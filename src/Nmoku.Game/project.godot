@@ -16,6 +16,13 @@ config/features=PackedStringArray("4.6", "C#", "Forward Plus")
 
 [audio]
 
+; M4R：项目尚无音频播放（M5 才实装 BGM/SFX）。WASAPI 共享模式下默认输出设备失效/切换时，
+; 引擎音频线程会报 GetBufferSize/invalidated 并在重连时抖动系统混音（其他窗口音频撕裂）——
+; 引擎驱动层已知行为（godotengine/godot#18732 一脉），非本项目代码可修。
+; 用 Dummy 驱动让引擎暂不占用音频设备；M5 实装 AudioManager 时恢复 WASAPI 并复测窗口切换场景。
+driver/enable_input=false
+driver/driver_type="Dummy"
+
 default_bus_layout="res://default_bus_layout.tres"
 
 [display]
