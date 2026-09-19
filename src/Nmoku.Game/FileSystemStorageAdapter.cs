@@ -8,14 +8,20 @@ namespace Nmoku.Game;
 
 /// <summary>
 /// IStorageAdapter 的 Godot 文件实现（04-contracts §3.1 + migration-plan §3.4）：
-/// user://saves/index.json（SlotMeta[]）+ user://saves/&lt;id&gt;.sav（裸 JSON 文本）。
+/// &lt;dir&gt;/index.json（SlotMeta[]）+ &lt;dir&gt;/&lt;id&gt;.sav（裸 JSON 文本），默认 user://saves。
 /// 槽位覆盖换 id 时删除旧 blob（不留孤儿文件）；DeleteSave 幂等；损坏 index 按空库处理。
 /// 所有方法内部同步执行（6 个小文件，主线程开销可忽略），以 Task 签名满足 Core 门面。
 /// </summary>
 public sealed class FileSystemStorageAdapter : IStorageAdapter
 {
-    private const string Dir = "user://saves";
-    private const string IndexFile = "user://saves/index.json";
+    private readonly string _dir;
+    private readonly string _indexFile;
+
+    public FileSystemStorageAdapter(string dir = "user://saves")
+    {
+        _dir = dir;
+        _indexFile = $"{dir}/index.json";
+    }
 
     private readonly Dictionary<string, SlotMeta> _byId = [];
     private readonly Dictionary<int, string> _slotId = [];
@@ -30,13 +36,13 @@ public sealed class FileSystemStorageAdapter : IStorageAdapter
     {
         _byId.Clear();
         _slotId.Clear();
-        DirAccess.MakeDirRecursiveAbsolute(Dir);
+        DirAccess.MakeDirRecursiveAbsolute(_dir);
 
-        if (!FileAccess.FileExists(IndexFile))
+        if (!FileAccess.FileExists(_indexFile))
         {
             return Task.CompletedTask;
         }
-        string? json = ReadText(IndexFile);
+        string? json = ReadText(_indexFile);
         if (json == null)
         {
             return Task.CompletedTask;
@@ -102,7 +108,7 @@ public sealed class FileSystemStorageAdapter : IStorageAdapter
     private void WriteIndex()
     {
         var metas = _byId.Values.OrderBy(m => m.Index).ToArray();
-        WriteText(IndexFile, JsonSerializer.Serialize(metas, JsonOptions));
+        WriteText(_indexFile, JsonSerializer.Serialize(metas, JsonOptions));
     }
 
     private void DeleteBlob(string id)
@@ -115,14 +121,14 @@ public sealed class FileSystemStorageAdapter : IStorageAdapter
     }
 
     /// <summary>id 通常为 UUID；仍做白名单净化，拒绝路径分隔符进入文件名。</summary>
-    private static string BlobPath(string id)
+    private string BlobPath(string id)
     {
         var sb = new System.Text.StringBuilder();
         foreach (char c in id)
         {
             sb.Append(char.IsAsciiLetterOrDigit(c) || c is '.' or '_' or '-' ? c : '_');
         }
-        return $"{Dir}/{sb}.sav";
+        return $"{_dir}/{sb}.sav";
     }
 
     private static string? ReadText(string path)

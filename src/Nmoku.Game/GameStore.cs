@@ -1,0 +1,218 @@
+using Godot;
+using Nmoku.Core;
+using Nmoku.Core.Saves;
+
+namespace Nmoku.Game;
+
+/// <summary>
+/// 游戏壳状态机宿主（M4）：持有 GameState + GameManager（对局内核）+ SaveManager（槽位），
+/// 把 01-core §3.4 转移表落成带副作用的动作（重开先确认、读档失败整转移取消）。
+/// 快捷键 context 门控见 ShortcutRouter；UI 屏幕由 Main 按状态切换可见性。
+/// </summary>
+public sealed partial class GameStore : Node
+{
+    private const string AutotestSaveDir = "user://saves_autotest";
+
+    public GameState State { get; private set; } = GameState.Title;
+    public GameManager GM { get; } = new();
+    public SaveManager Saves { get; }
+    public IOverlayManager Overlay { get; set; } = null!;
+    public bool IsDarkTheme { get; set; } = true;
+
+    /// <summary>状态变化（壳层切换屏幕可见性）。</summary>
+    public event Action<GameState>? StateChanged;
+    /// <summary>槽位内容变化（存档菜单刷新）。</summary>
+    public event Action? SavesChanged;
+
+    public GameStore() : this(null)
+    {
+    }
+
+    public GameStore(IStorageAdapter? adapter)
+    {
+        Saves = new SaveManager(adapter ?? new FileSystemStorageAdapter());
+    }
+
+    public override void _Ready() => AddChild(GM); // GM 与壳同生命周期，入树后 CallDeferred 可用
+
+    /// <summary>启动时装载槽位（小文件同步可接受，保证 Title 界面 L 键即刻可用）。</summary>
+    public void InitializeSaves()
+    {
+        Saves.InitAsync().GetAwaiter().GetResult();
+        EventBus.SaveUpdated += _ => SavesChanged?.Invoke();
+    }
+
+    // ---- 转移执行：机器把关拓扑合法性，这里补条件与副作用 ----
+
+    /// <summary>通用触发（无载荷）。条件类触发（读档/复盘）请走专用方法。</summary>
+    public bool Fire(GameTrigger trigger)
+    {
+        var to = GameStateMachine.Transition(State, trigger);
+        if (to == null)
+        {
+            GD.PrintErr($"GameStore: 非法转移 {State} --{trigger}--> 已拒绝（01-core §3.4）");
+            return false;
+        }
+        if (to == GameState.Playing && trigger == GameTrigger.NewGame)
+        {
+            GM.Reset(); // 确认已由调用方先行完成（§3.4 "Confirms restart"）
+        }
+        SetState(to.Value);
+        return true;
+    }
+
+    public bool StartGame() => Fire(GameTrigger.StartGame);
+
+    public bool Pause() => Fire(GameTrigger.Pause);
+
+    public bool Resume() => Fire(GameTrigger.Resume);
+
+    /// <summary>重开请求（PAUSED/GAME_OVER）：确认框通过后走 NewGame。</summary>
+    public void RequestRestart()
+    {
+        Overlay.ShowConfirmDialog(Text.Menu.Restart, Text.Menu.RestartConfirm,
+            onYes: () => Fire(GameTrigger.NewGame));
+    }
+
+    public bool ReturnToTitle() => Fire(GameTrigger.ReturnToTitle);
+
+    public bool OpenGuide() => Fire(GameTrigger.OpenGuide);
+
+    public bool GuideBack() => Fire(GameTrigger.GuideBack);
+
+    /// <summary>读最新档（Title/Paused）：无档 toast 并取消整个转移（§3.4 条件列）。</summary>
+    public bool LoadLatest()
+    {
+        int idx = Saves.GetLatestIndex();
+        if (idx < 0)
+        {
+            Overlay?.ShowToast(Text.Save.NoSaveToLoad, isError: true);
+            return false;
+        }
+        return LoadSlot(idx);
+    }
+
+    public bool LoadSlot(int index)
+    {
+        var data = Saves.Load(index);
+        if (data == null || !GM.LoadFrom(data))
+        {
+            Overlay?.ShowToast(Text.Save.LoadSlotFailed, isError: true);
+            return false;
+        }
+        var to = GameStateMachine.Transition(State, GameTrigger.LoadLatest);
+        if (to == null)
+        {
+            GD.PrintErr($"GameStore: 非法转移 {State} --LoadLatest--> 已拒绝");
+            return false;
+        }
+        SetState(to.Value);
+        return true;
+    }
+
+    /// <summary>进入复盘（存档槽按钮，任意态）：复盘数据装载失败则整体取消。</summary>
+    public bool EnterReplay(int slot)
+    {
+        var data = Saves.Load(slot);
+        if (data == null || !GM.BeginReplay(data))
+        {
+            Overlay?.ShowToast(Text.Save.LoadSlotFailed, isError: true);
+            return false;
+        }
+        var to = GameStateMachine.Transition(State, GameTrigger.EnterReplay);
+        if (to == null)
+        {
+            return false;
+        }
+        SetState(to.Value);
+        return true;
+    }
+
+    /// <summary>退出复盘：Replay→Title（清理棋盘，§3.4）。</summary>
+    public bool ExitReplay()
+    {
+        bool ok = Fire(GameTrigger.ExitReplay);
+        if (ok)
+        {
+            GM.Reset();
+        }
+        return ok;
+    }
+
+    /// <summary>胜负判定入状态机（GM.GameOver 事件转发，Playing 之外忽略）。</summary>
+    public void NotifyGameOver()
+    {
+        if (State == GameState.Playing)
+        {
+            Fire(GameTrigger.WinDetected);
+        }
+    }
+
+    // ---- 存档动作 ----
+
+    public void QuickSave()
+    {
+        if (State != GameState.Playing)
+        {
+            return;
+        }
+        Saves.QuickSaveAsync(GM.BuildSaveData(IsDarkTheme)).GetAwaiter().GetResult();
+        Overlay?.ShowToast(Text.Save.QuickSaved);
+    }
+
+    public void DeleteSlot(int index)
+    {
+        Overlay.ShowConfirmDialog(Text.Save.DeleteTitle,
+            string.Format(Text.Save.DeleteConfirm, index + 1),
+            onYes: () => Saves.DeleteAsync(index).GetAwaiter().GetResult());
+    }
+
+    /// <summary>导出槽位为 Base64(JSON) 到剪贴板（与源浏览器版互通的格式）。</summary>
+    public string ExportSlot(int index)
+    {
+        var data = Saves.Load(index);
+        if (data == null)
+        {
+            Overlay?.ShowToast(Text.Save.LoadSlotFailed, isError: true);
+            return "";
+        }
+        string b64 = SaveData.SerializeToBase64(data);
+        DisplayServer.ClipboardSet(b64);
+        Overlay?.ShowToast(Text.Save.Exported);
+        return b64;
+    }
+
+    /// <summary>从剪贴板导入（统一嗅探：裸 JSON / Base64(JSON) / .nzsave 容器）。落入第一个空槽。</summary>
+    public void ImportFromClipboard() => ImportText(DisplayServer.ClipboardGet());
+
+    public void ImportText(string input)
+    {
+        var parsed = SaveArchive.TryParse(input);
+        if (parsed == null)
+        {
+            Overlay?.ShowToast(Text.Save.ImportFailed, isError: true);
+            return;
+        }
+        for (int i = 0; i < GameConfig.SaveSlotCount; i++)
+        {
+            if (!Saves.IsSlotEmpty(i))
+            {
+                continue;
+            }
+            Saves.SaveAsync(i, parsed).GetAwaiter().GetResult();
+            Overlay?.ShowToast(string.Format(Text.Save.ImportedToSlot, i + 1));
+            return;
+        }
+        Overlay?.ShowToast(Text.Save.ImportNoEmptySlot, isError: true);
+    }
+
+    private void SetState(GameState state)
+    {
+        if (State == state)
+        {
+            return;
+        }
+        State = state;
+        StateChanged?.Invoke(state);
+    }
+}
