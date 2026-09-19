@@ -90,4 +90,25 @@ public sealed class Board
     public bool IsFull() => MoveCount() == _data.Length;
 
     public bool IsEmpty(int x, int y, int z) => Get(x, y, z) == CellState.Empty;
+
+    /// <summary>导出为存档 boardState 形状 int[layers][size][size]（01-core §6.1，访问序 [z][y][x]）。</summary>
+    public int[][][] ToJaggedArray()
+    {
+        var result = new int[Layers][][];
+        for (int z = 0; z < Layers; z++)
+        {
+            var layer = new int[BoardSize][];
+            for (int y = 0; y < BoardSize; y++)
+            {
+                var row = new int[BoardSize];
+                for (int x = 0; x < BoardSize; x++)
+                {
+                    row[x] = (int)(CellState)_data[Index(x, y, z)];
+                }
+                layer[y] = row;
+            }
+            result[z] = layer;
+        }
+        return result;
+    }
 }

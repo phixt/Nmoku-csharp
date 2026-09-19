@@ -119,4 +119,25 @@ public class BoardTests
         Assert.Equal((2, 0), board.CountPieces());
         Assert.Equal(PlayerColor.White, board.DetectCurrentPlayer()); // 黑多轮白
     }
+
+    [Fact]
+    public void ToJaggedArray_EmptyBoard_AllZerosWithSchemaShape()
+    {
+        var jagged = new Board(5, 2).ToJaggedArray();
+        Assert.Equal(2, jagged.Length);
+        Assert.All(jagged, layer => Assert.Equal(5, layer.Length));
+        Assert.All(jagged.SelectMany(l => l), row => Assert.All(row, cell => Assert.Equal(0, cell)));
+    }
+
+    [Fact]
+    public void ToJaggedArray_Pieces_AppearAtZyXOrder()
+    {
+        var board = new Board(5, 2);
+        board.Set(1, 2, 0, CellState.Black);
+        board.Set(3, 4, 1, CellState.White);
+        var jagged = board.ToJaggedArray();
+        Assert.Equal(1, jagged[0][2][1]);
+        Assert.Equal(2, jagged[1][4][3]);
+        Assert.Equal(2, jagged.SelectMany(l => l.SelectMany(r => r)).Count(v => v != 0));
+    }
 }
