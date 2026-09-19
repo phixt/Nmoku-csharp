@@ -43,7 +43,7 @@ public sealed class RouteDef
 public sealed partial class SceneRouter : Node
 {
     private readonly Dictionary<string, RouteDef> _defs;
-    private readonly Dictionary<string, Control> _keepAlive = [];
+    private readonly Dictionary<string, Control> _content = []; // 全部已挂载内容（含 KeepAlive；卸载据此释放）
     private readonly Dictionary<string, Control> _backdrops = [];
     private readonly List<string> _inTree = [];
     private readonly List<string> _overlays = []; // 浮层栈（底→顶，独立于状态机）
@@ -163,17 +163,13 @@ public sealed partial class SceneRouter : Node
         var layer = LayerFor(def.Layer);
 
         Control content;
-        if (def.KeepAlive && _keepAlive.TryGetValue(id, out var cached))
+        if (def.KeepAlive && _content.TryGetValue(id, out var cached))
         {
             content = cached;
         }
         else
         {
             content = def.Factory();
-            if (def.KeepAlive)
-            {
-                _keepAlive[id] = content;
-            }
             if (def.Backdrop != BackdropKind.None)
             {
                 var backdrop = CreateBackdrop(def);
@@ -182,17 +178,20 @@ public sealed partial class SceneRouter : Node
             }
             layer.AddChild(content);
         }
+        _content[id] = content;
         _inTree.Add(id);
         SetRouteVisible(id, true);
     }
 
     private void Unmount(string id)
     {
+        // 背板与内容一律释放（销毁型路由；KeepAlive 基座不走进此路径，仅切可见性）。
+        // 内容此前只在 KeepAlive 字典登记导致销毁型路由残留可见、继续吃点击（"存档菜单取消无响应"根因）。
         if (_backdrops.Remove(id, out var backdrop))
         {
             backdrop.QueueFree();
         }
-        if (_keepAlive.Remove(id, out var content))
+        if (_content.Remove(id, out var content))
         {
             content.QueueFree();
         }
@@ -201,7 +200,7 @@ public sealed partial class SceneRouter : Node
 
     private void SetRouteVisible(string id, bool visible)
     {
-        if (_keepAlive.TryGetValue(id, out var content))
+        if (_content.TryGetValue(id, out var content))
         {
             content.Visible = visible;
         }
