@@ -31,6 +31,12 @@ public sealed class Palette
         GhostWhite = 0.14f,
         GhostMarkedBlack = 0.70f,                // 辅助线标记到的子：强化显示
         GhostMarkedWhite = 0.50f,
+        // 2D 自绘棋子（M4 二轮反馈：2D 白子对比不足、须随主题适配；Dark 值=原 Darkened 派生结果，观感不变）
+        StoneWhite2D = new Color(0.69f, 0.70f, 0.71f),
+        StoneBlack2D = new Color(0.04f, 0.04f, 0.05f),
+        StoneOutlineBlack2D = new Color(0.07f, 0.07f, 0.08f),
+        StoneOutlineWhite2D = new Color(0.92f, 0.93f, 0.95f),
+        TextOutline = new Color(0f, 0f, 0f, 0.85f), // 状态字描边（暗底白字黑描边）
         PanelBg = new Color(0.13f, 0.14f, 0.17f, 0.97f),
         PanelBorder = new Color(0.45f, 0.50f, 0.55f, 0.80f),
         TextPrimary = new Color(0.92f, 0.93f, 0.95f),
@@ -62,10 +68,16 @@ public sealed class Palette
         GhostWhite = 0.34f,
         GhostMarkedBlack = 0.60f,
         GhostMarkedWhite = 0.85f,
+        // 2D 自绘棋子：白子取受光乳白（与 3D 观感一致）+ 灰绿描边定边（浅底上纯白不可见——M4 二轮反馈）
+        StoneWhite2D = new Color(0.88f, 0.87f, 0.79f),
+        StoneBlack2D = new Color(0.14f, 0.15f, 0.16f),
+        StoneOutlineBlack2D = new Color(0.08f, 0.09f, 0.10f),
+        StoneOutlineWhite2D = new Color(0.50f, 0.52f, 0.48f),
+        TextOutline = new Color(0.97f, 0.96f, 0.92f, 0.90f), // 浅底深字纸色描边
         PanelBg = new Color(0.97f, 0.96f, 0.92f, 0.97f),
         PanelBorder = new Color(0.55f, 0.58f, 0.54f, 0.85f),
-        TextPrimary = new Color(0.15f, 0.16f, 0.17f),
-        TextDim = new Color(0.45f, 0.48f, 0.46f),
+        TextPrimary = new Color(0.30f, 0.33f, 0.36f),     // 深字偏浅（纸底上纯墨过重——M4 二轮反馈）
+        TextDim = new Color(0.54f, 0.57f, 0.55f),
         ButtonBg = new Color(0.88f, 0.89f, 0.84f),
         ButtonHover = new Color(0.80f, 0.85f, 0.79f),
         Accent = new Color(0.20f, 0.55f, 0.45f),          // 水绿
@@ -95,6 +107,11 @@ public sealed class Palette
         GhostWhite = GhostWhite,
         GhostMarkedBlack = GhostMarkedBlack,
         GhostMarkedWhite = GhostMarkedWhite,
+        StoneWhite2D = StoneWhite2D,
+        StoneBlack2D = StoneBlack2D,
+        StoneOutlineBlack2D = StoneOutlineBlack2D,
+        StoneOutlineWhite2D = StoneOutlineWhite2D,
+        TextOutline = TextOutline,
         PanelBg = PanelBg,
         PanelBorder = PanelBorder,
         TextPrimary = TextPrimary,
@@ -132,6 +149,15 @@ public sealed class Palette
     /// <summary>非焦点但被辅助线标记到的黑/白棋子透明度（强化显示）。</summary>
     public float GhostMarkedBlack { get; private init; }
     public float GhostMarkedWhite { get; private init; }
+
+    // ---- 2D 自绘棋子与文字描边（语义化，M4 二轮：随主题适配，禁止视图内硬编码色值）----
+
+    public Color StoneWhite2D { get; private init; }
+    public Color StoneBlack2D { get; private init; }
+    public Color StoneOutlineBlack2D { get; private init; }
+    public Color StoneOutlineWhite2D { get; private init; }
+    /// <summary>状态字描边（暗底白字用深描边、浅底深字用纸色描边）。</summary>
+    public Color TextOutline { get; private init; }
 
     // ---- UI 语义色（M4 壳界面：面板/文字/按钮/toast；色弱组沿用同值，红绿问题只涉及棋盘辅助线）----
 

@@ -13,6 +13,7 @@ public sealed partial class Board2DView : Control
     private const float GridPadding = 0.5f;   // R4-1 安全边距（格）
     private const float StoneRadius = 0.45f;  // 格单位
     private const float GhostOpacity = 0.35f; // 源 HOVER_PIECE_OPACITY
+    private const float TurnStoneOpacity = 0.55f; // B13 常驻行棋指示：比悬停 ghost 略高保可读
     private const float StarRadius = 0.12f;
     private const float MarkerRadius = 0.10f;
     private const float LastMoveRingRadius = 0.5f;
@@ -145,6 +146,16 @@ public sealed partial class Board2DView : Control
             DrawCircle(CellToScreen(m.Position.X, m.Position.Y), MarkerRadius * _scale, color,
                 filled: true, width: -1f, antialiased: true);
         }
+
+        // B13 常驻行棋指示假棋子（右上角）：显示当前行棋方；纯 _Draw 图元，
+        // 不入棋盘数据/子数/辅助线/3D MultiMesh。SWAP2 决策期指针不动（B1），显示决策方白方。
+        if (!Game.InReplay && !Game.IsOver)
+        {
+            var turnPlayer = Game.SwapPending ? PlayerColor.White : Game.Current;
+            float stoneR = StoneRadius * _scale;
+            var pos = new Vector2(Size.X - stoneR - _scale * 0.6f, stoneR + _scale * 0.6f);
+            DrawStone(pos, turnPlayer.ToCell(), TurnStoneOpacity);
+        }
     }
 
     private void DrawAuxLines(IReadOnlyList<AuxLine> lines, AuxRole role)
@@ -163,10 +174,9 @@ public sealed partial class Board2DView : Control
     private void DrawStone(Vector2 pos, CellState state, float alpha)
     {
         // 三层绘制（源 canvas 质感）：体色圆 + 左上高光光斑 + 描边。
-        // 不用整张径向纹理直接铺方形——高光偏心时渐变边缘色会涂满四角（"奇怪方框"根因）。
+        // 体色/描边全部来自 Palette 语义字段（M4 二轮：2D 白子对比随主题适配，禁止视图内派生色值）。
         bool isBlack = state == CellState.Black;
-        var baseColor = isBlack ? Palette.StoneBlack : Palette.StoneWhite;
-        var body = isBlack ? baseColor.Darkened(0.55f) : baseColor.Darkened(0.25f);
+        var body = isBlack ? Palette.StoneBlack2D : Palette.StoneWhite2D;
         DrawCircle(pos, StoneRadius * _scale, new Color(body.R, body.G, body.B, alpha),
             filled: true, width: -1f, antialiased: true);
 
@@ -180,10 +190,9 @@ public sealed partial class Board2DView : Control
             new Vector2(glowDiameter, glowDiameter));
         DrawTextureRect(_glowTex, glowRect, tile: false, modulate: new Color(1, 1, 1, glowStrength));
 
-        var outline = isBlack
-            ? new Color(0.07f, 0.07f, 0.08f, alpha)
-            : new Color(baseColor.R, baseColor.G, baseColor.B, MathF.Min(1f, alpha + 0.2f));
-        DrawArc(pos, StoneRadius * _scale, 0, MathF.Tau, 40, outline, 1.5f, true);
+        var outlineColor = isBlack ? Palette.StoneOutlineBlack2D : Palette.StoneOutlineWhite2D;
+        DrawArc(pos, StoneRadius * _scale, 0, MathF.Tau, 40,
+            new Color(outlineColor.R, outlineColor.G, outlineColor.B, MathF.Min(1f, alpha + 0.2f)), 1.5f, true);
     }
 
     private Color RoleColor(AuxRole role, float alpha)

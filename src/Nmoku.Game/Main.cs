@@ -129,6 +129,7 @@ public partial class Main : Node
         _gm.FocusChanged += _ => Refresh();
         _gm.HoverChanged += OnHoverChanged;
         EventBus.ThemeToggled += ApplyTheme;
+        _store.LevelChanged += OnLevelChanged;
 
         _gm.Configure(new LevelConfig
         {
@@ -162,6 +163,15 @@ public partial class Main : Node
         {
             _router.Rebuild(id); // 壳屏按新套重建（工厂重跑读 Active；未挂载的屏幕打开时自动生效）
         }
+        Refresh();
+    }
+
+    /// <summary>关卡维度变化（尺寸/层数随档）：3D 网格与相机按新维度重配（2D 面板自绘全动态，无需重配）。</summary>
+    private void OnLevelChanged()
+    {
+        var board = _gm.Board;
+        _board3D.Configure(board.BoardSize, board.Layers, _spacing);
+        _rig.Reset(board.BoardSize, board.Layers, _spacing, ViewportAspect());
         Refresh();
     }
 
@@ -594,6 +604,28 @@ public partial class Main : Node
                 && _gm.Current == PlayerColor.White; // B W B → 轮白
             return ok ? "ok" : "FAIL";
         }));
+        _autotestSteps.Enqueue(("m4b-level-dims-resync", () =>
+        {
+            // 严重 bug 回归：层数多于默认的关卡必须重配 3D 网格与相机（M4 二轮验收反馈）
+            _store.Pause();
+            _store.ReturnToTitle();
+            bool ok = _store.StartLevel(new LevelConfig
+            {
+                Id = "deep",
+                BoardSize = 11,
+                Layers = 8, // > 默认 6：不重配则 3D 网格仍按 6 层构建、多余层不渲染
+                WinLength = 5,
+                Rules = RuleSet.Gomoku,
+            }, false, AIDifficulty.Medium);
+            ok = ok && _gm.Board.Layers == 8
+                && _board3D.Layers == 8 && _board3D.BoardSize == 11
+                && Math.Abs(_rig.Target.Center.Z - 7 * _spacing / 2) < 1e-6; // 相机中心=(layers-1)×spacing/2
+            // 深层落子可达（渲染数据端验证）
+            ok = ok && _gm.TryPlace(5, 5, 7) && _gm.Board.Get(5, 5, 7) == CellState.Black;
+            _store.Pause();
+            _store.ReturnToTitle();
+            return ok ? "ok" : "FAIL";
+        }));
         _autotestSteps.Enqueue(("m4b-nzsave-file-roundtrip", () =>
         {
             // .nzsave 文件往返：导出槽位 → 删除 → 文件导入（zip 容器直解）→ 落首空槽内容一致
@@ -780,7 +812,7 @@ public partial class Main : Node
         yield return ("spacing_reset", () =>
         {
             _spacing = GameConfig.DefaultLayerSpacing;
-            _rig.Reset(_boardSize, _layers, _spacing, ViewportAspect());
+            _rig.Reset(_gm.Board.BoardSize, _gm.Board.Layers, _spacing, ViewportAspect());
         });
     }
 
@@ -923,8 +955,8 @@ public partial class Main : Node
 
     private void OnSpacingChanged()
     {
-        _board3D.Configure(_boardSize, _layers, _spacing);
-        _rig.Update(_boardSize, _layers, _spacing, ViewportAspect(), GameConfig.DefaultYaw);
+        _board3D.Configure(_gm.Board.BoardSize, _gm.Board.Layers, _spacing);
+        _rig.Update(_gm.Board.BoardSize, _gm.Board.Layers, _spacing, ViewportAspect(), GameConfig.DefaultYaw);
         _gm.LayerSpacing = _spacing; // 存档快照字段随动
         Refresh();
     }

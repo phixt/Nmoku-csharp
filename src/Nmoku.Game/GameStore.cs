@@ -32,6 +32,8 @@ public sealed partial class GameStore : Node
     public event Action<GameState>? StateChanged;
     /// <summary>槽位内容变化（存档菜单刷新）。</summary>
     public event Action? SavesChanged;
+    /// <summary>关卡装配完成：对局维度（尺寸/层数）可能变化，壳层需重配视图与相机。</summary>
+    public event Action? LevelChanged;
 
     public GameStore() : this(null)
     {
@@ -102,6 +104,7 @@ public sealed partial class GameStore : Node
     public bool StartLevel(LevelConfig level, bool pve, AIDifficulty difficulty)
     {
         GM.Configure(level, pve, difficulty);
+        LevelChanged?.Invoke(); // 维度随档变化：视图/相机必须重配（层数>默认时不重配则不渲染——M4 验收反馈）
         return Fire(GameTrigger.StartGame);
     }
 

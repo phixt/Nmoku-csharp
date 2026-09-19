@@ -86,6 +86,7 @@ public sealed partial class GameScreen : Control
         StatusLabel.HorizontalAlignment = HorizontalAlignment.Center;
         StatusLabel.GrowHorizontal = GrowDirection.Both;
         StatusLabel.OffsetTop = -64;
+        ApplyStatusStyle();
         AddChild(StatusLabel);
     }
 
@@ -94,5 +95,14 @@ public sealed partial class GameScreen : Control
     {
         _environment.BackgroundColor = Palette.Active.Background;
         _environment.AmbientLightColor = Palette.Active.AmbientLight;
+        ApplyStatusStyle();
+    }
+
+    /// <summary>状态字随主题取色并加描边（M4 二轮：状态字在棋盘底色上不可读）。</summary>
+    private void ApplyStatusStyle()
+    {
+        StatusLabel.AddThemeColorOverride("font_color", Palette.Active.TextPrimary);
+        StatusLabel.AddThemeConstantOverride("outline_size", 6);
+        StatusLabel.AddThemeColorOverride("font_outline_color", Palette.Active.TextOutline);
     }
 }
