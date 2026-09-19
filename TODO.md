@@ -2,14 +2,11 @@
 
 > 维护规则见 `AGENTS.md`：本文件按"当前→近期→远期挂账"三层组织，收工必更新；总量 ≤300 行，已完成的尽快移入 CHANGELOG/git log，不丢当阶段关键教训。
 
-## 当前（M2 开工就绪）
+## 当前（M2 收尾：人类标定验收）
 
-M1.5 review 修复批已完成（2026-09-19，明细见 CHANGELOG「M1.5」节）。
-
-- [ ] M2：CameraRig 纯数学（03-camera §9 八步管道 + §8 缓存脏标记）入 Core + xUnit
-- [ ] M2：Board3DView——MultiMesh×4（黑/白×实体/ghost）、线网格 ArrayMesh、`ComputeOpacity` ghost 透明
-- [ ] M2：**相机标定对照**（§3.2 / R1 R2）——与源项目 `npm run dev` 并排比 默认盘 / 9×9×1 / 13×13×6 spacing 6.0 三组构图；镜像问题收敛在 CoordMapper 单点
-- [ ] M2：Q/E 旋转、W/S+滚轮缩放、Z/C 层间距、X 复位；悬停层高亮占位
+- [x] M2：CameraRig 纯数学（03-camera §9 八步管道 + §8 缓存 + 决策 #9 自由交互）入 Core + xUnit（174 绿）
+- [x] M2：Board3DView（MultiMesh 黑/白实体 + 逐层 ghost 按层透明度、单 ArrayMesh 网格线、悬停蓝点占位）+ Main 接线 + 输入（Q/E ±90°、W/S 持续缩放、滚轮锚点缩放、左键拖旋转、中键拖平移、Z/C 层间距、X 复位）；标定参数 `-- --board=9 --layers=1 --spacing=6.0`
+- [ ] M2：**相机标定对照**（§3.2 / R1 R2）——与源项目 `npm run dev` 并排比 默认盘 / 9×9×1 / 13×13×6 spacing 6.0 三组构图；构图差异先读 §10 B7（源相机五处缺陷/简化，以文档为准）；镜像问题收敛在 CoordMapper 单点；拖拽方向/灵敏度手感顺带确认
 - [ ] M2 验收：三组截图目视一致 + FPS ≥ 60 + tag `m2`
 - [ ] M3 前：读源 TS `RightPanel.ts`/`LeftPanel.ts`/`main.ts` 输入段，把辅助线/2D 面板行为清单写进 migration-plan R4 节并经人类确认（铁律 2，R4 高风险项）
 - [ ] M3：GameManager 接线（回合/合法性/胜负/判和）+ 2D 自绘面板 + 辅助线双渲染器 + 快捷键门控
