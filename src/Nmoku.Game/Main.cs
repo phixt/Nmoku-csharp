@@ -704,6 +704,58 @@ public partial class Main : Node
                 ? "ok" : $"FAIL y={yes} c={cancel} s={submit} sub={submitted}";
         }));
         _autotestSteps.Enqueue(("m4c-modifier-quicksave", AutotestModifierQuickSave));
+        _autotestSteps.Enqueue(("m4c-real-old-restore", AutotestRealOldSaveRestore));
+    }
+
+    /// <summary>
+    /// R6/验收轮：真实 v2.0.0 旧档（源浏览器导出，见 tests Fixtures browser_real_export_*）
+    /// 走完整导入→读档→续弈链路。相对路径在仓库根执行（本地与 CI 一致）。
+    /// </summary>
+    private string AutotestRealOldSaveRestore()
+    {
+        // Godot 启动会把进程 CWD 切到项目目录 → 同时探测仓库根（CI/本地）与项目目录两种基点
+        string rel = "tests/Nmoku.Core.Tests/Fixtures/browser_real_export_v2_standard.b64.txt";
+        string? fixturePath = new[]
+        {
+            System.IO.Path.Combine(System.Environment.CurrentDirectory, rel),
+            System.IO.Path.GetFullPath(System.IO.Path.Combine(System.Environment.CurrentDirectory, "..", "..", rel)),
+        }.FirstOrDefault(System.IO.File.Exists);
+        using var file = fixturePath == null
+            ? null
+            : Godot.FileAccess.Open(fixturePath, Godot.FileAccess.ModeFlags.Read);
+        if (file == null)
+        {
+            return "FAIL fixture not found (run from repo root)";
+        }
+        string b64 = file.GetAsText().Trim();
+
+        // 完整导入路径（嗅探+校验+落首空槽）；先前自测步可能已占用槽 0 → 按 id 定位
+        _store.ImportText(b64);
+        int slot = -1;
+        for (int i = 0; i < GameConfig.SaveSlotCount; i++)
+        {
+            if (_store.Saves.Load(i)?.Id == "47dd93b4-cb80-48cb-b2ba-2419ea829461")
+            {
+                slot = i;
+                break;
+            }
+        }
+        if (slot < 0)
+        {
+            return "FAIL import";
+        }
+        if (!_store.LoadSlot(slot) || _store.State != GameState.Playing || _gm.History.Count != 8)
+        {
+            return "FAIL restore";
+        }
+        // 续弈：样本黑已有 (4..7,4) 四连，恢复后轮黑——第 9 手 (8,4) 成五（胜负判定随档生效）
+        if (!_gm.TryPlace(8, 4, 0) || !_gm.IsOver || _gm.Winner != 1 || _store.State != GameState.GameOver)
+        {
+            return "FAIL continue";
+        }
+        _store.ReturnToTitle();
+        _store.Saves.DeleteAsync(slot).GetAwaiter().GetResult();
+        return "ok";
     }
 
     private int _qsPhase;
