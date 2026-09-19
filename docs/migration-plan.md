@@ -235,7 +235,7 @@ Godot 项目文件（`project.godot`、场景、资产）与 csproj 同置于 `s
 | R3 | ghost 逐实例透明排序不严格 | 低 | 已定降级方案（按层分桶）；目视验证驱动，不预防性优化 |
 | R4 | 辅助线/悬停联动文档缺口，行为理解偏差 | **高** | M3 独立子任务；先读源 TS（3 文件）提炼行为清单并经你确认再写 |
 | R5 | AI 线程与 Godot 主线程交互（取消/结果回投） | 低 | Core 纯函数 + Game 层单点接线；测试覆盖取消路径 |
-| R6 | 旧档兼容细节（字段缺失、v1 形状、非法 Base64） | 中 | 用源项目**真实导出样本**做测试夹具；migrate/validate 用例先于实现 |
+| R6 | 旧档兼容细节（字段缺失、v1 形状、非法 Base64） | 中 | ✅ 已闭环（2026-09-19）：源浏览器版**真实导出样本**入 `tests/…/Fixtures/browser_real_export_v2_standard.{json,b64.txt}`（8 手 13×6 进行中局，UI 落子→Esc 保存→localStorage 抓取），双向互通实测（本项目 Base64 导入源浏览器成功）；行为级回归见 `SaveFixtureTests.BrowserRealExport_*` |
 | R7 | woff2 字体 Godot 不识别 | 低 | 取霞鹜文楷官方 TTF；OFL 许可随仓库附声明 |
 | R8 | 调色板抽象过度设计拖慢 M4 | 中 | 首发仅一套 light+dark+色弱三组色，Palette 字段先语义化、不做编辑器 |
 | R9 | Godot 4.6 相对 4.5 的 API 变动踩坑 | 低 | 均为标准稳定 API（MultiMesh/Camera3D/Control._draw），遇阻再查 release notes |

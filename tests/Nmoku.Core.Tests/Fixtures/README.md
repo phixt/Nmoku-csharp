@@ -27,10 +27,12 @@
 | `corrupt_not_json.txt` | 非法 JSON | JSON.parse 失败路径：槽位置 null，不抛异常 |
 | `clipboard_v2_standard.b64.txt` | Base64(JSON)，等价 standard 样本 | `TryParseSaveData` 往返一致；非法 base64→null |
 | `slot_index_example.json` | `SlotMeta[]`（槽 0 与快存槽 5） | `GetLatestIndex` 按 timestamp 取 5 |
+| `browser_real_export_v2_standard.json` | **真实导出**：源浏览器版 2026-09-19 对局 8 手（13×13×6 标准 PvP 进行中）经 `saveGame` 写入 localStorage 的原始 JSON | 形状/一致性断言；佐证 v2.0.0 无 `winLength` 字段（B14） |
+| `browser_real_export_v2_standard.b64.txt` | 同上样本的 Base64（= 源剪贴板导出字节，`btoa(JSON)`） | `SaveArchive.TryParsePackage` 全链路：解析+校验+交替行棋+boardState 一致 |
 
 ## 约定
 
 - 所有 JSON 为紧凑格式（`JSON.stringify` 默认分隔符），与源实现字节级风格一致。
 - 棋子格值：`0 空 / 1 黑 / 2 白`；`boardState` 访问序 **[z][y][x]**。
-- 这些是**手工按 schema 构造**的样本；M4 验收时需补一份从运行中的源项目（浏览器版导出 Base64）
-  抓取的**真实存档**作为最终回归样本（R6 的完整闭环）。
+- `browser_real_export_*` 为源项目真实运行导出（浏览器 UI 落子 8 手 → Esc 保存 → localStorage 抓取），
+  R6 闭环样本；反向互通（本项目 Base64 导入源浏览器）已于同日实测通过（toast「已保存到存档 2」）。

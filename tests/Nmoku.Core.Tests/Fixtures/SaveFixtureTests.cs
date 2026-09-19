@@ -1,5 +1,6 @@
 using System.Text;
 using System.Text.Json;
+using Nmoku.Core.Saves;
 
 namespace Nmoku.Core.Tests.Fixtures;
 
@@ -119,5 +120,46 @@ public class SaveFixtureTests
         Assert.Equal(5, slots[^1].GetProperty("index").GetInt32());
         Assert.True(slots[^1].GetProperty("timestamp").GetInt64() >
                     slots[0].GetProperty("timestamp").GetInt64());
+    }
+
+    // ---- R6 闭环：源项目浏览器真实导出样本（2026-09-19，13×6 标准 PvP 8 手进行中局）----
+
+    [Fact]
+    public void BrowserRealExport_IsSelfConsistent_V2Shape()
+    {
+        using var doc = Load("browser_real_export_v2_standard.json");
+        AssertV2Shape(doc.RootElement);
+        var root = doc.RootElement;
+        Assert.Equal("gomoku", root.GetProperty("rules").GetString());
+        Assert.Equal("pvp", root.GetProperty("gameMode").GetString());
+        Assert.Equal("playing", root.GetProperty("status").GetString());
+        Assert.False(root.TryGetProperty("winLength", out _)); // v2.0.0 无连珠数字段（B14 缺口佐证）
+    }
+
+    [Fact]
+    public void BrowserRealExport_Base64_ParsesAndRestoresThroughSaveArchive()
+    {
+        // 与源浏览器剪贴板导出逐字节一致的路径：btoa(JSON) → SaveArchive 统一嗅探
+        var b64 = File.ReadAllText(FixturePath("browser_real_export_v2_standard.b64.txt")).Trim();
+        var package = SaveArchive.TryParsePackage(b64);
+
+        Assert.NotNull(package);
+        var data = package!.Data;
+        Assert.Null(package.WinLength); // 源项目无外圈元数据
+        Assert.Equal("2.0.0", data.Version);
+        Assert.Equal(13, data.BoardSize);
+        Assert.Equal(6, data.Layers);
+        Assert.Equal(8, data.Moves.Count);
+        Assert.Equal("playing", data.Status);
+        Assert.Equal(1, data.CurrentPlayer); // 8 手后轮黑
+        Assert.Null(SaveValidator.Validate(data)); // 校验管线全绿
+
+        // 交替行棋 + boardState 与 moves 一致（真实导出不是拼造样本的硬证据）
+        for (int i = 0; i < data.Moves.Count; i++)
+        {
+            Assert.Equal(i % 2 == 0 ? 1 : 2, data.Moves[i].Player);
+            Assert.Equal((int)data.Moves[i].Player,
+                data.BoardState[data.Moves[i].Z][data.Moves[i].Y][data.Moves[i].X]);
+        }
     }
 }
