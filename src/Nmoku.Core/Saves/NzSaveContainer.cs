@@ -1,8 +1,12 @@
 using System.IO.Compression;
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 
 namespace Nmoku.Core.Saves;
+
+/// <summary>解包产物：内层 v2.0.0 档 + manifest 外圈元数据（winLength 不在 v2.0.0 schema 内）。</summary>
+public sealed record NzSavePackage(SaveData Data, int? WinLength);
 
 /// <summary>
 /// 自建导出格式 `.nzsave` zip 容器（migration-plan §3.4）：manifest.json + savedata.json，
@@ -16,14 +20,16 @@ public static class NzSaveContainer
     public const string ManifestEntry = "manifest.json";
     public const string SaveDataEntry = "savedata.json";
 
-    /// <summary>打包为 zip 容器字节流（压缩级别对存档这种小 JSON 不敏感，取默认）。</summary>
-    public static byte[] Pack(SaveData data, long createdAtUnixMs)
+    /// <summary>打包为 zip 容器字节流（压缩级别对存档这种小 JSON 不敏感，取默认）。
+    /// winLength 为外圈元数据（B14）：null 时 manifest 省略该键。</summary>
+    public static byte[] Pack(SaveData data, long createdAtUnixMs, int? winLength = null)
     {
         var manifest = new Manifest
         {
             Format = Format,
             CreatedAt = createdAtUnixMs,
             AppId = AppId,
+            WinLength = winLength,
         };
         using var buffer = new MemoryStream();
         using (var zip = new ZipArchive(buffer, ZipArchiveMode.Create, leaveOpen: true))
@@ -35,10 +41,10 @@ public static class NzSaveContainer
     }
 
     /// <summary>
-    /// 解包 zip 容器；缺 savedata.json、缺 manifest、损坏一律返回 null。
-    /// manifest 只做形状检查（容器版本演进时在此分流），字段值暂不参与校验。
+    /// 解包 zip 容器（含 manifest 外圈元数据）；缺 savedata.json、缺 manifest、损坏一律返回 null。
+    /// manifest 只做形状检查（容器版本演进时在此分流）；winLength 越界视为缺失（外圈脏数据不毙档）。
     /// </summary>
-    public static SaveData? TryUnpack(byte[] raw)
+    public static NzSavePackage? TryUnpackPackage(byte[] raw)
     {
         if (!IsZipMagic(raw))
         {
@@ -60,7 +66,16 @@ public static class NzSaveContainer
             {
                 return null;
             }
-            return SaveData.Deserialize(ReadEntry(dataEntry));
+            int? winLength = null;
+            if (manifestDoc.RootElement.TryGetProperty("winLength", out var wl) &&
+                wl.TryGetInt32(out int parsed))
+            {
+                winLength = parsed is >= GameConfig.MinWinLength and <= GameConfig.MaxWinLength
+                    ? parsed
+                    : null;
+            }
+            var data = SaveData.Deserialize(ReadEntry(dataEntry));
+            return data == null ? null : new NzSavePackage(data, winLength);
         }
         catch (InvalidDataException)
         {
@@ -75,6 +90,9 @@ public static class NzSaveContainer
             return null;
         }
     }
+
+    /// <summary>兼容旧调用面：只要内层档，不取外圈元数据。</summary>
+    public static SaveData? TryUnpack(byte[] raw) => TryUnpackPackage(raw)?.Data;
 
     /// <summary>zip magic：PK\x03\x04（本地头）或 PK\x05\x06（空档）。</summary>
     public static bool IsZipMagic(byte[] raw) =>
@@ -100,6 +118,7 @@ public static class NzSaveContainer
     {
         PropertyNameCaseInsensitive = true,
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
     };
 
     private sealed class Manifest
@@ -107,6 +126,7 @@ public static class NzSaveContainer
         public string Format { get; set; } = "";
         public long CreatedAt { get; set; }
         public string AppId { get; set; } = "";
+        public int? WinLength { get; set; }
     }
 }
 
@@ -117,14 +137,27 @@ public static class NzSaveContainer
 /// </summary>
 public static class SaveArchive
 {
-    public static SaveData? TryParse(string input)
+    public static SaveData? TryParse(string input) => TryParsePackage(input)?.Data;
+
+    /// <summary>
+    /// 嗅探出「内层档 + 外圈元数据」（单次解码）：裸 JSON / Base64(JSON) 路径 winLength 为 null
+    /// （v2.0.0 schema 无此字段），zip 容器路径（Base64 或 Latin-1 字节包装）携带 manifest.winLength。
+    /// </summary>
+    public static NzSavePackage? TryParsePackage(string input)
     {
-        string? json = TryExtractJson(input);
-        return json == null ? null : SaveMigrator.Normalize(json);
+        var sniffed = Sniff(input);
+        if (sniffed == null)
+        {
+            return null;
+        }
+        var data = SaveMigrator.Normalize(sniffed.Value.Json);
+        return data == null ? null : new NzSavePackage(data, sniffed.Value.WinLength);
     }
 
     /// <summary>嗅探出内层 savedata JSON 文本（不解档、不迁移），供调用方走既有迁移/校验管道。</summary>
-    public static string? TryExtractJson(string input)
+    public static string? TryExtractJson(string input) => Sniff(input)?.Json;
+
+    private static (string Json, int? WinLength)? Sniff(string input)
     {
         if (string.IsNullOrWhiteSpace(input))
         {
@@ -134,7 +167,7 @@ public static class SaveArchive
 
         if (trimmed.StartsWith('{'))
         {
-            return trimmed;
+            return (trimmed, null);
         }
 
         byte[]? raw = DecodeBase64(trimmed) ?? DecodeLatin1Bytes(trimmed);
@@ -144,12 +177,12 @@ public static class SaveArchive
         }
         if (NzSaveContainer.IsZipMagic(raw))
         {
-            var inner = NzSaveContainer.TryUnpack(raw);
-            return inner == null ? null : SaveData.Serialize(inner);
+            var package = NzSaveContainer.TryUnpackPackage(raw);
+            return package == null ? null : (SaveData.Serialize(package.Data), package.WinLength);
         }
         // Base64 解出直接是 JSON 文本（源项目剪贴板格式）
         string text = Encoding.UTF8.GetString(raw);
-        return text.TrimStart().StartsWith('{') ? text : null;
+        return text.TrimStart().StartsWith('{') ? (text, null) : null;
     }
 
     private static byte[]? DecodeBase64(string s)

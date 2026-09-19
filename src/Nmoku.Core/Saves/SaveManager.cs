@@ -9,6 +9,7 @@ public sealed class SaveManager
     private readonly IStorageAdapter _storage;
     private readonly SaveData?[] _slots = new SaveData?[GameConfig.SaveSlotCount];
     private readonly string?[] _slotIds = new string?[GameConfig.SaveSlotCount];
+    private readonly int?[] _slotWinLengths = new int?[GameConfig.SaveSlotCount];
     private bool _ready;
 
     public SaveManager(IStorageAdapter storage) => _storage = storage;
@@ -27,7 +28,11 @@ public sealed class SaveManager
     public bool IsSlotEmpty(int index) =>
         index < 0 || index >= GameConfig.SaveSlotCount || _slots[index] == null;
 
-    public async Task SaveAsync(int index, SaveData data)
+    /// <summary>
+    /// 落槽（winLength 为外圈元数据 B14：v2.0.0 schema 无此字段，随 SlotMeta/index.json 旁路保存；
+    /// null = 默认连珠数，等价旧档）。
+    /// </summary>
+    public async Task SaveAsync(int index, SaveData data, int? winLength = null)
     {
         if (index < 0 || index >= GameConfig.SaveSlotCount)
         {
@@ -35,6 +40,7 @@ public sealed class SaveManager
         }
         _slots[index] = data;
         _slotIds[index] = data.Id;
+        _slotWinLengths[index] = winLength;
         var meta = new SlotMeta
         {
             Index = index,
@@ -43,6 +49,7 @@ public sealed class SaveManager
             BoardSize = data.BoardSize,
             Layers = data.Layers,
             MovesCount = data.Moves.Count,
+            WinLength = winLength,
         };
         await _storage.SetSaveAsync(data.Id, SaveData.Serialize(data), meta);
         EventBus.EmitSaveUpdated(_slots);
@@ -50,6 +57,10 @@ public sealed class SaveManager
 
     public SaveData? Load(int index) =>
         index < 0 || index >= GameConfig.SaveSlotCount ? null : _slots[index];
+
+    /// <summary>槽位的外圈连珠数元数据（B14）；空槽/旧档/越界返回 null（即默认 5）。</summary>
+    public int? GetSlotWinLength(int index) =>
+        index < 0 || index >= GameConfig.SaveSlotCount ? null : _slotWinLengths[index];
 
     public async Task DeleteAsync(int index)
     {
@@ -60,6 +71,7 @@ public sealed class SaveManager
         string? id = _slotIds[index];
         _slots[index] = null;
         _slotIds[index] = null;
+        _slotWinLengths[index] = null;
         if (id != null)
         {
             await _storage.DeleteSaveAsync(id);
@@ -67,7 +79,8 @@ public sealed class SaveManager
         EventBus.EmitSaveUpdated(_slots);
     }
 
-    public Task QuickSaveAsync(SaveData data) => SaveAsync(GameConfig.QuickSaveIndex, data);
+    public Task QuickSaveAsync(SaveData data, int? winLength = null) =>
+        SaveAsync(GameConfig.QuickSaveIndex, data, winLength);
 
     public SaveData? QuickLoad() => Load(GameConfig.QuickSaveIndex);
 
@@ -110,12 +123,14 @@ public sealed class SaveManager
                 }
                 _slots[meta.Index] = parsed;
                 _slotIds[meta.Index] = parsed.Id;
+                _slotWinLengths[meta.Index] = meta.WinLength; // 旧 index 无此键 → null（默认 5）
             }
         }
         catch
         {
             Array.Clear(_slots);
             Array.Clear(_slotIds);
+            Array.Clear(_slotWinLengths);
         }
     }
 }

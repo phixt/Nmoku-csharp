@@ -128,7 +128,10 @@ public sealed class ReplayState
     }
 }
 
-/// <summary>槽位元数据（04-contracts §3.1.2）。</summary>
+/// <summary>
+/// 槽位元数据（04-contracts §3.1.2）。WinLength 为本项目扩展的外圈元数据（B14）：
+/// v2.0.0 schema 无连珠数字段，随 index.json 走旁路，旧 index 无此键 → null 回默认 5。
+/// </summary>
 public sealed record SlotMeta
 {
     public int Index { get; init; }
@@ -137,4 +140,5 @@ public sealed record SlotMeta
     public int BoardSize { get; init; }
     public int Layers { get; init; }
     public int MovesCount { get; init; }
+    public int? WinLength { get; init; }
 }

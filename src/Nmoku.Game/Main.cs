@@ -645,6 +645,40 @@ public partial class Main : Node
             DirAccess.RemoveAbsolute(path);
             return ok ? "ok" : "FAIL";
         }));
+        _autotestSteps.Enqueue(("m4b-winlen-save-restore", () =>
+        {
+            // B14 回归：连珠 7 对局快存 → 读档，连珠数随外圈元数据恢复（v2.0.0 schema 无此字段）
+            _store.Pause();
+            _store.ReturnToTitle();
+            bool ok = _store.StartLevel(new LevelConfig
+            {
+                Id = "wl7",
+                BoardSize = 9,
+                Layers = 1,
+                WinLength = 7,
+                Rules = RuleSet.Gomoku,
+            }, false, AIDifficulty.Medium) && _gm.WinLength == 7;
+            // 连珠 7 生效中：黑连 5 不胜
+            (int x, int y)[] b = [(0, 0), (1, 0), (2, 0), (3, 0), (4, 0)];
+            (int x, int y)[] w = [(0, 1), (1, 1), (2, 1), (3, 1), (4, 1)];
+            for (int k = 0; k < 5; k++)
+            {
+                ok = ok && _gm.TryPlace(b[k].x, b[k].y, 0) && _gm.TryPlace(w[k].x, w[k].y, 0);
+            }
+            ok = ok && !_gm.IsOver;
+            _store.QuickSave();
+            ok = ok && _store.Saves.GetSlotWinLength(GameConfig.QuickSaveIndex) == 7;
+            _store.Pause();
+            ok = ok && _store.LoadSlot(GameConfig.QuickSaveIndex) && _store.State == GameState.Playing;
+            // 恢复后连珠数仍为 7：黑连 6 不胜、连 7 才胜
+            ok = ok && _gm.WinLength == 7
+                && _gm.TryPlace(5, 0, 0) && !_gm.IsOver
+                && _gm.TryPlace(5, 1, 0)
+                && _gm.TryPlace(6, 0, 0) && _gm.IsOver && _gm.Winner == 1;
+            _store.Pause();
+            _store.ReturnToTitle();
+            return ok ? "ok" : "FAIL";
+        }));
     }
 
     /// <summary>M4R-2 自测：合成真实按键事件验证 echo 过滤——非 echo 按键转 90°，echo 按键不再触发。</summary>

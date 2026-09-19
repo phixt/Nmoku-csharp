@@ -51,6 +51,9 @@ public sealed partial class GameManager : Node
     /// <summary>壳层把当前层间距同步进来，存档快照使用（schema 字段 layerSpacing）。</summary>
     public double LayerSpacing { get; set; } = GameConfig.DefaultLayerSpacing;
 
+    /// <summary>当前生效连珠数（存档外圈元数据 B14 的来源；未配置时为默认 5）。</summary>
+    public int WinLength => _level?.WinLength ?? GameConfig.WinLength;
+
     public bool InReplay => _replayMoves != null;
     public int ReplayIndex { get; private set; }
     public int ReplayCount => _replayMoves?.Count ?? 0;
@@ -238,8 +241,9 @@ public sealed partial class GameManager : Node
     /// 由存档恢复对局（棋盘尺寸/规则/模式/AI 全部随档重配）。boardState 为局面事实源，
     /// 回合与 SWAP2 决策期由引擎从 history 重新推导（不信任 currentPlayer 字段的中间态）；
     /// focusZ 读入即弃（migration-plan §3.1），复位到层 0。维度非法返回 false。
+    /// winLength 为外圈元数据（B14）：v2.0.0 schema 无连珠数字段，null 回默认 5。
     /// </summary>
-    public bool LoadFrom(SaveData d)
+    public bool LoadFrom(SaveData d, int? winLength = null)
     {
         if (d.BoardSize <= 0 || d.Layers <= 0)
         {
@@ -252,9 +256,10 @@ public sealed partial class GameManager : Node
         var rules = d.Rules.Equals("swap2", StringComparison.OrdinalIgnoreCase) ? RuleSet.Swap2
             : d.Rules.Equals("renju", StringComparison.OrdinalIgnoreCase) ? RuleSet.Renju
             : RuleSet.Gomoku;
+        int effectiveWinLength = winLength ?? GameConfig.WinLength;
         _board = new Board(d.BoardSize, d.Layers);
-        _level = new LevelConfig { Id = "sandbox", BoardSize = d.BoardSize, Layers = d.Layers, Rules = rules };
-        _engine = RuleEngineFactory.Create(rules, GameConfig.WinLength);
+        _level = new LevelConfig { Id = "sandbox", BoardSize = d.BoardSize, Layers = d.Layers, Rules = rules, WinLength = effectiveWinLength };
+        _engine = RuleEngineFactory.Create(rules, effectiveWinLength);
         _pve = d.GameMode.Equals("pve", StringComparison.OrdinalIgnoreCase);
         _aiColor = d.PlayerColor == 2 ? PlayerColor.White : PlayerColor.Black;
         _aiDifficulty = d.AiDifficulty switch
@@ -264,7 +269,7 @@ public sealed partial class GameManager : Node
             _ => AIDifficulty.Medium,
         };
         _ai = _pve ? new AIEngine(_aiDifficulty) : null;
-        _ai?.Initialize(d.BoardSize, d.Layers, GameConfig.WinLength);
+        _ai?.Initialize(d.BoardSize, d.Layers, effectiveWinLength);
 
         _history.Clear();
         _history.AddRange(d.Moves.Select(m => m.ToMove()));
@@ -310,9 +315,9 @@ public sealed partial class GameManager : Node
     }
 
     /// <summary>进入复盘（01-core §2.4）：棋盘重放为 0 手可见，落子/悔棋被门控。</summary>
-    public bool BeginReplay(SaveData d)
+    public bool BeginReplay(SaveData d, int? winLength = null)
     {
-        if (!LoadFrom(d))
+        if (!LoadFrom(d, winLength))
         {
             return false;
         }

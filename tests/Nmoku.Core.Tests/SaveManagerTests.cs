@@ -126,6 +126,60 @@ public class SaveManagerTests : IDisposable
         Assert.True(manager.IsSlotEmpty(4));
     }
 
+    // ---- 槽位外圈元数据 winLength（B14）----
+
+    [Fact]
+    public async Task SaveAsync_WithWinLength_RoundTripsAcrossManagerRestart()
+    {
+        var storage = new MemoryStorageAdapter();
+        var first = new SaveManager(storage);
+        await first.InitAsync();
+        await first.SaveAsync(2, NewSave(10), winLength: 7);
+
+        // 模拟重启：新 manager 从同一 storage 装载
+        var second = new SaveManager(storage);
+        await second.InitAsync();
+
+        Assert.Equal(7, second.GetSlotWinLength(2));
+        Assert.NotNull(second.Load(2));
+    }
+
+    [Fact]
+    public async Task SaveAsync_WithoutWinLength_GetSlotWinLengthNull()
+    {
+        var storage = new MemoryStorageAdapter();
+        var first = new SaveManager(storage);
+        await first.InitAsync();
+        await first.SaveAsync(0, NewSave(10));
+
+        var second = new SaveManager(storage);
+        await second.InitAsync();
+
+        Assert.Null(second.GetSlotWinLength(0)); // 等价旧档：回默认 5
+    }
+
+    [Fact]
+    public async Task DeleteAsync_ClearsWinLengthMetadata()
+    {
+        var manager = new SaveManager(new MemoryStorageAdapter());
+        await manager.InitAsync();
+        await manager.SaveAsync(1, NewSave(10), winLength: 6);
+
+        await manager.DeleteAsync(1);
+
+        Assert.Null(manager.GetSlotWinLength(1));
+    }
+
+    [Theory]
+    [InlineData(-1)]
+    [InlineData(6)]
+    public void GetSlotWinLength_OutOfRangeSlot_ReturnsNull(int slot)
+    {
+        var manager = new SaveManager(new MemoryStorageAdapter());
+
+        Assert.Null(manager.GetSlotWinLength(slot));
+    }
+
     [Fact]
     public async Task GetLatestIndex_PicksMaxTimestamp()
     {

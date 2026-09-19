@@ -52,6 +52,72 @@ public class NzSaveContainerTests
         Assert.Equal(original.Moves[1].Player, restored.Moves[1].Player);
     }
 
+    // ---- manifest 外圈元数据 winLength（B14）----
+
+    [Fact]
+    public void Pack_WithWinLength_TryUnpackPackageSurfacesIt()
+    {
+        var package = NzSaveContainer.TryUnpackPackage(NzSaveContainer.Pack(Sample(), 1, winLength: 7));
+
+        Assert.NotNull(package);
+        Assert.Equal(7, package!.WinLength);
+        Assert.Equal(Sample().Id, package.Data.Id);
+    }
+
+    [Fact]
+    public void Pack_WithoutWinLength_ManifestOmitsField()
+    {
+        byte[] raw = NzSaveContainer.Pack(Sample(), 1);
+        using var zip = new System.IO.Compression.ZipArchive(new MemoryStream(raw));
+        var manifest = System.Text.Json.JsonDocument.Parse(ReadEntry(zip, NzSaveContainer.ManifestEntry)).RootElement;
+
+        Assert.False(manifest.TryGetProperty("winLength", out _));
+        Assert.Null(NzSaveContainer.TryUnpackPackage(raw)!.WinLength);
+    }
+
+    [Fact]
+    public void TryUnpackPackage_WinLengthOutOfRange_TreatedAsMissing()
+    {
+        // 外圈脏数据不毙档：越界连珠数忽略、内层档照常解出
+        var package = NzSaveContainer.TryUnpackPackage(NzSaveContainer.Pack(Sample(), 1, winLength: 99));
+
+        Assert.NotNull(package);
+        Assert.Null(package!.WinLength);
+        Assert.Equal(Sample().Id, package.Data.Id);
+    }
+
+    [Fact]
+    public void TryParsePackage_PlainJson_WinLengthNull()
+    {
+        var package = SaveArchive.TryParsePackage(SaveData.Serialize(Sample()));
+
+        Assert.NotNull(package);
+        Assert.Null(package!.WinLength);
+    }
+
+    [Fact]
+    public void TryParsePackage_Base64WrappedZip_CarriesManifestWinLength()
+    {
+        string b64 = Convert.ToBase64String(NzSaveContainer.Pack(Sample(), 1, winLength: 9));
+
+        var package = SaveArchive.TryParsePackage(b64);
+
+        Assert.NotNull(package);
+        Assert.Equal(9, package!.WinLength);
+        Assert.Equal("2.0.0", package.Data.Version);
+    }
+
+    [Fact]
+    public void TryParse_Base64WrappedZip_StillReturnsInnerDataOnly()
+    {
+        string b64 = Convert.ToBase64String(NzSaveContainer.Pack(Sample(), 1, winLength: 7));
+
+        var parsed = SaveArchive.TryParse(b64);
+
+        Assert.NotNull(parsed);
+        Assert.Equal(Sample().Id, parsed!.Id);
+    }
+
     [Theory]
     [InlineData(new byte[] { 1, 2, 3, 4 })]
     [InlineData(new byte[] { 0x50, 0x4b, 3, 4, 9, 9 })] // PK magic 但内容损坏

@@ -150,7 +150,7 @@ public sealed partial class GameStore : Node
     public bool LoadSlot(int index)
     {
         var data = Saves.Load(index);
-        if (data == null || !GM.LoadFrom(data))
+        if (data == null || !GM.LoadFrom(data, Saves.GetSlotWinLength(index)))
         {
             Overlay?.ShowToast(Text.Save.LoadSlotFailed, isError: true);
             return false;
@@ -170,7 +170,7 @@ public sealed partial class GameStore : Node
     public bool EnterReplay(int slot)
     {
         var data = Saves.Load(slot);
-        if (data == null || !GM.BeginReplay(data))
+        if (data == null || !GM.BeginReplay(data, Saves.GetSlotWinLength(slot)))
         {
             Overlay?.ShowToast(Text.Save.LoadSlotFailed, isError: true);
             return false;
@@ -213,7 +213,7 @@ public sealed partial class GameStore : Node
         {
             return;
         }
-        Saves.QuickSaveAsync(GM.BuildSaveData(IsDarkTheme)).GetAwaiter().GetResult();
+        Saves.QuickSaveAsync(GM.BuildSaveData(IsDarkTheme), GM.WinLength).GetAwaiter().GetResult();
         Overlay?.ShowToast(Text.Save.QuickSaved);
     }
 
@@ -244,13 +244,13 @@ public sealed partial class GameStore : Node
 
     public void ImportText(string input)
     {
-        var parsed = SaveArchive.TryParse(input);
+        var parsed = SaveArchive.TryParsePackage(input);
         if (parsed == null)
         {
             Overlay?.ShowToast(Text.Save.ImportFailed, isError: true);
             return;
         }
-        ImportData(parsed);
+        ImportData(parsed.Data, parsed.WinLength);
     }
 
     /// <summary>从 .nzsave 文件导入（优先 zip 容器直解，回退文本嗅探）。落入第一个空槽。</summary>
@@ -263,17 +263,17 @@ public sealed partial class GameStore : Node
             return;
         }
         byte[] raw = file.GetBuffer((long)file.GetLength());
-        var parsed = NzSaveContainer.TryUnpack(raw)
-                     ?? SaveArchive.TryParse(System.Text.Encoding.UTF8.GetString(raw));
+        var parsed = NzSaveContainer.TryUnpackPackage(raw)
+                     ?? SaveArchive.TryParsePackage(System.Text.Encoding.UTF8.GetString(raw));
         if (parsed == null)
         {
             Overlay?.ShowToast(Text.Save.ImportFailed, isError: true);
             return;
         }
-        ImportData(parsed);
+        ImportData(parsed.Data, parsed.WinLength);
     }
 
-    /// <summary>导出槽位为 .nzsave 文件（manifest+savedata zip 容器）。</summary>
+    /// <summary>导出槽位为 .nzsave 文件（manifest+savedata zip 容器，manifest 随带外圈 winLength）。</summary>
     public void ExportSlotToFile(int index, string path)
     {
         var data = Saves.Load(index);
@@ -282,7 +282,8 @@ public sealed partial class GameStore : Node
             Overlay?.ShowToast(Text.Save.LoadSlotFailed, isError: true);
             return;
         }
-        byte[] zip = NzSaveContainer.Pack(data, DateTimeOffset.UtcNow.ToUnixTimeMilliseconds());
+        byte[] zip = NzSaveContainer.Pack(data, DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(),
+            Saves.GetSlotWinLength(index));
         using var file = FileAccess.Open(path, FileAccess.ModeFlags.Write);
         if (file == null)
         {
@@ -293,8 +294,8 @@ public sealed partial class GameStore : Node
         Overlay?.ShowToast(Text.Save.ExportedToFile);
     }
 
-    /// <summary>导入落位共用路径：第一个空槽；无空槽 toast。</summary>
-    private void ImportData(SaveData parsed)
+    /// <summary>导入落位共用路径：第一个空槽；无空槽 toast。winLength 随槽位外圈元数据保存（B14）。</summary>
+    private void ImportData(SaveData parsed, int? winLength)
     {
         for (int i = 0; i < GameConfig.SaveSlotCount; i++)
         {
@@ -302,7 +303,7 @@ public sealed partial class GameStore : Node
             {
                 continue;
             }
-            Saves.SaveAsync(i, parsed).GetAwaiter().GetResult();
+            Saves.SaveAsync(i, parsed, winLength).GetAwaiter().GetResult();
             Overlay?.ShowToast(string.Format(Text.Save.ImportedToSlot, i + 1));
             return;
         }
