@@ -9,6 +9,7 @@
 - **质量门禁**：`dotnet test` 270 例全绿；build 0 警告；无头自测 55 步 ALL PASS（M3 对局 + M4 状态机/存档/复盘 +
   M4R 路由/输入回归 + M4 收尾 B14/契约/真实旧档恢复）。
 - **架构红线**：`src/Nmoku.Core` 零 Godot 依赖（KeymapTable/GameStateMachine 均在 Core），xUnit 秒级运行。
+- **许可证**：项目源码采用 GNU GPL v3.0（GPL-3.0-only），完整协议见根目录 `LICENSE`，README 已加入授权说明。
 
 ## M4 收尾轮 — 工程项全清（2026-09-19）
 
