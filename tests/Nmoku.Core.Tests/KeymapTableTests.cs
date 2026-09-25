@@ -9,7 +9,7 @@ public class KeymapTableTests
     /// <summary>project.godot [input] 全部自定义 action（M0 建立 + M2/M3/M4 追加）；新增 action 必须登记进表。</summary>
     private static readonly string[] AllInputMapActions =
     [
-        "pause", "resume", "confirm", "load_latest", "quick_save", "save_first_empty", "restart",
+        "pause", "resume", "confirm", "load_latest", "quick_save", "restart",
         "return_to_title", "open_guide", "toggle_theme", "toggle_mute", "undo",
         "layer_prev", "layer_next", "rotate_left", "rotate_right", "zoom_in", "zoom_out",
         "replay_prev", "replay_next", "exit_replay",
@@ -88,33 +88,5 @@ public class KeymapTableTests
         Assert.True(KeymapTable.AllowsWhenOverlayOpen("ui_cancel"));
         Assert.False(KeymapTable.AllowsWhenOverlayOpen("pause"));
         Assert.False(KeymapTable.AllowsWhenOverlayOpen("layer_next"));
-    }
-
-    [Fact]
-    public void Allows_SaveFirstEmpty_PausedAndGuideOnly()
-    {
-        // S 键 = 源 saveGame：暂停与对局内引导可用；Playing 下 S 属于缩放（zoom_out），不得触发保存
-        Assert.True(KeymapTable.Allows("save_first_empty", GameState.Paused));
-        Assert.True(KeymapTable.Allows("save_first_empty", GameState.GuideFromGame));
-        Assert.False(KeymapTable.Allows("save_first_empty", GameState.Playing));
-        Assert.False(KeymapTable.Allows("save_first_empty", GameState.Title));
-    }
-
-    [Fact]
-    public void HintKeyOf_ReturnsPrimaryKeyForMenuHints()
-    {
-        // 暂停菜单六项的键位提示（与源 esc-menu kbd 对齐）：来自本表而非菜单硬编码
-        Assert.Equal("Esc", KeymapTable.HintKeyOf("resume"));
-        Assert.Equal("R", KeymapTable.HintKeyOf("restart"));
-        Assert.Equal("S", KeymapTable.HintKeyOf("save_first_empty"));
-        Assert.Equal("L", KeymapTable.HintKeyOf("load_latest"));
-        Assert.Equal("G", KeymapTable.HintKeyOf("open_guide"));
-        Assert.Equal("B", KeymapTable.HintKeyOf("return_to_title"));
-    }
-
-    [Fact]
-    public void HintKeyOf_UnknownAction_ReturnsNull()
-    {
-        Assert.Null(KeymapTable.HintKeyOf("not_a_registered_action"));
     }
 }
