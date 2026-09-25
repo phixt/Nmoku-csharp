@@ -12,6 +12,25 @@
 - **架构红线**：`src/Nmoku.Core` 零 Godot 依赖（KeymapTable/GameStateMachine 均在 Core），xUnit 秒级运行。
 - **许可证**：项目源码采用 GNU GPL v3.0（GPL-3.0-only），完整协议见根目录 `LICENSE`，README 已加入授权说明。
 
+## M4 验收反馈批 5 — UI ×2.5 返工与 B16 v4 定稿（2026-09-25）
+
+- **人类验收批 4 判定效果差，四项返工**：①窗口回 **1920×1080**（弃 85% 工作区自适应）；
+  ②内容缩放改 **2.5 绝对值**（弃 DPI×2.5=3.54——发糊放大器），等效设计基准 768×432；
+  ③"非常糊"根因=**3D 视口纹理是逻辑尺寸被放大显示**（v2 超采样降采样回逻辑纹理，高缩放下白忙）；
+  ④帮助页滚动条不该出现（整页须一屏放下）。
+- **B16 v4 定稿（视口宿主自绘）**：v3 用 `_GetMinimumSize` 清零堵回环——**实测无效重现回环**
+  （"进入游戏几次放大聚焦左上角"），因为 SubViewportContainer 的 C++ `get_minimum_size()` 在
+  stretch=false 时直接返回视口尺寸、**不经脚本虚方法**（v1 黑屏事故的深层机理补全）。
+  v4 弃用 SubViewportContainer：`GameScreen.ViewportHost`（Control 自绘视口纹理+每帧重绘），
+  布局尺寸与视口尺寸**结构性解耦**；视口按宿主逻辑尺寸×内容缩放喂原生像素（1182×1080 恒定，
+  逐帧数值验证），纹理与物理像素 1:1。宿主无输入转发需求（本项目输入全在 Main._Input）。
+- **键帽阴影主题化**：暗底浅色硬阴影（假环境光，人类拍板"不要土味炫光"）= `Palette.KeycapShadow`；
+  亮底深影不变。
+- **帮助页单屏紧凑化**：只渲染有功能的键（对齐源）、方向键紧凑排布（KeyboardLayout 四排）、
+  图例并入标题行、说明三列网格+大组合合并键帽（[Shift][WASD]）、无滚动条；
+  引导屏（标题「快捷键说明」/暂停 G）与 F1 共用同一内容。
+- 门禁：build 0 警告 / 297 测试 / 无头自测 ALL PASS；多屏真实窗口截屏自检通过。
+
 ## M4 验收反馈批 4 — 全局 UI ×2.5 与快捷键说明入口修复（2026-09-25）
 
 - **修复「没看到快捷键页」**：根因不是页面没载入——标题「快捷键说明」/暂停 G 按钮开的是
@@ -101,69 +120,13 @@
 
 ## M4R — 路由重构（2026-09-19，人类验收反馈返工）
 
-- **人类反馈三问题与根因**：①ESC 无响应——`HandleHeldInput` 顺序求值无 early-return，
-  对局中按 ESC 同帧命中 `pause`（切 Paused）后 `resume`（同为 Esc）同帧 `IsActionJustPressed` 仍真 → 切回
-  Playing，净效果为零；②R 一键弹暂停菜单+重启确认框——同根因（pause 后同帧 restart）；③标题屏能看见棋盘——
-  TitleScreen 背景 ColorRect 漏设 FullRect 实为 0×0，且无任何背板/模糊体系。
-- **修复与重构（参照 motion-cube 的 vue-router 模式）**：
-  - **首中即吞**（§4.2.4）：单次动作表顺序求值，命中即 return，每帧至多一个——同键跨态双触发根除；
-    `SimulateActionPress` 让 autotest 与真实输入共用同一分发路径（m4r-* 回归步）。
-  - **`SceneRouter` 三层路由栈**（状态机不动，只做视图投影）：L0 基座/L1 模态/L2 浮层三个 CanvasLayer
-    (0/10/20)，对话框层 30；`StackFor(GameState)` 唯一映射点取代散落的可见性硬编码；栈差分挂载/卸载；
-    **KeepAlive 基座常驻树内仅切可见性**（game 保留现场=人类拍板；首次 Apply 全部 KeepAlive 入树的坑：
-    只挂 target 会导致 game 从未 _Ready、_board2D 为 null，自测暴露）。
-  - **背板体系**：每路由声明 None/Dim/Blur/Opaque；Blur 为 screen-texture 九点高斯 shader（单节点
-    blur+dim）；各屏内部自带的背板节点全部移除（含 TitleScreen/GuideScreen 的 0×0 隐患）。
-  - **保留现场语义**：标题新增"继续对局"（不重置直达 Playing）；"开始游戏"遇进行中保留局先确认覆盖；
-    GuideFromTitle 的 Start 同走该确认。
-  - **浮层冒泡**：浮层打开只响应 AllowWhenOverlay 键（F1/Esc），Esc 关最顶浮层；引导态 Esc 按 §3.4 两行
-    语义（标题入口=返回/对局入口=回对局）。
-  - **`KeymapTable` 快捷键单一数据源**（Core）：门控/游戏内 F1 `KeymapScreen`/docs `keymap.md` 三处同源；
-    双作用域（状态/浮层）主键冲突检测 + "每个 InputMap action 必须登记"用例兜底漂移。
-- **待人类验收**：真实窗口走查 ESC/R 单击单义、每条路由进出视觉（暂停/结算应有模糊背板）、
-  标题→对局→标题→继续对局现场保留、F1 帮助屏、存档菜单浮层。
-
-## M4R 修复批 — 人类首轮走查反馈（2026-09-19）
-
-- **浮层残留（严重，"存档菜单取消无响应/Esc 后界面变化/引导文字固定在下层"共同根因）**：
-  `SceneRouter.Unmount` 只经 KeepAlive 字典释放内容，销毁型路由（存档/暂停/引导/结算/帮助/复盘条）从不进该
-  字典 → 内容节点卸载后**永久残留层内**，继续可见、继续吃点击；后续 PopOverlay 全部空操作。修复：内容统一
-  登记 `_content`，Unmount 一律 QueueFree。回归自测：关浮层后断言旧实例跨帧被释放。
-  **教训再次坐实：无头不渲染，残留面板类 bug 全靠真实窗口走查暴露。**
-- **Q/E 抽搐**：Advance 用最短弧追踪 yaw，而 yaw 无界累积——跨 ±180° 后方向翻转。**行为变更（B12）**：
-  Orbit 转角=累积意图，Advance 线性追踪原始差值；最短路径语义仅保留在 Reset（current 搬进 target ±180°
-  邻域——归位公式须写 `target+ShortestArc(current−target)`，写反会在等效整圈时归零失效，测试抓住空转四圈）。
-  另加 Q/E 0.2s 共享冷却（连按/键回显防抖）。M2 旧测试 `Advance_YawTakesShortestArc` 按新语义重写。
-- **2D 高光穿透圆形边框**：高光斑偏移 0.88r + 半径 0.55r = 1.43r 超出棋子。收紧为偏移 0.42r + 半径 0.45r
-  = 0.87r，完整落在轮廓内。
-- **全屏发糊**：项目从未配置显示参数（Godot 默认 648p 基准）。现设 1920×1080 基准 + `canvas_items` 拉伸 +
-  `expand` + `allow_hidpi`——UI 矢量渲染在窗口原生分辨率，高分/全屏清晰。
-
-## M4R 修复批 2 — 二轮走查反馈（2026-09-19）
-
-- **Q/E 单击转 180°**：键回显（长按触发的 echo 事件）会让 `IsActionJustPressed` 在回显帧再次为真，
-  0.2s 冷却挡不住 0.25s+ 的系统重复延迟。**单次动作全部改事件驱动**（`_Input` 键事件 + `Echo` 过滤 +
-  匹配即吞）：全表与 A/D 一致"按一下动一次"，冷却机制移除；轮询路径只剩按住生效类（zoom/pan/spacing）。
-  合成键自测（`Input.ParseInputEvent`）锁定：非 echo 转 90°、echo 不触发。事件化后同键跨态分发
-  （R=pause/restart/exit_replay）按 KeymapTable 声明序取本状态合法动作，语义不变。
-- **高分屏仍是逻辑分辨率（3200×2000 只渲染 1600）**：两层根因——①窗口 override 1600 恰为屏宽一半，
-  已去掉（默认=基准 1920）；②**`SubViewportContainer.stretch` 只把子视口设成逻辑像素**，3D 视图渲染在
-  低于原生再被拉伸（web 查证为 Godot 已知行为）→ `SyncViewport3DResolution` 手动乘窗口最终变换缩放至
-  原生像素。启动日志新增 `display:` 行（window/screen/dpi/canvasScale/3D 视口）用于诊断 DPI 感知是否生效；
-  若 window 为逻辑像素，须检查 exe 的 Windows 兼容性 DPI 设置（[Godot 论坛同款问题](https://forum.godotengine.org)）。
-
-## M4 第二轮修复批 — 人类验收反馈（2026-09-19）
-
-- **严重：自定义关卡层数多于默认不渲染**——GameScreen 的 3D 视图按启动参数 Configure 一次，
-  StartLevel 换关卡后无人重配。修复：`GameStore.LevelChanged` 事件 → Main 重配 Board3D 与 CameraRig
-  （2D 自绘全动态无需重配）；顺带清理 Main 中会过期的 `_boardSize/_layers` 运行时用法（间距调账/复位
-  改从活棋盘取维度）。自测锁定 11×8 关：Board3D.Layers==8、相机中心=(layers-1)×spacing/2、深层可落子。
-- **B13 常驻行棋指示假棋子**（已登记 migration-plan §10）：2D 面板右上角半透明（0.55）指示子显示
-  当前行棋方；纯 _Draw 图元，不入棋盘数据/子数/辅助线/3D MultiMesh；**SWAP2 决策期显示决策方白方**
-  （B1 指针不动）；复盘/终局隐藏。源项目的假棋子即悬停预览（M3 已实现），常驻指示为本项目扩展。
-- **主题语义化微调**（值全在 Palette，后续细调不动视图代码）：①2D 白子体色/描边改为语义字段
-  （light 套取受光乳白+灰绿描边，与 3D 观感一致；dark 值=原派生结果观感不变）；②light 套深字调浅
-  （TextPrimary/TextDim）；③状态字加描边（TextOutline 语义字段，暗底黑描边/浅底纸色描边）并随主题换色。
+- 人类反馈三问题：①ESC 无响应（顺序求值无 early-return，同帧 pause+resume 互抵）②R 一键双触发
+  （同根因）③标题屏可见棋盘（背板 0×0）。
+- 修复：**首中即吞**（单次动作命中即 return，`SimulateActionPress` 共用分发）；**SceneRouter 三层
+  路由栈**（L0 基座/L1 模态/L2 浮层+对话框 30，`StackFor` 唯一映射，KeepAlive 基座切可见性——
+  坑：只挂 target 会让 game 从未 _Ready）；背板体系（None/Dim/Blur/Opaque，screen-texture 高斯）；
+  保留现场语义（标题"继续对局"，覆盖先确认）；浮层冒泡（F1/Esc，Esc 关最顶）；**KeymapTable 单一
+  数据源**（门控/F1/文档三处同源，冲突检测兜底漂移）。
 
 ## M4 第二轮 — 明暗主题/字体/关卡/文件存档（2026-09-19，代码完结）
 
@@ -184,16 +147,6 @@
 - **待人类验收**：T 明暗切换观感（水绿宣纸 light 为首发目视版）、文楷字体、自定义对局面板、
   文件导入导出、残局/教学占位关。**剩余 M4 尾项**：真实浏览器样本闭环 R6（需跑源项目）、§6.3-6.5
   清单核对、真实旧档恢复、验收 tag `m4`。
-
-## M4R 修复批 3 — 切窗音频报错与远景锯齿（2026-09-19）
-
-- **WASAPI GetBufferSize/invalidated 报错（切窗口时）**：引擎驱动层已知行为——WASAPI 共享模式下默认
-  输出设备失效/切换时音频线程关闭重连（[godotengine/godot#18732](https://github.com/godotengine/godot/issues/18732)
-  一脉），设备重连抖动共享混音即"其他窗口音频撕裂"。本项目代码零音频（M0 只建总线），无触发点也无修复点。
-  **处置**：`driver_type="Dummy"` 临时让引擎不占用音频设备（报错与撕裂即消失）；**M5 恢复 WASAPI 并复测**
-  （TODO 已挂账）。若 M5 仍复现，查 `audio/driver/output_latency` 与上游修复版次。
-- **3D 远景底端锯齿/发糊**：细网格线盒（0.05 格）+ MSAA 4× 在掠射角下不足。MSAA 4×→**8×**
-  （场景极小，开销可忽略）+ 线厚 0.05→**0.06**。若目视仍不满意，下一档是网格线距离淡出（设计项，走 R4 流程）。
 
 ## M4 第一轮 — 游戏壳全通（2026-09-19，代码完结，M4 第二轮转新对话）
 

@@ -112,20 +112,16 @@
    声明序取本状态下合法的动作（R 在对局=暂停、暂停=重开、复盘=退出）。
 5. 相机/间距类持续按住键（W/S、Shift+WASD、Z/C、滚轮）按 context 门控（PLAYING+REPLAY）按住生效。
 
-## 分辨率与高分适配（B16 v2，2026-09-25）
+## 分辨率与高分适配（B16 v4，2026-09-25）
 
-- 1080p 基准 + `canvas_items` 拉伸 + `expand` + `allow_hidpi`：2D UI 矢量渲染在窗口原生分辨率，
-  2560×1600/1440、4K、3200×2000（200% 缩放）等均清晰。
-- **窗口自适应**：启动时内容缩放取 OS 每-监视器 DPI 缩放（`ApplyDisplayScaling`，150%/200% 缩放下 UI
-  物理字号与系统应用一致），窗口按工作区 85% 居中（headless/零尺寸环境跳过）。
-- **3D 子视口**：容器保持 `Stretch=true`（引擎托管逻辑像素），由 `Main.SyncViewport3DResolution`
-  设置引擎内建 3D 缓冲超采样——`Scaling3DMode=Bilinear + Scaling3DScale=窗口最终变换缩放`，
-  3D 按原生像素渲染后引擎降采样回视口纹理。**不触碰 Viewport.Size**。
-  - 历史教训 v0：`stretch=true` + 手动 SetSize → 被引擎拒绝（警告刷屏且从未生效）。
-  - 历史教训 v1（B16 stretch=false 手动喂尺寸，已回退）：SubViewportContainer 在 stretch=false 时
-    以视口尺寸为最小尺寸 → 容器被撑到视口大小 → 下一帧 desired 再乘缩放 → **每帧 ×缩放正反馈回环**
-    （实测 21 帧内视口达 int32 饱和、8–14GB 分配churn、texture_create 失败刷屏 = 黑屏事故根因，
-    详见 migration-plan §10 B16 与 CHANGELOG）。无头自测发现不了（autotest 提前 return
-    跳过 HandleViewportChange）——窗口/视口类改动必须真实窗口实测。
-- 启动日志 `display:` 行输出 window/screen/dpi/canvasScale/3D 视口，用于诊断 DPI 感知是否生效
-  （window 应为物理像素；若显示逻辑像素，检查该 exe 的 Windows 兼容性 DPI 设置）。
+- 窗口固定 **1920×1080**（项目默认，`ApplyDisplayScaling` 不再按工作区调整），内容缩放
+  `UiScaleFactor=2.5` 绝对值 → 等效设计基准 768×432，UI 物理字号 = 基准 ×2.5。
+- **3D 子视口（B16 v4 定稿）**：`GameScreen.ViewportHost` 自绘宿主（Control 画视口纹理），
+  视口 Size=宿主逻辑尺寸×内容缩放=物理像素，纹理与屏幕 1:1。
+  - v1 教训：SubViewportContainer(stretch=false) 手动喂尺寸 → 容器最小尺寸=视口尺寸 →
+    每帧 ×缩放正反馈回环（黑屏事故，migration-plan §10 B16）。
+  - v2 教训：Scaling3DScale 超采样降采样回逻辑纹理——纹理仍被放大显示，高缩放下发糊。
+  - v3 教训：`_GetMinimumSize` 清零无效——C++ 侧 get_minimum_size 不经脚本虚方法。
+  - v4：弃用 SubViewportContainer，结构性解耦（宿主最小尺寸恒零）。
+- 启动日志 `display:` 行输出 window/screen/dpi/canvasScale/3D 视口，用于诊断。
+
