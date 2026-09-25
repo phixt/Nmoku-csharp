@@ -3,42 +3,13 @@
 > 维护规则见 `AGENTS.md`：只记"当前场景"相关事实；总量 ≤300 行，旧条目按里程碑压缩合并，但关键教训（踩坑结论）不删。
 > 提交级细节看 `git log`，这里只留人读的里程碑叙事。
 
-## 当前状态（2026-09-25）
+## 当前状态（2026-09-19）
 
-- **里程碑**：M0–M3 ✅（tag `m0`–`m3`）；M4 🚧 收尾轮工程项完结 + **验收反馈修复批**（存档对齐/窗口自适应/toast 死循环修复），**只待人类全流程走查 → tag `m4`**（清单见 TODO「当前」）。
-- **质量门禁**：`dotnet test` 273 例全绿；build 0 警告；无头自测 56 步 ALL PASS。
+- **里程碑**：M0–M3 ✅（tag `m0`–`m3`）；M4 🚧 收尾轮工程项完结（见下节），**只待人类全流程验收 → tag `m4`**。
+- **质量门禁**：`dotnet test` 270 例全绿；build 0 警告；无头自测 55 步 ALL PASS（M3 对局 + M4 状态机/存档/复盘 +
+  M4R 路由/输入回归 + M4 收尾 B14/契约/真实旧档恢复）。
 - **架构红线**：`src/Nmoku.Core` 零 Godot 依赖（KeymapTable/GameStateMachine 均在 Core），xUnit 秒级运行。
 - **许可证**：项目源码采用 GNU GPL v3.0（GPL-3.0-only），完整协议见根目录 `LICENSE`，README 已加入授权说明。
-
-## M4 验收反馈批 — 存档对齐 + 窗口自适应 + 🔴 toast 死循环（2026-09-25）
-
-- **🔴 产品级死循环（77GB/20GB 提交内存事故真凶）**：`ShowToast` 溢出裁剪写的是
-  `while (GetChildCount() > Max) { GetChild(0).QueueFree(); }`——**QueueFree 是延迟删除**，
-  子节点数下帧才变 → 条件永真 → 主线程死循环反复释放同一节点并持续分配。任何会话堆到第 6 个
-  toast（本轮回归步新增的保存 toast 跨过阈值才暴露）即冻结+内存飙升。修复：**RemoveChild 立即移出再
-  QueueFree**。教训入 migration-plan §10 B15：**"延迟生效"的 API（QueueFree/deferred call）不得作为
-  循环终止条件的依据**。
-- **存档对齐源项目**（读源 main.ts/RightPanel/esc-menu 后实现）：①存档菜单每槽位**覆盖**按钮
-  （占用先确认，快存槽免确认=源 quick-save）+ 空快存槽「存为快存」；②暂停菜单**保存进度 S**=
-  落首个空槽、满则覆盖快存槽、不确认（源 saveGame 语义）；③暂停菜单六项与源 esc-menu 对齐
-  （继续 Esc/重开 R/保存 S/加载 L/说明 G/标题 B），**键位提示取自 KeymapTable.HintKeyOf**（单一数据源），
-  不在菜单硬编码；暂停菜单「读档」改为源语义的直接读最新（存档管理仍在标题入口）。
-  KeymapTable 增 `save_first_empty`（S，Paused+GuideFromGame；Playing 的 S 属 zoom_out 不冲突）。
-- **窗口自适应**（高分 UI 过小）：`ApplyDisplayScaling`——内容缩放=OS 每-监视器 DPI 缩放
-  （Win 200% → UI 物理字号与系统应用一致），窗口按工作区 85% 居中；**headless/零尺寸跳过**
-  （dummy DisplayServer 的 usable rect=(0,0)，照搬会把窗口设成 0×0）。
-- **自测框架加固**（事故响应，含交接文档 P0/P1 全项）：①异常也出队（try/catch 视同 FAIL，绝不同帧重试）；
-  ②headless 显式限帧 `Engine.MaxFps=120`；③单步 wait 帧预算（600 帧）+ 全局看门狗（40000 帧）；④
-  进程内内存自检每 60 帧、**私有内存 >6GB 自杀退出**（替代系统级看门狗）；⑤`--autotest-only=<子串>`
-  步骤过滤（bisection 用）。save-alignment 回归步改为**跨帧逐槽清除**且覆盖断言走免确认分支——
-  **headless 下 PopupCentered 弹窗会瞬间自动确认**（引擎怪癖，已实测；确认框语义由 overlay-contract
-  合成信号 + 人类真实窗口走查覆盖）。
-- **定位过程中的连环坑（教训）**：①**Godot 实际运行 `.godot/mono/temp/bin` 的程序集，`dotnet build`
-  失败时 Godot 静默跑旧构建**——`| tail -2` 把 5 个编译错误吞掉，白跑三轮"修复"；门禁命令必须先确认
-  `0 个错误` 再跑引擎。②stdout 重定向有缓冲迷惑性，冻结定位用**直写文件**的追踪（且追踪助手必须
-  内部吞异常+绝对路径，否则自己成为新的每帧异常源）。③合成信号/合成按键调试要打印到帧级时间轴。
-- **待人类验收**（新增项）：S 键保存进度、存档菜单覆盖（含确认框）、暂停菜单键位提示、高分窗口
-  自适应观感；连珠 7 随档恢复等原有清单见 TODO。
 
 ## M4 收尾轮 — 工程项全清（2026-09-19）
 
