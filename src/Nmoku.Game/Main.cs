@@ -133,14 +133,16 @@ public partial class Main : Node
         EventBus.ThemeToggled += ApplyTheme;
         _store.LevelChanged += OnLevelChanged;
 
-        _gm.Configure(new LevelConfig
+        var defaultLevel = new LevelConfig
         {
             Id = "cmdline",
             Name = Text.Levels.Cmdline,
             BoardSize = _boardSize,
             Layers = _layers,
             Rules = _rules,
-        }, _pve, _aiDifficulty);
+        };
+        _gm.Configure(defaultLevel, _pve, _aiDifficulty);
+        _store.CaptureDefaultContext(defaultLevel, _pve, _aiDifficulty); // 开始新对局恒恢复此上下文（读档继承清理）
         _store.InitializeSaves();
 
         // 7) 相机与首刷
@@ -805,6 +807,7 @@ public partial class Main : Node
         _autotestSteps.Enqueue(("m4c-modifier-quicksave", AutotestModifierQuickSave));
         _autotestSteps.Enqueue(("m4c-real-old-restore", AutotestRealOldSaveRestore));
         _autotestSteps.Enqueue(("m4c-save-alignment", AutotestSaveAlignment));
+        _autotestSteps.Enqueue(("m4c-newgame-default-context", AutotestNewGameDefaultContext));
     }
 
     private int _saveAlignPhase;
@@ -866,6 +869,63 @@ public partial class Main : Node
                 return overwritten ? "ok" : "FAIL overwrite";
             default:
                 _saveAlignPhase = 0;
+                return "FAIL";
+        }
+    }
+
+    private int _ngPhase;
+
+    /// <summary>
+    /// 新对局默认上下文回归（人类反馈 2026-09-25）：非默认对局（9×3）+ 读档主题泄漏后，
+    /// 标题「开始游戏」必须回到启动默认 13×13×6 与偏好主题。StartLevel 与 LoadFrom 改配置的
+    /// 效果等价（Configure 路径），故用 StartLevel 造现场；主题直接置属性模拟 ApplySavedTheme 泄漏。
+    /// </summary>
+    private string AutotestNewGameDefaultContext()
+    {
+        switch (_ngPhase)
+        {
+            case 0:
+                if (!_store.StartLevel(new LevelConfig
+                {
+                    Id = "ng-default",
+                    Name = "ng-default",
+                    BoardSize = 9,
+                    Layers = 3,
+                    Rules = RuleSet.Gomoku,
+                }, true, AIDifficulty.Hard) || !_gm.TryPlace(4, 4, 0))
+                {
+                    _ngPhase = 0;
+                    return "FAIL start custom";
+                }
+                _store.IsDarkTheme = false; // 模拟读档亮色主题泄漏（不经过 T，不改偏好）
+                _store.Pause();
+                _store.ReturnToTitle();
+                _ngPhase = 1;
+                return "wait";
+            case 1:
+                if (_store.State != GameState.Title)
+                {
+                    return "wait";
+                }
+                _store.RequestStartNew(); // 有保留局：确认框弹出（headless 不自动确认，同 m4r-confirm-guard）
+                bool asked = _overlay.IsModalOpen;
+                _overlay.ConfirmDialogForTests.EmitSignal("confirmed"); // 合成确认 → DoStart
+                _ngPhase = 2;
+                return asked ? "wait" : "FAIL no-confirm-dialog";
+            case 2:
+                if (_store.State != GameState.Playing)
+                {
+                    return "wait"; // 单步帧预算兜底（超预算自动 FAIL 出队）
+                }
+                bool dimsOk = _gm.Board.BoardSize == 13 && _gm.Board.Layers == 6;
+                bool modeOk = !_gm.PvE && _gm.Difficulty == AIDifficulty.Medium && _gm.History.Count == 0;
+                bool themeOk = _store.IsDarkTheme; // 偏好未被 T 改过 = 默认暗色
+                _ngPhase = 0;
+                return dimsOk && modeOk && themeOk
+                    ? "ok"
+                    : $"FAIL dims={dimsOk} mode={modeOk} theme={themeOk}";
+            default:
+                _ngPhase = 0;
                 return "FAIL";
         }
     }

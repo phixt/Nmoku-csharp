@@ -21,11 +21,31 @@ public sealed partial class GameStore : Node
     public IOverlayManager Overlay { get; set; } = null!;
     public bool IsDarkTheme { get; set; } = true;
 
-    /// <summary>T 键主题切换：EventBus 通知壳层换肤（视图/背板/壳屏重建）。</summary>
+    /// <summary>用户最近一次 T 键选择的主题（新对局恢复到它，读档带来的主题不进新局）。</summary>
+    private bool _themePreference = true;
+    /// <summary>启动默认对局上下文（Main 装配后捕获）：开始新对局恢复用。</summary>
+    private LevelConfig? _defaultLevel;
+    private bool _defaultPve;
+    private AIDifficulty _defaultDifficulty;
+
+    /// <summary>T 键主题切换：EventBus 通知壳层换肤（视图/背板/壳屏重建）；同时记为用户偏好。</summary>
     public void ToggleTheme()
     {
         IsDarkTheme = !IsDarkTheme;
+        _themePreference = IsDarkTheme;
         EventBus.EmitThemeToggled(IsDarkTheme);
+    }
+
+    /// <summary>
+    /// 捕获启动默认对局上下文（Main._Ready 完成初始 Configure 后调用）。
+    /// 此后「开始新对局」恒恢复它——源 startGame = initGameContext(STANDARD_LEVEL) 同构：
+    /// 新局不继承读档/上一局遗留的维度、规则、模式与 AI（人类反馈 2026-09-25）。
+    /// </summary>
+    public void CaptureDefaultContext(LevelConfig level, bool pve, AIDifficulty difficulty)
+    {
+        _defaultLevel = level;
+        _defaultPve = pve;
+        _defaultDifficulty = difficulty;
     }
 
     /// <summary>状态变化（壳层切换屏幕可见性）。</summary>
@@ -78,23 +98,34 @@ public sealed partial class GameStore : Node
     public bool HasLiveGame => GM.History.Count > 0 && !GM.IsOver && !GM.InReplay;
 
     /// <summary>
-    /// 标题/引导的"开始游戏"：新局。存在进行中的保留局时先确认覆盖
-    /// （对齐 §3.4 "Confirms restart" 精神），确认后重置棋盘再 TITLE→PLAYING。
+    /// 标题/引导的"开始游戏"：新局，恒恢复启动默认上下文（维度/规则/模式/AI/主题偏好）。
+    /// 存在进行中的保留局时先确认覆盖（对齐 §3.4 "Confirms restart" 精神）。
     /// </summary>
     public void RequestStartNew()
     {
+        void DoStart()
+        {
+            if (_defaultLevel != null)
+            {
+                StartLevel(_defaultLevel, _defaultPve, _defaultDifficulty); // Configure 内含 Reset
+            }
+            else
+            {
+                GM.Reset();
+                Fire(GameTrigger.StartGame);
+            }
+            if (IsDarkTheme != _themePreference)
+            {
+                IsDarkTheme = _themePreference; // 读档带来的主题不进新局（T 偏好保留）
+                EventBus.EmitThemeToggled(IsDarkTheme);
+            }
+        }
         if (HasLiveGame)
         {
-            Overlay.ShowConfirmDialog(Text.Title.Start, Text.Title.NewGameConfirm,
-                onYes: () =>
-                {
-                    GM.Reset();
-                    Fire(GameTrigger.StartGame);
-                });
+            Overlay.ShowConfirmDialog(Text.Title.Start, Text.Title.NewGameConfirm, onYes: DoStart);
             return;
         }
-        GM.Reset();
-        Fire(GameTrigger.StartGame);
+        DoStart();
     }
 
     /// <summary>标题"继续对局"：不动保留现场，直接 TITLE→PLAYING（§3.4 StartGame 行的恢复语义）。</summary>
