@@ -252,7 +252,7 @@ public partial class Main : Node
                 screen.ResumeRequested += () => _store.Resume();
                 screen.RestartRequested += () => _store.RequestRestart();
                 screen.SaveProgressRequested += () => _store.SaveToFirstEmpty();
-                screen.LoadLatestRequested += () => _store.LoadLatest();
+                screen.LoadRequested += OpenSaveMenu; // 暂停读档=打开存档菜单可选槽位（P1）；L 键仍是读最新
                 screen.GuideRequested += () => _store.OpenGuide();
                 screen.TitleRequested += () => _store.ReturnToTitle();
                 _pauseMenu = screen;
@@ -808,6 +808,7 @@ public partial class Main : Node
         _autotestSteps.Enqueue(("m4c-real-old-restore", AutotestRealOldSaveRestore));
         _autotestSteps.Enqueue(("m4c-save-alignment", AutotestSaveAlignment));
         _autotestSteps.Enqueue(("m4c-newgame-default-context", AutotestNewGameDefaultContext));
+        _autotestSteps.Enqueue(("m4c-quick-load", AutotestQuickLoad));
     }
 
     private int _saveAlignPhase;
@@ -1023,6 +1024,65 @@ public partial class Main : Node
         }
     }
 
+    private int _qlPhase;
+    private int _qlMovesBefore;
+
+    /// <summary>Ctrl+L 读快存回归（P2）：快存后续弈 2 手，暂停中 Ctrl+L 恢复到快存点并回对局。
+    /// 生效态=Paused（§3.4 读档仅 Title/Paused 合法，Playing 不扩表）。</summary>
+    private string AutotestQuickLoad()
+    {
+        switch (_qlPhase)
+        {
+            case 0:
+                _store.Pause();
+                _store.ReturnToTitle(); // 上一步（newgame-default-context）结束于 Playing，先回标题
+                _gm.Configure(9, 3, RuleSet.Gomoku, false, AIDifficulty.Medium);
+                if (!_store.StartGame() || _store.State != GameState.Playing)
+                {
+                    _qlPhase = 0;
+                    return "FAIL start";
+                }
+                Input.ParseInputEvent(new InputEventKey
+                {
+                    PhysicalKeycode = Key.S, CtrlPressed = true, Pressed = true, Echo = false,
+                });
+                _qlPhase = 1;
+                return "wait";
+            case 1:
+                Input.ParseInputEvent(new InputEventKey { PhysicalKeycode = Key.S, Pressed = false });
+                if (_store.Saves.IsSlotEmpty(GameConfig.QuickSaveIndex))
+                {
+                    _qlPhase = 0;
+                    return "FAIL quicksave missing";
+                }
+                _qlMovesBefore = _gm.History.Count;
+                _gm.TryPlace(0, 0, 0);
+                _gm.TryPlace(1, 1, 0);
+                if (!_store.Pause())
+                {
+                    _qlPhase = 0;
+                    return "FAIL pause";
+                }
+                Input.ParseInputEvent(new InputEventKey
+                {
+                    PhysicalKeycode = Key.L, CtrlPressed = true, Pressed = true, Echo = false,
+                });
+                _qlPhase = 2;
+                return "wait";
+            case 2:
+                Input.ParseInputEvent(new InputEventKey { PhysicalKeycode = Key.L, Pressed = false });
+                bool restored = _store.State == GameState.Playing && _gm.History.Count == _qlMovesBefore;
+                _store.Pause();
+                _store.ReturnToTitle();
+                _store.Saves.DeleteAsync(GameConfig.QuickSaveIndex).GetAwaiter().GetResult();
+                _qlPhase = 0;
+                return restored ? "ok" : $"FAIL restored={restored} state={_store.State} moves={_gm.History.Count}/{_qlMovesBefore}";
+            default:
+                _qlPhase = 0;
+                return "FAIL";
+        }
+    }
+
     /// <summary>M4R-2 自测：合成真实按键事件验证 echo 过滤——非 echo 按键转 90°，echo 按键不再触发。</summary>
     private int _echoPhase;
     private double _yawAtStart, _yawAfterPress, _yawAfterEcho;
@@ -1173,6 +1233,7 @@ public partial class Main : Node
         yield return ("confirm", ConfirmAction);
         yield return ("load_latest", () => _store.LoadLatest());
         yield return ("quick_save", () => _store.QuickSave());
+        yield return ("quick_load", () => _store.QuickLoad());
         yield return ("save_first_empty", () => _store.SaveToFirstEmpty());
         yield return ("restart", () => _store.RequestRestart());
         yield return ("return_to_title", () => _store.ReturnToTitle());

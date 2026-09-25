@@ -43,7 +43,7 @@ public static class KeymapTable
 
         // ---- 对局 ----
         new() { Actions = ["pause"], Keys = "Esc / R", Description = "打开暂停菜单", Contexts = [GameState.Playing], Category = "对局" },
-        new() { Actions = ["quick_save"], Keys = "Ctrl+S", Description = "快存到槽位 5", Contexts = [GameState.Playing], Category = "对局" },
+        new() { Actions = ["quick_save"], Keys = "Ctrl+S", Description = "快存到快存槽（Ctrl+L 读回）", Contexts = [GameState.Playing], Category = "对局" },
         new() { Actions = ["undo"], Keys = "Ctrl+Z", Description = "悔棋（PvE 自动回到人类回合）", Contexts = [GameState.Playing], Category = "对局" },
         new() { Actions = ["layer_prev", "layer_next"], Keys = "A / D", Description = "循环切换焦点层", Contexts = [GameState.Playing], Category = "对局" },
         new() { Actions = ["mirror_2d"], Keys = "F", Description = "2D 面板水平镜像", Contexts = [GameState.Playing], Category = "对局" },
@@ -66,10 +66,11 @@ public static class KeymapTable
         new() { Actions = ["exit_replay"], Keys = "Esc / R", Description = "退出复盘（回标题，棋局清理）", Contexts = [GameState.Replay], Category = "复盘" },
 
         // ---- 暂停（选项旁键位提示与源项目 esc-menu 对齐：继续 Esc/重开 R/保存 S/加载 L/说明 G/标题 B；
-        //      加载进度 L 复用上方标题类的 load_latest 行，不重复登记）----
+        //      读档按钮打开存档菜单（无直接键）；L 键仍是读最新（源语义））----
         new() { Actions = ["resume"], Keys = "Esc", Description = "继续游戏", Contexts = [GameState.Paused], Category = "暂停" },
         new() { Actions = ["restart"], Keys = "R", Description = "重新开始（确认框）", Contexts = [GameState.Paused], Category = "暂停" },
         new() { Actions = ["save_first_empty"], Keys = "S", Description = "保存进度（首个空槽，满则快存槽）", Contexts = [GameState.Paused, GameState.GuideFromGame], Category = "暂停" },
+        new() { Actions = ["quick_load"], Keys = "Ctrl+L", Description = "读取快存槽（恢复检查点，对局中 Esc 后可用）", Contexts = [GameState.Paused], Category = "暂停" },
         new() { Actions = ["return_to_title"], Keys = "B", Description = "返回标题（对局保留现场）", Contexts = [GameState.Paused], Category = "暂停" },
         new() { Actions = ["open_guide"], Keys = "G", Description = "打开引导", Contexts = [GameState.Paused], Category = "暂停" },
 

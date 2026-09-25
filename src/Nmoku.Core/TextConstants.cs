@@ -31,10 +31,11 @@ public static class Text
         public const string QuickSaved = "已快存";
         public const string LoadFailed = "存档无效或已损坏";
         public const string NoSaveToLoad = "暂无存档";
+        public const string NoQuickSave = "暂无快存";
         public const string ManageTitle = "存档管理";
         public const string DeleteTitle = "删除存档";
         public const string SlotLabel = "槽位 {0}";
-        public const string QuickSlotLabel = "槽位 {0}（快存）";
+        public const string QuickSlotLabel = "槽位 {0}（快存 · Ctrl+S 写 / Ctrl+L 读）";
         public const string SlotEmpty = "空";
         public const string SlotInfo = "{0}×{1}×{2} · {3} 手 · {4}";
         public const string SlotFinished = "已结束";

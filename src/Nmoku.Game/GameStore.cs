@@ -249,6 +249,24 @@ public sealed partial class GameStore : Node
     }
 
     /// <summary>
+    /// 读取快存槽（Ctrl+L，quick-save 的另一半）：暂停态生效（§3.4 读档仅 Title/Paused 合法，
+    /// 对局中先 Esc），读回即回对局；空槽 toast 并取消整个转移。
+    /// </summary>
+    public bool QuickLoad()
+    {
+        if (State != GameState.Paused)
+        {
+            return false;
+        }
+        if (Saves.IsSlotEmpty(GameConfig.QuickSaveIndex))
+        {
+            Overlay?.ShowToast(Text.Save.NoQuickSave, isError: true);
+            return false;
+        }
+        return LoadSlot(GameConfig.QuickSaveIndex);
+    }
+
+    /// <summary>
     /// 保存进度（源 saveGame 语义，S 键）：落入首个空槽，全满则覆盖快存槽；不弹确认。
     /// </summary>
     public void SaveToFirstEmpty()

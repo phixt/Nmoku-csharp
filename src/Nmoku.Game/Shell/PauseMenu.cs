@@ -4,14 +4,15 @@ using Nmoku.Game.Theme;
 
 /// <summary>
 /// 暂停菜单（GameState.Paused）：六项与源项目 esc-menu 对齐，每项旁带键位提示
-/// （提示键位取自 KeymapTable 单一数据源，不硬编码）：继续 Esc/重开 R/保存 S/加载 L/说明 G/标题 B。
+/// （提示键位取自 KeymapTable 单一数据源，不硬编码）：继续 Esc/重开 R/保存 S/读档（开存档菜单）/说明 G/标题 B。
+/// 读档按钮无键位提示——L 键语义是"读最新"（源 esc-load 同款快路径），与打开菜单的按钮不同义。
 /// </summary>
 public sealed partial class PauseMenu : Control
 {
     public event Action? ResumeRequested;
     public event Action? RestartRequested;
     public event Action? SaveProgressRequested;
-    public event Action? LoadLatestRequested;
+    public event Action? LoadRequested;
     public event Action? GuideRequested;
     public event Action? TitleRequested;
 
@@ -41,15 +42,15 @@ public sealed partial class PauseMenu : Control
         box.AddChild(MakeMenuButton(Text.Menu.Resume, "resume", () => ResumeRequested?.Invoke()));
         box.AddChild(MakeMenuButton(Text.Menu.Restart, "restart", () => RestartRequested?.Invoke()));
         box.AddChild(MakeMenuButton(Text.Menu.SaveProgress, "save_first_empty", () => SaveProgressRequested?.Invoke()));
-        box.AddChild(MakeMenuButton(Text.Menu.LoadProgress, "load_latest", () => LoadLatestRequested?.Invoke()));
+        box.AddChild(MakeMenuButton(Text.Title.LoadGame, action: null, () => LoadRequested?.Invoke()));
         box.AddChild(MakeMenuButton(Text.Title.Guide, "open_guide", () => GuideRequested?.Invoke()));
         box.AddChild(MakeMenuButton(Text.Menu.BackToTitle, "return_to_title", () => TitleRequested?.Invoke()));
     }
 
-    /// <summary>选项文案 + 键位提示（KeymapTable.HintKeyOf；查不到时只显示文案）。</summary>
-    private Button MakeMenuButton(string text, string action, Action onPressed)
+    /// <summary>选项文案 + 键位提示（KeymapTable.HintKeyOf；action 为 null 或查不到时只显示文案）。</summary>
+    private Button MakeMenuButton(string text, string? action, Action onPressed)
     {
-        string? hint = KeymapTable.HintKeyOf(action);
+        string? hint = action == null ? null : KeymapTable.HintKeyOf(action);
         var button = new Button { Text = hint == null ? text : $"{text}  [{hint}]" };
         button.AddThemeColorOverride("font_color", Palette.Active.TextPrimary);
         button.Pressed += () => onPressed();
