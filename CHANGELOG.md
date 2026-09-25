@@ -12,6 +12,23 @@
 - **架构红线**：`src/Nmoku.Core` 零 Godot 依赖（KeymapTable/GameStateMachine 均在 Core），xUnit 秒级运行。
 - **许可证**：项目源码采用 GNU GPL v3.0（GPL-3.0-only），完整协议见根目录 `LICENSE`，README 已加入授权说明。
 
+## M4 验收反馈批 2 — bug1 修复与两方案待拍板（2026-09-25）
+
+- **修复：开始新对局继承读档配置**（读 994 亮色档，重开仍是 994+亮色）。根因：`RequestStartNew`
+  只 `GM.Reset()`，不重配 `LoadFrom`/`StartLevel` 改过的维度/规则/模式/AI/主题。修复对齐源
+  `startGame = initGameContext(STANDARD_LEVEL)`：`CaptureDefaultContext` 捕获启动默认关卡，
+  新局恒 `StartLevel(默认)`；主题引入 **T 偏好模型**（`_themePreference` 随 T 更新，新局恢复偏好
+  ——读档带来的主题不进新局，用户 T 选择保留）。回归步 `m4c-newgame-default-context`。
+  **引擎事实修正**：headless 下 `ConfirmationDialog`（PopupCentered）**不会**自动确认——确认框
+  语义用 `ConfirmDialogForTests.EmitSignal("confirmed")` 合成驱动（此前交接教训 #4 表述有误）。
+- **方案待拍板 1（存档 UX）**：源核实——槽位管理只嵌标题屏右列；暂停菜单 L=读最新；快存=第 6 槽
+  且源有 quick-load 按钮。缺口感 = 只有写快存（Ctrl+S）没有读快存键。推荐：P1 暂停「加载进度」
+  打开存档菜单（L 键保持读最新）；P2 新增 Ctrl+L 读快存；P3 快存行标注。备选 C（移除快存）/
+  A（快存独立第 7 槽，需迁移）。
+- **方案待拍板 2（亮色主题）**：2D 背景暗色根因 = 游戏基座无自有背景、透出根窗口默认深灰清屏色；
+  现行 Light 套偏自创宣纸米色，偏离源浅水绿系。源配色三处来源与字段级映射登记 migration-plan
+  §10 B17。三步：补 2D 背景层 → Light 套按源重校 → T 全屏走查。
+
 ## M4 相机异常定案与回退批恢复（2026-09-25）
 
 - **事故根因（真实窗口逐帧复现，HANDOVER-M4-camera-bug.md 三嫌疑之一坐实）**：B16 的
