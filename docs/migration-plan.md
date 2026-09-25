@@ -258,6 +258,7 @@ Godot 项目文件（`project.godot`、场景、资产）与 csproj 同置于 `s
 | B10 | 初始朝向：层 0 应为最靠近摄像机的第一面，双面板左右/上下需一致（人类反馈 2026-09-19） | **整盘绕 Y 轴旋转 180°**（CoordMapper 单点）：worldX=size-1-x、worldZ=(layers-1-z)×spacing——层 0 最近、A/D 由近及远符合直觉、双面板左右一致；2D 面板再纵向镜像（行 0 在底部，对齐 3D 行=Y 向上） | 人类反馈 2026-09-19 |
 | B13 | 行棋方指示"假棋子"（人类反馈 2026-09-19；源 RightPanel.ts:577-596 的 ghost 为悬停预览子，随 currentPlayer 着色、HOVER_PIECE_OPACITY=0.35，无常驻指示） | 2D 面板右上角**常驻**半透明指示子（透明度 0.55，略高于悬停语义保可读）：显示当前行棋方；纯 _Draw 图元——**不入棋盘数据/子数/辅助线/3D MultiMesh**；SWAP2 决策期指针不动（B1），指示子显示**决策方白方**；复盘/终局不显示 | 人类反馈 2026-09-19 + RightPanel.ts 源读 |
 | B14 | winLength 存档缺口（v2.0.0 schema §3.3 无连珠数字段，自定义 4–9 连珠随档丢失） | **外圈元数据双通道**，内层 v2.0.0 不增删字段（§4 铁则）：① `.nzsave` manifest.json 增可选 `winLength`（camelCase，null 时省键，越界视为缺失不毙档）；② 槽位 index.json 的 SlotMeta 增可选 `winLength`（本项目自建存储元数据，04-contracts §3.1.2 字段为超集兼容，旧 index 无此键 → null 回默认 5）。两通道都只做**随档携带**，读档方 `LoadFrom(data, winLength)` 恢复引擎/AI/关卡配置 | migration-plan §4 外圈许可 + 04-contracts §3.3/§3.1.2 对照（2026-09-19） |
+| B15 | OverlayManager.ShowToast 溢出裁剪死循环（77GB/20GB 提交内存事故真凶，2026-09-25 定案） | **"延迟生效"的 API 不得作为循环终止条件的依据**：`while (GetChildCount() > Max) { GetChild(0).QueueFree(); }` 中 QueueFree 是延迟删除、子节点数下帧才变 → 条件永真 → 主线程死循环反复释放同一节点并持续分配；会话内堆到第 6 个 toast 即冻结+提交内存飙升（dwm.exe 被饿死 → 桌面死亡）。修复：**RemoveChild 立即移出再 QueueFree**。同族教训：RunAutotest 异常跳过出队 → 同一坏步骤每帧重试（双重防线都已加固：异常出队 + 内存自检自杀） | 蓝屏转储 0x133 + WER 2004（Godot.exe 提交 77.4GB）+ 帧级文件追踪定位（2026-09-25） |
 
 ## 10.5 R4 行为清单（2026-09-19 通读源 TS：RightPanel.ts / LeftPanel.ts / main.ts 输入段；**待人类确认后才写 M3 代码**）
 
