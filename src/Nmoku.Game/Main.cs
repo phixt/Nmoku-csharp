@@ -71,6 +71,7 @@ public partial class Main : Node
         uiTheme.DefaultFont = GD.Load<FontFile>("res://assets/fonts/LXGWWenKaiLite-Regular.ttf");
         uiTheme.DefaultFontSize = 15;
         GetWindow().Theme = uiTheme;
+        RenderingServer.SetDefaultClearColor(Palette.Active.Background); // 首帧前同步（默认暗色）
 
         // F1 帮助屏 action 运行时注册（KeymapTable 已登记语义；不进 project.godot 以免 --import 回写风险）
         if (!InputMap.HasAction("toggle_help"))
@@ -192,6 +193,7 @@ public partial class Main : Node
     private void ApplyTheme(bool isDark)
     {
         Palette.Active = isDark ? Palette.Dark : Palette.Light;
+        RenderingServer.SetDefaultClearColor(Palette.Active.Background); // 2D 侧无自有背景，透出的根清屏色必须随主题（B17-M1：亮色发暗根因）
         _gameScreen.ApplyTheme();
         foreach (string id in _router.Mounted.Where(id => id != "game").ToList())
         {

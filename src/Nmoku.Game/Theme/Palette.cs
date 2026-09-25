@@ -47,20 +47,24 @@ public sealed class Palette
         Error = new Color(1.00f, 0.35f, 0.30f),
     };
 
-    /// <summary>水绿宣纸 light（M4 第二轮首发套，migration-plan §3.4 已确认方向）：宣纸底、墨色字、水绿强调。</summary>
+    /// <summary>
+    /// 浅水绿 light（B17 对齐源项目，2026-09-25 重校）：底/网格/石子取源 Types.ts Theme 与
+    /// RightPanel 渐变端色，面板/文字取源 CSS（body #F2F7F2 系、强调 #2C4A4E）；辅助线自方深绿、
+    /// ghost 透明度与色弱组为本项目 B9 校准值保持不变。
+    /// </summary>
     public static readonly Palette Light = new()
     {
-        Background = new Color(0.93f, 0.92f, 0.87f),      // 宣纸
+        Background = new Color(0.910f, 0.957f, 0.961f),   // 源画布底 #E8F4F5（浅水绿）
         AmbientLight = Colors.White,
-        StoneBlack = new Color(0.16f, 0.17f, 0.18f),      // 墨
-        StoneWhite = new Color(0.98f, 0.97f, 0.93f),      // 贝白
-        GridLine = new Color(0.38f, 0.42f, 0.40f),
-        ConnectorLine = new Color(0.38f, 0.42f, 0.40f, 0.35f),
-        HoverHighlight = new Color(0.20f, 0.55f, 0.45f, 0.50f),  // 水绿
-        LineSelf = new Color(0.00f, 0.55f, 0.25f),        // 深绿（纸上可读）
-        LineEnemy = new Color(0.80f, 0.15f, 0.12f),       // 朱红
+        StoneBlack = new Color(0.133f, 0.133f, 0.140f),   // 源黑石 #222222
+        StoneWhite = new Color(0.941f, 0.910f, 0.878f),   // 源白石渐变顶 #F0E8E0（暖象牙）
+        GridLine = new Color(0.627f, 0.753f, 0.769f),     // 源网格 #A0C0C4
+        ConnectorLine = new Color(0.627f, 0.753f, 0.769f, 0.35f),
+        HoverHighlight = new Color(0.20f, 0.55f, 0.45f, 0.50f),  // 水绿（本项目悬停语义）
+        LineSelf = new Color(0.00f, 0.55f, 0.25f),        // 深绿（纸上可读，B9 自方语义）
+        LineEnemy = new Color(0.816f, 0.008f, 0.106f),    // 源辅助线 #D0021B
         StarPoint = new Color(0.70f, 0.15f, 0.12f),
-        LastMoveRing = new Color(0.85f, 0.25f, 0.15f),    // 朱
+        LastMoveRing = new Color(0.85f, 0.25f, 0.15f),    // 朱（本项目最后手环）
         LineSelfColorblind = new Color(0.10f, 0.45f, 0.85f),   // 蓝（纸上加深）
         LineEnemyColorblind = new Color(0.72f, 0.48f, 0.00f),  // 琥珀（纸上加深）
         // 明暗反转：浅底上黑子易见需低透明、白子难见需高透明（Dark 的镜像）
@@ -68,20 +72,20 @@ public sealed class Palette
         GhostWhite = 0.34f,
         GhostMarkedBlack = 0.60f,
         GhostMarkedWhite = 0.85f,
-        // 2D 自绘棋子：白子取受光乳白（与 3D 观感一致）+ 灰绿描边定边（浅底上纯白不可见——M4 二轮反馈）
-        StoneWhite2D = new Color(0.88f, 0.87f, 0.79f),
-        StoneBlack2D = new Color(0.14f, 0.15f, 0.16f),
-        StoneOutlineBlack2D = new Color(0.08f, 0.09f, 0.10f),
-        StoneOutlineWhite2D = new Color(0.50f, 0.52f, 0.48f),
+        // 2D 自绘棋子：端色取源 RightPanel 渐变（白 #F0E8E0→#D0C8C0 描边 #555 / 黑 #222 描边 #000）
+        StoneWhite2D = new Color(0.906f, 0.867f, 0.835f), // 渐变中点 #E7DDD5
+        StoneBlack2D = new Color(0.133f, 0.133f, 0.140f),
+        StoneOutlineBlack2D = new Color(0.00f, 0.00f, 0.00f),
+        StoneOutlineWhite2D = new Color(0.333f, 0.333f, 0.333f),
         TextOutline = new Color(0.97f, 0.96f, 0.92f, 0.90f), // 浅底深字纸色描边
-        PanelBg = new Color(0.97f, 0.96f, 0.92f, 0.97f),
-        PanelBorder = new Color(0.55f, 0.58f, 0.54f, 0.85f),
-        TextPrimary = new Color(0.30f, 0.33f, 0.36f),     // 深字偏浅（纸底上纯墨过重——M4 二轮反馈）
-        TextDim = new Color(0.54f, 0.57f, 0.55f),
-        ButtonBg = new Color(0.88f, 0.89f, 0.84f),
-        ButtonHover = new Color(0.80f, 0.85f, 0.79f),
-        Accent = new Color(0.20f, 0.55f, 0.45f),          // 水绿
-        Error = new Color(0.75f, 0.20f, 0.18f),
+        PanelBg = new Color(0.955f, 0.970f, 0.960f, 0.97f),  // 源 body #F2F7F2 系面板
+        PanelBorder = new Color(0.72f, 0.78f, 0.76f, 0.85f),
+        TextPrimary = new Color(0.102f, 0.180f, 0.227f),  // 源 text-on-base #1A2E3A
+        TextDim = new Color(0.353f, 0.478f, 0.494f),      // 源次级字 #5A7A7E
+        ButtonBg = new Color(0.925f, 0.945f, 0.935f),     // #ECF1EE 浅底按钮
+        ButtonHover = new Color(0.784f, 0.878f, 0.894f),  // 源 hover #C8E0E4
+        Accent = new Color(0.173f, 0.290f, 0.306f),       // 源强调/主按钮 #2C4A4E
+        Error = new Color(0.545f, 0.227f, 0.227f),        // 源危险 #8B3A3A
     };
 
     /// <summary>当前生效套（运行时可切换；默认暗色）。</summary>
