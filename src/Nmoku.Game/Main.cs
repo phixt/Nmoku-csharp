@@ -147,7 +147,6 @@ public partial class Main : Node
         ApplyCamera();
         Refresh();
         int screen = DisplayServer.WindowGetCurrentScreen();
-        SyncViewport3DResolution(); // 诊断行与相机初值即用最终（原生像素）视口
         GD.Print($"display: window={DisplayServer.WindowGetSize()}, screen={DisplayServer.ScreenGetSize(screen)}, " +
                  $"dpi={DisplayServer.ScreenGetDpi(screen)}, canvasScale={GetWindow().GetFinalTransform().Scale} " +
                  $"(诊断高分屏：window 应为物理像素；3D 视口={_viewport3D.Size})");
@@ -1128,11 +1127,9 @@ public partial class Main : Node
     }
 
     /// <summary>
-    /// 子视口原生分辨率（M4R-2 引入，B16 定稿）：容器 Stretch=false 后视口尺寸完全由本方法接管——
-    /// 容器逻辑尺寸 × 窗口最终变换缩放（含 stretch/DPI）= 原生像素，3D 与 2D 同清晰度。
-    /// stretch=true 时引擎每帧接管尺寸、手动 SetSize 被拒绝（viewport.cpp 警告刷屏且从未生效），
-    /// 而 stretch_shrink 是 int 除数，0.5 类半像素到不了——故定稿 stretch=false 方案。
-    /// 均匀缩放不改纵横比，相机无需重配。
+    /// 子视口原生分辨率（M4R-2 高分屏修复）：SubViewportContainer.stretch 只给逻辑像素尺寸，
+    /// 高分屏上 3D 视图渲染在低于原生的分辨率再被放大（"全屏发糊"主因）。
+    /// 手动乘上窗口最终变换缩放（含 stretch/DPI），让 3D 与 2D 一样按原生像素渲染。
     /// </summary>
     private void SyncViewport3DResolution()
     {
@@ -1142,10 +1139,6 @@ public partial class Main : Node
         }
         var scale = GetWindow().GetFinalTransform().Scale;
         float factor = MathF.Min(scale.X, scale.Y);
-        if (factor <= 0.1f)
-        {
-            return; // headless dummy 值（≈0.033）：无从换算
-        }
         var desired = (Vector2I)(((Vector2)container.Size * factor).Floor());
         if (desired.X > 0 && desired.Y > 0 && _viewport3D.Size != desired)
         {

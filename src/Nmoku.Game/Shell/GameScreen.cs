@@ -41,10 +41,7 @@ public sealed partial class GameScreen : Control
 
         var viewportContainer = new SubViewportContainer
         {
-            // stretch=false（B16）：stretch=true 时引擎接管视口尺寸，高分下只给逻辑像素且禁止手动
-            // SetSize（viewport.cpp 警告）——3D 渲染在逻辑分辨率再被放大（"发糊"根因）。
-            // 改由 Main.SyncViewport3DResolution 按 容器尺寸×内容缩放 喂原生像素。
-            Stretch = false,
+            Stretch = true,
             // ExpandFill：Expand 只分配不填充，子视口会塌缩到最小宽 2px（首轮验收灰屏根因）
             SizeFlagsHorizontal = SizeFlags.ExpandFill,
             SizeFlagsStretchRatio = 0.62f,
