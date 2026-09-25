@@ -3,6 +3,12 @@
 > 单一数据源：本表内容与游戏内 **F1 帮助屏**、`ShortcutRouter` 门控同源于
 > `src/Nmoku.Core/KeymapTable.cs`（冲突检测与门控语义有 Core 单测）。改键位先改表，三处自动一致。
 > 物理键位本体在 Godot InputMap（`project.godot`；`toggle_help`=F1 为运行时注册）。
+>
+> F1 帮助屏视觉（2026-09-25 阶段 1）：键盘模拟区由 `KeyboardLayout` 正式排布数据生成；
+> 功能靠**作用域单色**区分、不叠层——对局（水蓝）/复盘（墨绿）/暂停·菜单（深蓝）/
+> Ctrl 组合（赭）/Shift 组合（紫）/全局（灰绿），派生规则见 `KeycapScopeMap`（Core 单测锁定）；
+> 同键跨层的少量例外（Esc/R/S）以键帽底部小字提示；组合键（Ctrl+S、Shift+WASD）在说明列表
+> 以组合键帽显示。层级页签联动为阶段 2。
 
 ## 快捷键对照表
 
