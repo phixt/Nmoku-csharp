@@ -5,21 +5,10 @@
 
 ## 当前状态（2026-09-25）
 
-- **里程碑**：M0–M3 ✅（tag `m0`–`m3`）；M4 🚧 收尾轮工程项完结 + **验收反馈修复批**（存档对齐/窗口自适应/toast 死循环修复/3D 子视口正道化），**只待人类全流程走查 → tag `m4`**（清单见 TODO「当前」）。
+- **里程碑**：M0–M3 ✅（tag `m0`–`m3`）；M4 🚧 收尾轮工程项完结 + **验收反馈修复批**（存档对齐/窗口自适应/toast 死循环修复），**只待人类全流程走查 → tag `m4`**（清单见 TODO「当前」）。
 - **质量门禁**：`dotnet test` 273 例全绿；build 0 警告；无头自测 56 步 ALL PASS。
 - **架构红线**：`src/Nmoku.Core` 零 Godot 依赖（KeymapTable/GameStateMachine 均在 Core），xUnit 秒级运行。
 - **许可证**：项目源码采用 GNU GPL v3.0（GPL-3.0-only），完整协议见根目录 `LICENSE`，README 已加入授权说明。
-
-## M4 验收反馈批 2 — SubViewport 警告修复 + 文档跟进（2026-09-25）
-
-- **3D 子视口尺寸正道化（B16）**：调试期持续刷 `Can't change the size of a SubViewport with a
-  SubViewportContainer parent that has stretch enabled`——`stretch=true` 时引擎每帧接管视口尺寸，
-  M4R-2 的手动 SetSize 从未生效（3D 一直渲染在逻辑分辨率再被拉伸 = "发糊"残留根因），且尺寸比较
-  永不满足 → 每帧重试。定稿方案：**容器 `Stretch=false` + `SyncViewport3DResolution` 按
-  「容器逻辑尺寸 × 内容缩放」喂原生像素**（`stretch_shrink` 是 int 除数，0.5 类半像素到不了，弃用）；
-  均匀缩放不改纵横比，相机无需重配。人类需真实窗口复查高分下 3D 清晰度。
-- **文档跟进**：README 状态/特性刷新（可运行工程、主题、存档全语义、关卡、路由、高分适配）；
-  keymap.md 增「存档操作语义」节（S 键/覆盖/快存槽/L 语义/连珠随档）+ 分辨率节重写（B16）。
 
 ## M4 验收反馈批 — 存档对齐 + 窗口自适应 + 🔴 toast 死循环（2026-09-25）
 
