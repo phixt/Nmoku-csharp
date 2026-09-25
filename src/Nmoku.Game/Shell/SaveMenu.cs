@@ -7,15 +7,18 @@ namespace Nmoku.Game.Shell;
 
 /// <summary>
 /// 存档菜单（叠加层，非状态机状态；Title/Paused 均可打开）：6 槽位列表 +
-/// 载入/复盘/导出/删除/导入（剪贴板统一嗅探）/关闭。槽位语义见 SaveManager（5=快存）。
+/// 载入/复盘/覆盖/导出/删除/导入（剪贴板统一嗅探）/关闭。槽位语义见 SaveManager（5=快存）。
+/// 覆盖=把当前对局写入该槽（占用先确认，源「覆盖」语义）；快存槽覆盖免确认（源 quick-save）。
 /// </summary>
 public sealed partial class SaveMenu : Control
 {
     public event Action<int>? LoadSlotRequested;
     public event Action<int>? ReplaySlotRequested;
+    public event Action<int>? OverwriteSlotRequested;
     public event Action<int>? ExportSlotRequested;
     public event Action<int>? ExportFileRequested;
     public event Action<int>? DeleteSlotRequested;
+    public event Action? SaveQuickRequested;
     public event Action? ImportRequested;
     public event Action? ImportFileRequested;
     public event Action? CloseRequested;
@@ -113,9 +116,24 @@ public sealed partial class SaveMenu : Control
         {
             row.AddChild(MakeButton(Text.Title.LoadGame, () => LoadSlotRequested?.Invoke(index)));
             row.AddChild(MakeButton(Text.Replay.Label, () => ReplaySlotRequested?.Invoke(index)));
+            row.AddChild(MakeButton(Text.Save.Overwrite, () =>
+            {
+                if (index == GameConfig.QuickSaveIndex)
+                {
+                    SaveQuickRequested?.Invoke(); // 源 quick-save：快存槽覆盖免确认
+                }
+                else
+                {
+                    OverwriteSlotRequested?.Invoke(index);
+                }
+            }));
             row.AddChild(MakeButton(Text.Save.Export, () => ExportSlotRequested?.Invoke(index)));
             row.AddChild(MakeButton(Text.Save.ExportFile, () => ExportFileRequested?.Invoke(index)));
             row.AddChild(MakeButton(Text.Save.Delete, () => DeleteSlotRequested?.Invoke(index)));
+        }
+        else if (index == GameConfig.QuickSaveIndex)
+        {
+            row.AddChild(MakeButton(Text.Save.SaveQuick, () => SaveQuickRequested?.Invoke()));
         }
         return row;
     }

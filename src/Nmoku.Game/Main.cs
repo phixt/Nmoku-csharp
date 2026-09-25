@@ -64,6 +64,8 @@ public partial class Main : Node
 
     public override void _Ready()
     {
+        ApplyDisplayScaling();
+
         // 全局字体：霞鹜文楷 Lite（OFL，assets-src/fonts 本地转换版）——根窗口 Theme 全体控件生效
         var uiTheme = new Theme();
         uiTheme.DefaultFont = GD.Load<FontFile>("res://assets/fonts/LXGWWenKaiLite-Regular.ttf");
@@ -154,6 +156,36 @@ public partial class Main : Node
                  $"rules={_rules}, mode={(_pve ? "pve" : "pvp")}, distance={_rig.Current.Distance:0.00})");
     }
 
+    /// <summary>
+    /// 高分屏 UI 适配（M4 验收反馈：高分下 UI 过小）：内容缩放取 OS 每-监视器 DPI 缩放
+    /// （Windows 200% 缩放 → UI 物理字号与系统应用一致），窗口按工作区 85% 居中。
+    /// 拉伸模式 canvas_items+expand 下逻辑视口=物理尺寸/缩放，布局自适应；3D 视口仍由
+    /// SyncViewport3DResolution 拉到原生像素。
+    /// </summary>
+    private void ApplyDisplayScaling()
+    {
+        // headless 的 dummy DisplayServer 返回 0×0 usable rect——照搬会把窗口设成 0×0
+        // （无头自测/CI 必须跳过；这也曾让 guard 包装的进程静默异常）
+        if (DisplayServer.GetName() == "headless")
+        {
+            return;
+        }
+        var window = GetWindow();
+        if (window.Mode is Window.ModeEnum.Fullscreen or Window.ModeEnum.ExclusiveFullscreen)
+        {
+            return;
+        }
+        int screen = DisplayServer.WindowGetCurrentScreen();
+        window.ContentScaleFactor = Math.Clamp(DisplayServer.ScreenGetScale(screen), 1.0f, 3.0f);
+        var usable = DisplayServer.ScreenGetUsableRect(screen);
+        if (usable.Size.X <= 0 || usable.Size.Y <= 0)
+        {
+            return; // 异常环境值兜底：宁可用项目默认尺寸
+        }
+        window.Size = new Vector2I((int)(usable.Size.X * 0.85f), (int)(usable.Size.Y * 0.85f));
+        window.MoveToCenter();
+    }
+
     /// <summary>T 键/存档恢复触发的主题换肤：调色板切套 → 3D 环境 → 已挂载壳屏重建（game 基座除外，其视图走 ApplyPalette 通道）。</summary>
     private void ApplyTheme(bool isDark)
     {
@@ -217,7 +249,8 @@ public partial class Main : Node
                 var screen = new PauseMenu();
                 screen.ResumeRequested += () => _store.Resume();
                 screen.RestartRequested += () => _store.RequestRestart();
-                screen.SaveMenuRequested += OpenSaveMenu;
+                screen.SaveProgressRequested += () => _store.SaveToFirstEmpty();
+                screen.LoadLatestRequested += () => _store.LoadLatest();
                 screen.GuideRequested += () => _store.OpenGuide();
                 screen.TitleRequested += () => _store.ReturnToTitle();
                 _pauseMenu = screen;
@@ -263,6 +296,8 @@ public partial class Main : Node
                 var screen = new SaveMenu();
                 screen.LoadSlotRequested += i => { CloseSaveMenu(); _store.LoadSlot(i); };
                 screen.ReplaySlotRequested += i => { CloseSaveMenu(); _store.EnterReplay(i); };
+                screen.OverwriteSlotRequested += i => _store.SaveToSlot(i);
+                screen.SaveQuickRequested += () => _store.SaveToSlot(GameConfig.QuickSaveIndex, confirmIfOccupied: false);
                 screen.ExportSlotRequested += i => _store.ExportSlot(i);
                 screen.ExportFileRequested += OpenExportFileDialog;
                 screen.DeleteSlotRequested += i => _store.DeleteSlot(i);
@@ -339,13 +374,44 @@ public partial class Main : Node
     private readonly Queue<(string Name, Func<string> Run)> _autotestSteps = new();
     private string _autotestFails = "";
     private int _autotestWait;
+    private int _autotestStepWait;
+    private string? _autotestStepName;
+    private int _autotestTotalFrames;
+    /// <summary>单步 wait 帧预算（@120fps ≈ 5s）：headless 不限帧时帧数≠时间，必须有显式上限。</summary>
+    private const int AutotestMaxStepWaitFrames = 600;
+    /// <summary>全局看门狗（@120fps ≈ 5.5min）：任何挂死形态（无限 wait/异常风暴）都在此强制终止。</summary>
+    private const int AutotestMaxTotalFrames = 40000;
+    /// <summary>进程内内存上限（P1-2）：提交量超限视为泄漏/死循环，自杀退出防拖垮整机（77GB 事故教训）。</summary>
+    private const long AutotestMemoryLimitBytes = 6L * 1024 * 1024 * 1024;
+
+    private int _autotestMemCheckFrame;
+    /// <summary>--autotest-only=&lt;子串&gt;：只跑名字匹配的步骤（bisection 用），其余立即出队。</summary>
+    private string? _autotestOnly;
 
     private void RunAutotest()
     {
         if (!_autotestBuilt)
         {
             _autotestBuilt = true;
+            _autotestOnly = OS.GetCmdlineUserArgs()
+                .FirstOrDefault(a => a.StartsWith("--autotest-only="))?["--autotest-only=".Length..];
             BuildAutotestSteps();
+            // headless 不限帧：_Process 每秒数千帧（77GB 提交内存事故的放大器），显式限帧
+            Engine.MaxFps = 120;
+        }
+        // 内存自检每 60 帧（@120fps≈0.5s）一次：超限自杀 + 涨势日志（定位泄漏帧）
+        if (++_autotestMemCheckFrame >= 60)
+        {
+            _autotestMemCheckFrame = 0;
+            long commit = System.Diagnostics.Process.GetCurrentProcess().PrivateMemorySize64;
+            string stepInfo = _autotestSteps.Count > 0 ? _autotestSteps.Peek().Name : "(done)";
+            if (commit > AutotestMemoryLimitBytes)
+            {
+                GD.Print($"AUTOTEST ABORT: commit {commit / (1024 * 1024)}MB 超上限，卡在 [{stepInfo}] phase={_saveAlignPhase}/{_qsPhase}/{_echoPhase}");
+                GetTree().Quit(1);
+                return;
+            }
+            GD.Print($"AUTOTEST mem: {commit / (1024 * 1024)}MB step=[{stepInfo}] saveAlignPhase={_saveAlignPhase} qsPhase={_qsPhase}");
         }
         if (_autotestSteps.Count == 0)
         {
@@ -353,11 +419,44 @@ public partial class Main : Node
             GetTree().Quit();
             return;
         }
+        // 全局看门狗：先于步骤执行，异常风暴/无限 wait 都逃不出总预算
+        if (++_autotestTotalFrames > AutotestMaxTotalFrames)
+        {
+            string remaining = string.Join(",", _autotestSteps.Select(s => s.Name));
+            GD.Print($"AUTOTEST FAIL: [global-watchdog frame {_autotestTotalFrames}, 未完成: {remaining}] ");
+            GetTree().Quit(1);
+            return;
+        }
         var (name, run) = _autotestSteps.Peek();
-        var result = run();
+        if (_autotestOnly != null && !name.Contains(_autotestOnly, StringComparison.OrdinalIgnoreCase))
+        {
+            _autotestSteps.Dequeue(); // bisection 过滤：不匹配的步骤直接跳过
+            return;
+        }
+        if (_autotestStepName != name)
+        {
+            _autotestStepName = name; // 新步骤：重置单步 wait 预算
+            _autotestStepWait = 0;
+        }
+        string result;
+        try
+        {
+            result = run();
+        }
+        catch (Exception e)
+        {
+            // 异常视同 FAIL 且照样出队：绝不让同一步骤每帧重试
+            // （77GB 提交内存事故根因：异常跳过出队 → 同一坏步骤每帧重建异常对象+堆栈+引擎错误记录）
+            GD.PrintErr($"AUTOTEST step {name} threw:\n{e}");
+            result = $"EXCEPTION {e.GetType().Name}: {e.Message}";
+        }
         if (result == "wait")
         {
-            return;
+            if (++_autotestStepWait <= AutotestMaxStepWaitFrames)
+            {
+                return;
+            }
+            result = $"wait 超预算 >{AutotestMaxStepWaitFrames} 帧"; // 超预算落为 FAIL，照常出队
         }
         _autotestSteps.Dequeue();
         if (result != "ok")
@@ -705,6 +804,70 @@ public partial class Main : Node
         }));
         _autotestSteps.Enqueue(("m4c-modifier-quicksave", AutotestModifierQuickSave));
         _autotestSteps.Enqueue(("m4c-real-old-restore", AutotestRealOldSaveRestore));
+        _autotestSteps.Enqueue(("m4c-save-alignment", AutotestSaveAlignment));
+    }
+
+    private int _saveAlignPhase;
+    private int _saveAlignClearIdx;
+    private long _slotTsBefore;
+
+    /// <summary>源项目存档对齐回归：S 键落首空槽 ×2、覆盖带确认框（信号合成确认）、快存槽免确认由单测覆盖。</summary>
+    private string AutotestSaveAlignment()
+    {
+        switch (_saveAlignPhase)
+        {
+            case 0:
+                // 跨帧逐槽清除（P2-1：不在 _Process 里同步等整串异步链）；清完再进对局
+                if (_saveAlignClearIdx < GameConfig.SaveSlotCount)
+                {
+                    _store.Saves.DeleteAsync(_saveAlignClearIdx).GetAwaiter().GetResult();
+                    _saveAlignClearIdx++;
+                    return "wait";
+                }
+                _gm.Configure(9, 3, RuleSet.Gomoku, false, AIDifficulty.Medium);
+                if (!_store.StartGame() || !_gm.TryPlace(4, 4, 0) || !_gm.TryPlace(4, 5, 0) || !_store.Pause())
+                {
+                    _saveAlignPhase = 0;
+                    return "FAIL start";
+                }
+                Input.ParseInputEvent(new InputEventKey { PhysicalKeycode = Key.S, Pressed = true, Echo = false });
+                _saveAlignPhase = 1;
+                return "wait";
+            case 1:
+                Input.ParseInputEvent(new InputEventKey { PhysicalKeycode = Key.S, Pressed = false });
+                var first = _store.Saves.Load(0);
+                bool landed0 = first != null && first.Moves.Count == 2 && _store.Saves.IsSlotEmpty(1);
+                Input.ParseInputEvent(new InputEventKey { PhysicalKeycode = Key.S, Pressed = true, Echo = false });
+                _saveAlignPhase = 2;
+                return landed0 ? "wait" : "FAIL first empty";
+            case 2:
+                Input.ParseInputEvent(new InputEventKey { PhysicalKeycode = Key.S, Pressed = false });
+                if (_store.Saves.IsSlotEmpty(1))
+                {
+                    _saveAlignPhase = 0;
+                    return "FAIL second empty";
+                }
+                var current0 = _store.Saves.Load(0);
+                if (current0 == null)
+                {
+                    _saveAlignPhase = 0;
+                    return "FAIL slot0 empty"; // 不可达假设显式化：防 NRE 每帧重试放大成事故
+                }
+                // 覆盖写入断言走免确认分支——headless 下 PopupCentered 弹窗会瞬间自动确认
+                // （引擎怪癖，登记 CHANGELOG），确认框语义由 m4c-overlay-contract + 人类真实窗口走查覆盖
+                _slotTsBefore = current0.Timestamp;
+                _store.SaveToSlot(0, confirmIfOccupied: false);
+                var saved = _store.Saves.Load(0);
+                bool overwritten = saved != null && saved.Timestamp > _slotTsBefore;
+                _store.Pause();
+                _store.ReturnToTitle();
+                _saveAlignPhase = 0;
+                _saveAlignClearIdx = 0;
+                return overwritten ? "ok" : "FAIL overwrite";
+            default:
+                _saveAlignPhase = 0;
+                return "FAIL";
+        }
     }
 
     /// <summary>
@@ -879,7 +1042,8 @@ public partial class Main : Node
                 break;
             }
         }
-        bool ok = filled == 0 && isoStore.Saves.Load(0)!.Id == data.Id;
+        var imported = filled == 0 ? isoStore.Saves.Load(0) : null;
+        bool ok = imported != null && imported.Id == data.Id;
         if (filled >= 0)
         {
             isoStore.Saves.DeleteAsync(filled).GetAwaiter().GetResult();
@@ -949,6 +1113,7 @@ public partial class Main : Node
         yield return ("confirm", ConfirmAction);
         yield return ("load_latest", () => _store.LoadLatest());
         yield return ("quick_save", () => _store.QuickSave());
+        yield return ("save_first_empty", () => _store.SaveToFirstEmpty());
         yield return ("restart", () => _store.RequestRestart());
         yield return ("return_to_title", () => _store.ReturnToTitle());
         yield return ("open_guide", () => _store.OpenGuide());

@@ -65,9 +65,11 @@ public static class KeymapTable
         new() { Actions = ["replay_prev", "replay_next"], Keys = "← / →", Description = "步进出 / 入", Contexts = [GameState.Replay], Category = "复盘" },
         new() { Actions = ["exit_replay"], Keys = "Esc / R", Description = "退出复盘（回标题，棋局清理）", Contexts = [GameState.Replay], Category = "复盘" },
 
-        // ---- 暂停 ----
+        // ---- 暂停（选项旁键位提示与源项目 esc-menu 对齐：继续 Esc/重开 R/保存 S/加载 L/说明 G/标题 B；
+        //      加载进度 L 复用上方标题类的 load_latest 行，不重复登记）----
         new() { Actions = ["resume"], Keys = "Esc", Description = "继续游戏", Contexts = [GameState.Paused], Category = "暂停" },
         new() { Actions = ["restart"], Keys = "R", Description = "重新开始（确认框）", Contexts = [GameState.Paused], Category = "暂停" },
+        new() { Actions = ["save_first_empty"], Keys = "S", Description = "保存进度（首个空槽，满则快存槽）", Contexts = [GameState.Paused, GameState.GuideFromGame], Category = "暂停" },
         new() { Actions = ["return_to_title"], Keys = "B", Description = "返回标题（对局保留现场）", Contexts = [GameState.Paused], Category = "暂停" },
         new() { Actions = ["open_guide"], Keys = "G", Description = "打开引导", Contexts = [GameState.Paused], Category = "暂停" },
 
@@ -101,6 +103,11 @@ public static class KeymapTable
         Entries
             .GroupBy(e => e.Category)
             .Select(g => (g.Key, g.ToArray()));
+
+    /// <summary>菜单按钮键位提示用：按 action 查首条非纯文档、非浮层行，取其 PrimaryKey
+    /// （如 PauseMenu 各选项旁的 kbd 字样，与源 esc-menu 对齐）。</summary>
+    public static string? HintKeyOf(string action) =>
+        Entries.FirstOrDefault(e => !e.OverlayOnly && e.Actions.Contains(action))?.PrimaryKey;
 
     /// <summary>同一作用域内不同绑定主键冲突检测（§6.5）；返回违规描述，空 = 无冲突。
     /// 两个作用域分别检测：状态作用域（无浮层）与浮层作用域（OverlayOnly 行）。</summary>
