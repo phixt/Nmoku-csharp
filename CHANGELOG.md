@@ -12,6 +12,19 @@
 - **架构红线**：`src/Nmoku.Core` 零 Godot 依赖（KeymapTable/GameStateMachine 均在 Core），xUnit 秒级运行。
 - **许可证**：项目源码采用 GNU GPL v3.0（GPL-3.0-only），完整协议见根目录 `LICENSE`，README 已加入授权说明。
 
+## M4 验收反馈批 3 — 复盘 NRE 修复与 F1 页改版方案（2026-09-25）
+
+- **修复：首次进复盘 NRE 崩溃**（人类实测：存档菜单「复盘」→ `NullReferenceException at
+  Main.Refresh`）。根因：`BeginReplay` 先置 `InReplay` 再触发 `GM.StateChanged → Refresh`，此刻
+  replay-hud 路由尚未挂载（`_replayBar=null`）；再次进入时旧实例又已随浮层卸载 QueueFree——
+  两个窗口都会炸。**无头自测此前只在隔离 store（reborn）上测过 EnterReplay，主场景 UI 路径漏测**。
+  修复：`Refresh` 对 `_replayBar` 做 `IsInstanceValid` 守卫 + `OnStateChanged(Replay)` 挂载后补一次
+  `Refresh()` 同步。回归步 `m4c-replay-entry`（临时还原守卫验证：精确复现同款 NRE → 修复后 ok）。
+  **复盘功能本体（步进/进度条/门控）M4 第一轮已有，此为视图联动时序 bug，非缺失。**
+- **F1 快捷键页改版方案（待拍板，全文见 TODO「当前」）**：对齐源 guide 的 keyboard-sim 视觉
+  （40px 3D 阴影键帽 / 六作用域配色 / 图例+分组说明），增强①层级切换（作用域页签过滤+键帽联动）
+  与②多键组合键帽（Ctrl+S/Shift+WASD/Esc·R）；数据仍由 KeymapTable 单源派生，键位零改动。
+
 ## M4 验收反馈批 2 — bug1 修复 + 存档 UX/亮色主题落地（2026-09-25）
 
 - **修复：开始新对局继承读档配置**（读 994 亮色档，重开仍是 994+亮色）。根因：`RequestStartNew`
