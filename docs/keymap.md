@@ -41,6 +41,15 @@
 | **鼠标点击 2D 面板** | 落子 | 对局中 | 悬停显示辅助线，3D 蓝点联动 |
 | **Esc（浮层）** | 关闭当前浮层 | 帮助/存档菜单打开时 | 逐层冒泡：先关最顶浮层 |
 
+## 存档操作语义（对齐源项目，2026-09-25）
+
+- **S 键 = 保存进度**：落入首个空槽，全满则覆盖快存槽；不弹确认（源 `saveGame` 语义）。
+- **存档菜单「覆盖」**：把当前对局写入该槽位；占用时先弹确认框（源「覆盖」语义），
+  快存槽免确认（源 quick-save）。空快存槽显示「存为快存」。
+- **L 键 = 读取最新存档**（标题/暂停）：直接按 timestamp 读最新档，无档 toast 提示；
+  存档管理菜单（含覆盖/文件导入导出/复盘）在标题入口「读档」打开。
+- 自定义连珠数随档恢复：走 .nzsave manifest 与槽位 index 外圈元数据（B14）。
+
 ## 路由关系图
 
 层级栈（z 序）：`L0 基座(0) → L1 模态(10) → L2 浮层(20) → 对话框(30)`。
@@ -93,11 +102,15 @@
    声明序取本状态下合法的动作（R 在对局=暂停、暂停=重开、复盘=退出）。
 5. 相机/间距类持续按住键（W/S、Shift+WASD、Z/C、滚轮）按 context 门控（PLAYING+REPLAY）按住生效。
 
-## 分辨率与高分适配
+## 分辨率与高分适配（B16，2026-09-25）
 
 - 1080p 基准 + `canvas_items` 拉伸 + `expand` + `allow_hidpi`：2D UI 矢量渲染在窗口原生分辨率，
   2560×1600/1440、4K、3200×2000（200% 缩放）等均清晰。
-- 3D 子视口由 `Main.SyncViewport3DResolution` 手动乘窗口最终变换缩放至原生像素
-  （Godot 的 `SubViewportContainer.stretch` 只给逻辑像素，是高分屏 3D 发糊的根因）。
-- 启动日志 `display:` 行输出 window/screen/dpi/canvasScale，用于诊断 DPI 感知是否生效
+- **窗口自适应**：启动时内容缩放取 OS 每-监视器 DPI 缩放（`ApplyDisplayScaling`，200% 缩放下 UI
+  物理字号与系统应用一致），窗口按工作区 85% 居中（headless/零尺寸环境跳过）。
+- **3D 子视口**：容器 `Stretch=false`，由 `Main.SyncViewport3DResolution` 按「容器逻辑尺寸 × 内容缩放」
+  喂原生像素。历史教训：`stretch=true` 时引擎每帧接管视口尺寸，手动 SetSize 被拒绝
+  （viewport.cpp 警告刷屏且从未生效，3D 一直渲染在逻辑分辨率）；`stretch_shrink` 是 int 除数，
+  半像素缩放到不了——故定稿 stretch=false 方案（migration-plan §10 B16）。
+- 启动日志 `display:` 行输出 window/screen/dpi/canvasScale/3D 视口，用于诊断 DPI 感知是否生效
   （window 应为物理像素；若显示逻辑像素，检查该 exe 的 Windows 兼容性 DPI 设置）。
