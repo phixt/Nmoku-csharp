@@ -5,7 +5,9 @@ using Nmoku.Game.Theme;
 namespace Nmoku.Game.Shell;
 
 /// <summary>
-/// 引导屏（GUIDE_FROM_TITLE / GUIDE_FROM_GAME）：静态文本版。M4 占位文案，内容深化与关卡化留 M4 后续轮。
+/// 引导屏（GUIDE_FROM_TITLE / GUIDE_FROM_GAME）：标题「快捷键说明」/暂停 G 的目标页——
+/// 内容即快捷键键盘页（<see cref="KeymapContent"/>，与 F1 浮层共用，2026-09-25 修复入口错位：
+/// 此前本屏是占位文案，人类点「快捷键说明」看不到键盘页）。底部按钮按入口切换（§3.4 两行语义）。
 /// </summary>
 public sealed partial class GuideScreen : Control
 {
@@ -25,31 +27,43 @@ public sealed partial class GuideScreen : Control
         SetAnchorsAndOffsetsPreset(LayoutPreset.FullRect);
         MouseFilter = MouseFilterEnum.Stop; // 不透明背板由 SceneRouter 提供，此处为内容层
 
-        var center = new CenterContainer();
-        center.SetAnchorsAndOffsetsPreset(LayoutPreset.FullRect);
-        AddChild(center);
+        var margin = new MarginContainer();
+        margin.SetAnchorsAndOffsetsPreset(LayoutPreset.FullRect);
+        margin.AddThemeConstantOverride("margin_left", 24);
+        margin.AddThemeConstantOverride("margin_right", 24);
+        margin.AddThemeConstantOverride("margin_top", 16);
+        margin.AddThemeConstantOverride("margin_bottom", 16);
+        AddChild(margin);
 
-        var box = new VBoxContainer();
-        box.AddThemeConstantOverride("separation", 16);
-        center.AddChild(box);
-
-        var title = new Label { Text = Text.Guide.Title, HorizontalAlignment = HorizontalAlignment.Center };
-        title.AddThemeFontSizeOverride("font_size", 32);
-        title.AddThemeColorOverride("font_color", Palette.Active.TextPrimary);
-        box.AddChild(title);
-
-        var body = new Label
+        var panel = new PanelContainer();
+        panel.AddThemeStyleboxOverride("panel", new StyleBoxFlat
         {
-            Text = Text.Guide.Body,
-            HorizontalAlignment = HorizontalAlignment.Center,
-            AutowrapMode = TextServer.AutowrapMode.WordSmart,
-            CustomMinimumSize = new Vector2(640, 0),
-        };
-        body.AddThemeColorOverride("font_color", Palette.Active.TextDim);
-        box.AddChild(body);
+            BgColor = Palette.Active.PanelBg,
+            BorderColor = Palette.Active.PanelBorder,
+            CornerRadiusTopLeft = 10,
+            CornerRadiusTopRight = 10,
+            CornerRadiusBottomLeft = 10,
+            CornerRadiusBottomRight = 10,
+            ContentMarginLeft = 20,
+            ContentMarginRight = 20,
+            ContentMarginTop = 12,
+            ContentMarginBottom = 12,
+        });
+        margin.AddChild(panel);
+
+        var outer = new VBoxContainer();
+        outer.AddThemeConstantOverride("separation", 8);
+        panel.AddChild(outer);
+
+        var title = new Label { Text = Text.Guide.Title };
+        title.AddThemeFontSizeOverride("font_size", 22);
+        title.AddThemeColorOverride("font_color", Palette.Active.TextPrimary);
+        outer.AddChild(title);
+
+        outer.AddChild(new KeymapContent());
 
         var buttons = new HBoxContainer { Alignment = BoxContainer.AlignmentMode.Center };
-        box.AddChild(buttons);
+        outer.AddChild(buttons);
 
         _start = MakeButton(Text.Guide.StartFromGuide, () => StartRequested?.Invoke());
         _resume = MakeButton(Text.Guide.ResumeFromGuide, () => ResumeRequested?.Invoke());

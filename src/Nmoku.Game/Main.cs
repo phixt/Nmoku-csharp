@@ -50,6 +50,10 @@ public partial class Main : Node
     private bool _pve;
     private AIDifficulty _aiDifficulty = AIDifficulty.Medium;
     private Vector2 _lastViewportSize;
+
+    /// <summary>全局 UI 观感放大系数（人类拍板 2026-09-25 ×2.5）：乘在 OS DPI 缩放之上，
+    /// 等效设计分辨率约 768×432；调全局 UI 大小只动这里。</summary>
+    private const float UiScaleFactor = 2.5f;
     private bool _rotating;
     private bool _panning;
 
@@ -161,9 +165,9 @@ public partial class Main : Node
 
     /// <summary>
     /// 高分屏 UI 适配（M4 验收反馈：高分下 UI 过小）：内容缩放取 OS 每-监视器 DPI 缩放
-    /// （Windows 200% 缩放 → UI 物理字号与系统应用一致），窗口按工作区 85% 居中。
+    /// 再乘 UI 放大系数（人类拍板 2026-09-25：全游戏 UI ×2.5），窗口按工作区 85% 居中。
     /// 拉伸模式 canvas_items+expand 下逻辑视口=物理尺寸/缩放，布局自适应；3D 视口仍由
-    /// SyncViewport3DResolution 拉到原生像素。
+    /// SyncViewport3DResolution 拉到原生像素（不受影响）。UI_SCALE_FACTOR 是全局观感唯一调节点。
     /// </summary>
     private void ApplyDisplayScaling()
     {
@@ -179,7 +183,7 @@ public partial class Main : Node
             return;
         }
         int screen = DisplayServer.WindowGetCurrentScreen();
-        window.ContentScaleFactor = Math.Clamp(DisplayServer.ScreenGetScale(screen), 1.0f, 3.0f);
+        window.ContentScaleFactor = Math.Clamp(DisplayServer.ScreenGetScale(screen), 1.0f, 3.0f) * UiScaleFactor;
         var usable = DisplayServer.ScreenGetUsableRect(screen);
         if (usable.Size.X <= 0 || usable.Size.Y <= 0)
         {
