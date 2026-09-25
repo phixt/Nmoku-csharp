@@ -811,6 +811,7 @@ public partial class Main : Node
         _autotestSteps.Enqueue(("m4c-save-alignment", AutotestSaveAlignment));
         _autotestSteps.Enqueue(("m4c-newgame-default-context", AutotestNewGameDefaultContext));
         _autotestSteps.Enqueue(("m4c-quick-load", AutotestQuickLoad));
+        _autotestSteps.Enqueue(("m4c-replay-entry", AutotestReplayEntry));
     }
 
     private int _saveAlignPhase;
@@ -1028,7 +1029,6 @@ public partial class Main : Node
 
     private int _qlPhase;
     private int _qlMovesBefore;
-
     /// <summary>Ctrl+L 读快存回归（P2）：快存后续弈 2 手，暂停中 Ctrl+L 恢复到快存点并回对局。
     /// 生效态=Paused（§3.4 读档仅 Title/Paused 合法，Playing 不扩表）。</summary>
     private string AutotestQuickLoad()
@@ -1081,6 +1081,56 @@ public partial class Main : Node
                 return restored ? "ok" : $"FAIL restored={restored} state={_store.State} moves={_gm.History.Count}/{_qlMovesBefore}";
             default:
                 _qlPhase = 0;
+                return "FAIL";
+        }
+    }
+
+    private int _rpPhase;
+
+    /// <summary>主场景复盘进入回归（真实窗口 NRE 崩溃根因）：首次 EnterReplay 时 replay-hud 尚未挂载、
+    /// Refresh 会触发 _replayBar.Sync——修复前必炸（无头自测此前只在隔离 store 上测过复盘）。
+    /// 槽位 0 无档则自造一档（自足），从标题进入复盘断言状态与手数，再退出清理。</summary>
+    private string AutotestReplayEntry()
+    {
+        switch (_rpPhase)
+        {
+            case 0:
+                if (_store.State != GameState.Title)
+                {
+                    _store.Pause();
+                    _store.ReturnToTitle();
+                    return "wait";
+                }
+                if (_store.Saves.IsSlotEmpty(0))
+                {
+                    _gm.Configure(9, 3, RuleSet.Gomoku, false, AIDifficulty.Medium);
+                    if (!_store.StartGame() || !_gm.TryPlace(4, 4, 0) || !_gm.TryPlace(4, 5, 0))
+                    {
+                        _rpPhase = 0;
+                        return "FAIL setup";
+                    }
+                    _store.SaveToSlot(0, confirmIfOccupied: false);
+                    _store.Pause();
+                    _store.ReturnToTitle();
+                    return "wait";
+                }
+                _rpPhase = 1;
+                return "wait";
+            case 1:
+                if (!_store.EnterReplay(0))
+                {
+                    _rpPhase = 0;
+                    return "FAIL enter";
+                }
+                _rpPhase = 2;
+                return "wait";
+            case 2:
+                bool ok = _store.State == GameState.Replay && _gm.InReplay && _gm.ReplayCount > 0;
+                _store.ExitReplay();
+                _rpPhase = 0;
+                return ok ? "ok" : $"FAIL state={_store.State} inReplay={_gm.InReplay} count={_gm.ReplayCount}";
+            default:
+                _rpPhase = 0;
                 return "FAIL";
         }
     }
@@ -1454,6 +1504,10 @@ public partial class Main : Node
     private void OnStateChanged(GameState state)
     {
         _router.ShowState(state);
+        if (state == GameState.Replay)
+        {
+            Refresh(); // replay-hud 此刻才挂载：补一次同步（BeginReplay 内的首刷落在挂载前）
+        }
         if (state == GameState.GameOver)
         {
             _gameOverModal.SetResult(_gm.Winner, _gm.History.Count);
@@ -1544,7 +1598,9 @@ public partial class Main : Node
         _board3D.SetLastMove(_gm.History.Count > 0 ? _gm.History[^1].Coordinate : null);
         _board2D.QueueRedraw();
         UpdateStatus();
-        if (_gm.InReplay)
+        // 复盘条同步须等路由挂载：GM.StateChanged（BeginReplay/SetReplayIndex）先于 _store.SetState 触发，
+        // 首次进复盘时 replay-hud 尚未入树、再次进入时旧实例已销毁——两窗口都不得触碰（NRE 崩溃根因）
+        if (_gm.InReplay && GodotObject.IsInstanceValid(_replayBar))
         {
             _replayBar.Sync(_gm.ReplayIndex, _gm.ReplayCount);
         }
