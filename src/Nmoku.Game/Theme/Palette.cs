@@ -45,6 +45,14 @@ public sealed class Palette
         ButtonHover = new Color(0.28f, 0.31f, 0.36f),
         Accent = new Color(0.30f, 0.55f, 1.00f),
         Error = new Color(1.00f, 0.35f, 0.30f),
+        // 键帽作用域色（F1 快捷键页；源 panels.css 键盘模拟配色 + Ctrl/Shift 自定层，不叠层规则）
+        KeycapGame = new Color(0.290f, 0.478f, 0.494f),    // 源暗 base #4A7A7E
+        KeycapReplay = new Color(0.176f, 0.416f, 0.310f),  // 源复盘 #2D6A4F
+        KeycapPause = new Color(0.118f, 0.227f, 0.373f),   // 源暂停 #1E3A5F
+        KeycapCtrl = new Color(0.541f, 0.353f, 0.157f),    // Ctrl 层 赭（暗套加深）
+        KeycapShift = new Color(0.369f, 0.231f, 0.420f),   // Shift 层 紫（暗套加深）
+        KeycapGlobal = new Color(0.290f, 0.353f, 0.333f),  // 全局 中性灰绿
+        KeycapIdle = new Color(0.165f, 0.227f, 0.243f),    // 非活跃（源暗 inactive #2A3A3E）
     };
 
     /// <summary>
@@ -86,6 +94,13 @@ public sealed class Palette
         ButtonHover = new Color(0.784f, 0.878f, 0.894f),  // 源 hover #C8E0E4
         Accent = new Color(0.173f, 0.290f, 0.306f),       // 源强调/主按钮 #2C4A4E
         Error = new Color(0.545f, 0.227f, 0.227f),        // 源危险 #8B3A3A
+        KeycapGame = new Color(0.910f, 0.957f, 0.961f),   // 源亮 base #E8F4F5（靠描边+阴影与同色底区分）
+        KeycapReplay = new Color(0.176f, 0.416f, 0.310f), // 源复盘 #2D6A4F
+        KeycapPause = new Color(0.118f, 0.227f, 0.373f),  // 源暂停 #1E3A5F
+        KeycapCtrl = new Color(0.722f, 0.447f, 0.173f),   // Ctrl 层 赭 #B8722C
+        KeycapShift = new Color(0.478f, 0.306f, 0.549f),  // Shift 层 紫 #7A4E8C
+        KeycapGlobal = new Color(0.604f, 0.659f, 0.639f), // 全局 灰绿 #9AA8A3
+        KeycapIdle = new Color(1f, 1f, 1f),               // 非活跃（源亮 inactive #FFF）
     };
 
     /// <summary>当前生效套（运行时可切换；默认暗色）。</summary>
@@ -124,6 +139,13 @@ public sealed class Palette
         ButtonHover = ButtonHover,
         Accent = Accent,
         Error = Error,
+        KeycapGame = KeycapGame,
+        KeycapReplay = KeycapReplay,
+        KeycapPause = KeycapPause,
+        KeycapCtrl = KeycapCtrl,
+        KeycapShift = KeycapShift,
+        KeycapGlobal = KeycapGlobal,
+        KeycapIdle = KeycapIdle,
     };
 
     /// <summary>按色弱开关取当前套的变体（壳层统一入口）。</summary>
@@ -173,4 +195,14 @@ public sealed class Palette
     public Color ButtonHover { get; private init; }
     public Color Accent { get; private init; }
     public Color Error { get; private init; }
+
+    // ---- 键帽作用域色（F1 快捷键页；色弱组沿用同值，作用域靠色相区分与辅助线无关）----
+
+    public Color KeycapGame { get; private init; }
+    public Color KeycapReplay { get; private init; }
+    public Color KeycapPause { get; private init; }
+    public Color KeycapCtrl { get; private init; }
+    public Color KeycapShift { get; private init; }
+    public Color KeycapGlobal { get; private init; }
+    public Color KeycapIdle { get; private init; }
 }
