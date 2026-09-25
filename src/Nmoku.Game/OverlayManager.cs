@@ -163,11 +163,16 @@ public sealed partial class OverlayManager : CanvasLayer, IOverlayManager
     {
         var toast = BuildToast(message, isError);
         _toastHost.AddChild(toast);
+        // 延迟消失；toast 不抢焦点（MouseFilter Ignore），到期自清。
+        // 裁剪必须 RemoveChild 立即移出：QueueFree 是延迟删除，GetChildCount 下帧才变——
+        // `while (count > Max) { GetChild(0).QueueFree(); }` 会死循环（每帧反复释放同一节点并
+        // 持续分配 → 提交内存飙升直到拖垮系统；77GB/20GB 事故的真凶）
         while (_toastHost.GetChildCount() > ToastMax)
         {
-            _toastHost.GetChild(0).QueueFree();
+            var oldest = _toastHost.GetChild(0);
+            _toastHost.RemoveChild(oldest);
+            oldest.QueueFree();
         }
-        // 延迟消失；toast 不抢焦点（MouseFilter Ignore），到期自清
         CreateTimer().Timeout += () =>
         {
             if (IsInstanceValid(toast))
