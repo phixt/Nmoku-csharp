@@ -1127,23 +1127,28 @@ public partial class Main : Node
     }
 
     /// <summary>
-    /// 子视口原生分辨率（M4R-2 高分屏修复）：SubViewportContainer.stretch 只给逻辑像素尺寸，
-    /// 高分屏上 3D 视图渲染在低于原生的分辨率再被放大（"全屏发糊"主因）。
-    /// 手动乘上窗口最终变换缩放（含 stretch/DPI），让 3D 与 2D 一样按原生像素渲染。
+    /// 子视口原生分辨率（M4R-2 引入，B16 v2 定稿）：Stretch=true 时引擎每帧把视口设为逻辑像素，
+    /// 手动 SetSize 被拒绝（viewport.cpp 警告刷屏且从未生效）；改用引擎内建 3D 缓冲超采样——
+    /// Scaling3DMode=Bilinear + Scaling3DScale=窗口最终变换缩放，3D 按原生像素渲染后由引擎
+    /// 降采样回视口纹理，与 2D 同清晰度，且完全不触碰 Viewport.Size。
+    /// （B16 v1 的 stretch=false 手动喂尺寸方案在缩放 >1 时有致命回环：SubViewportContainer
+    /// 以视口尺寸为最小尺寸 → 容器被撑到视口大小 → 下一帧 desired 再乘缩放 → 视口每帧 ×1.4167
+    /// 指数增长，21 帧内 int32 饱和、8–14GB 分配churn、texture_create 失败刷屏 = 黑屏事故根因。）
     /// </summary>
     private void SyncViewport3DResolution()
     {
-        if (_viewport3D.GetParent() is not SubViewportContainer container)
-        {
-            return;
-        }
         var scale = GetWindow().GetFinalTransform().Scale;
         float factor = MathF.Min(scale.X, scale.Y);
-        var desired = (Vector2I)(((Vector2)container.Size * factor).Floor());
-        if (desired.X > 0 && desired.Y > 0 && _viewport3D.Size != desired)
+        if (factor <= 0.1f)
         {
-            _viewport3D.Size = desired;
+            return; // headless dummy 值（≈0.033）：无从换算
         }
+        if (MathF.Abs(_viewport3D.Scaling3DScale - factor) <= 0.001f)
+        {
+            return; // 已同步（每帧调用）
+        }
+        _viewport3D.Scaling3DMode = Viewport.Scaling3DModeEnum.Bilinear;
+        _viewport3D.Scaling3DScale = factor;
     }
 
     private void ApplyCamera()
