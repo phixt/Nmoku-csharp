@@ -6,6 +6,10 @@
 
 ### 已落地（待人类实测）
 
+- **「没看到快捷键页」+ 全游戏 UI ×2.5（2026-09-25）**：入口错位修复——标题「快捷键说明」/暂停 G
+  此前开的是引导占位页；现引导屏与 F1 浮层共用 `KeymapContent`（图例+键盘区+说明列表）。
+  全局内容缩放 = OS DPI × `UiScaleFactor(2.5)`（Main 唯一调节点），等效设计基准约 768×432；
+  F1/引导面板改随窗口自适应，六屏真实窗口截屏无溢出。
 - **复盘 NRE 崩溃（人类实测报错）**：`BeginReplay` 内 `GM.StateChanged → Refresh` 先于 replay-hud
   路由挂载触发 `_replayBar.Sync`（首次进入=null、再次进入=freed 实例）——无头自测此前只在隔离
   store 上测过复盘，主场景 UI 路径漏测。修复：`Refresh` 实例有效性守卫 + `OnStateChanged` 挂载后
