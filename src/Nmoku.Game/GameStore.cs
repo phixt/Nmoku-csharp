@@ -217,6 +217,44 @@ public sealed partial class GameStore : Node
         Overlay?.ShowToast(Text.Save.QuickSaved);
     }
 
+    /// <summary>
+    /// 保存进度（源 saveGame 语义，S 键）：落入首个空槽，全满则覆盖快存槽；不弹确认。
+    /// </summary>
+    public void SaveToFirstEmpty()
+    {
+        int target = -1;
+        for (int i = 0; i < GameConfig.SaveSlotCount; i++)
+        {
+            if (Saves.IsSlotEmpty(i))
+            {
+                target = i;
+                break;
+            }
+        }
+        if (target < 0)
+        {
+            target = GameConfig.QuickSaveIndex;
+        }
+        SaveToSlot(target, confirmIfOccupied: false);
+    }
+
+    /// <summary>保存当前对局到指定槽位；槽位已占用时先确认（源「覆盖」语义），快存槽免确认。</summary>
+    public void SaveToSlot(int index, bool confirmIfOccupied = true)
+    {
+        void DoSave()
+        {
+            Saves.SaveAsync(index, GM.BuildSaveData(IsDarkTheme), GM.WinLength).GetAwaiter().GetResult();
+            Overlay?.ShowToast(string.Format(Text.Save.SavedToSlot, index + 1));
+        }
+        if (!confirmIfOccupied || Saves.IsSlotEmpty(index))
+        {
+            DoSave();
+            return;
+        }
+        Overlay.ShowConfirmDialog(Text.Save.OverwriteTitle,
+            string.Format(Text.Save.OverwriteConfirm, index + 1), onYes: DoSave);
+    }
+
     public void DeleteSlot(int index)
     {
         Overlay.ShowConfirmDialog(Text.Save.DeleteTitle,

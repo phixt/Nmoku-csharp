@@ -52,6 +52,11 @@ public static class Text
         public const string Delete = "删除";
         public const string DeleteConfirm = "确定删除槽位 {0} 的存档？";
         public const string LoadSlotFailed = "该存档无法读取";
+        public const string SavedToSlot = "已保存到存档 {0}";
+        public const string Overwrite = "覆盖";
+        public const string OverwriteTitle = "覆盖存档";
+        public const string OverwriteConfirm = "确认用当前对局覆盖槽位 {0}？";
+        public const string SaveQuick = "存为快存";
     }
 
     public static class Title
@@ -61,7 +66,7 @@ public static class Text
         public const string ContinueGame = "继续对局";
         public const string CustomGame = "自定义对局";
         public const string LoadGame = "读档";
-        public const string Guide = "引导";
+        public const string Guide = "快捷键说明";
         public const string Quit = "退出";
         public const string Subtitle = "13×13×6 三维连珠 · Nmoku";
         public const string NewGameConfirm = "当前有进行中的对局，开始新局将覆盖保留现场。确定？";
@@ -72,6 +77,8 @@ public static class Text
         public const string Paused = "已暂停";
         public const string Resume = "继续游戏";
         public const string Restart = "重新开始";
+        public const string SaveProgress = "保存进度";
+        public const string LoadProgress = "加载进度";
         public const string BackToTitle = "返回标题";
         public const string RestartConfirm = "确定重新开始？当前对局进度将丢失。";
     }
