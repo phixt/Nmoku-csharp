@@ -12,9 +12,9 @@ namespace Nmoku.Game.Shell;
 /// </summary>
 public sealed partial class KeyCap : Control
 {
-    private const float FontSizeFull = 15;
-    private const float FontSizeSub = 10;
-    private const float FontSizeMini = 12;
+    private const float FontSizeFull = 11;
+    private const float FontSizeSub = 7;
+    private const float FontSizeMini = 9;
     private const int CornerRadius = 6;
     private const float ShadowOffset = 4f;
 
@@ -37,12 +37,13 @@ public sealed partial class KeyCap : Control
         {
             float w = label.Length switch
             {
-                1 => 26,
-                <= 2 => 36,
-                <= 5 => 54,
-                _ => 66,
+                1 => 18,
+                <= 2 => 26,
+                <= 5 => 40,
+                _ => 50,
             };
-            CustomMinimumSize = new Vector2(w, 24);
+            CustomMinimumSize = new Vector2(w, 16);
+            SizeFlagsVertical = SizeFlags.ShrinkCenter; // 网格单元会纵向拉伸 Control，键帽必须定高
         }
     }
 
@@ -83,7 +84,7 @@ public sealed partial class KeyCap : Control
             // 硬阴影（源 --kbd-shadow-3d 的 0 4px 0 分量）
             var shadow = new StyleBoxFlat
             {
-                BgColor = new Color(0f, 0f, 0f, 0.14f),
+                BgColor = Palette.Active.KeycapShadow,
                 CornerRadiusTopLeft = CornerRadius,
                 CornerRadiusTopRight = CornerRadius,
                 CornerRadiusBottomLeft = CornerRadius,

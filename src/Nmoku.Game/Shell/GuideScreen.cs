@@ -29,10 +29,10 @@ public sealed partial class GuideScreen : Control
 
         var margin = new MarginContainer();
         margin.SetAnchorsAndOffsetsPreset(LayoutPreset.FullRect);
-        margin.AddThemeConstantOverride("margin_left", 24);
-        margin.AddThemeConstantOverride("margin_right", 24);
-        margin.AddThemeConstantOverride("margin_top", 16);
-        margin.AddThemeConstantOverride("margin_bottom", 16);
+        margin.AddThemeConstantOverride("margin_left", 10);
+        margin.AddThemeConstantOverride("margin_right", 10);
+        margin.AddThemeConstantOverride("margin_top", 8);
+        margin.AddThemeConstantOverride("margin_bottom", 8);
         AddChild(margin);
 
         var panel = new PanelContainer();
@@ -44,33 +44,32 @@ public sealed partial class GuideScreen : Control
             CornerRadiusTopRight = 10,
             CornerRadiusBottomLeft = 10,
             CornerRadiusBottomRight = 10,
-            ContentMarginLeft = 20,
-            ContentMarginRight = 20,
-            ContentMarginTop = 12,
-            ContentMarginBottom = 12,
+            ContentMarginLeft = 12,
+            ContentMarginRight = 12,
+            ContentMarginTop = 8,
+            ContentMarginBottom = 8,
         });
         margin.AddChild(panel);
 
         var outer = new VBoxContainer();
-        outer.AddThemeConstantOverride("separation", 8);
+        outer.AddThemeConstantOverride("separation", 4);
         panel.AddChild(outer);
 
-        var title = new Label { Text = Text.Guide.Title };
-        title.AddThemeFontSizeOverride("font_size", 22);
+        var header = new HBoxContainer();
+        outer.AddChild(header);
+        var title = new Label { Text = Text.Guide.Title, SizeFlagsHorizontal = SizeFlags.Expand };
+        title.AddThemeFontSizeOverride("font_size", 14);
         title.AddThemeColorOverride("font_color", Palette.Active.TextPrimary);
-        outer.AddChild(title);
+        header.AddChild(title);
+        header.AddChild(KeymapContent.BuildLegend());
 
         outer.AddChild(new KeymapContent());
 
-        var buttons = new HBoxContainer { Alignment = BoxContainer.AlignmentMode.Center };
-        outer.AddChild(buttons);
-
-        _start = MakeButton(Text.Guide.StartFromGuide, () => StartRequested?.Invoke());
-        _resume = MakeButton(Text.Guide.ResumeFromGuide, () => ResumeRequested?.Invoke());
-        _back = MakeButton(Text.Guide.Back, () => BackRequested?.Invoke());
-        buttons.AddChild(_start);
-        buttons.AddChild(_resume);
-        buttons.AddChild(_back);
+        var buttons = new HBoxContainer { Alignment = BoxContainer.AlignmentMode.End };
+        header.AddChild(buttons);
+        buttons.AddChild(_start = MakeButton(Text.Guide.StartFromGuide, () => StartRequested?.Invoke()));
+        buttons.AddChild(_resume = MakeButton(Text.Guide.ResumeFromGuide, () => ResumeRequested?.Invoke()));
+        buttons.AddChild(_back = MakeButton(Text.Guide.Back, () => BackRequested?.Invoke()));
     }
 
     /// <summary>按入口来源切换按钮可见性（_Ready 之后由壳层调用）。</summary>

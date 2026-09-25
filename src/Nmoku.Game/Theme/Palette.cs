@@ -53,6 +53,7 @@ public sealed class Palette
         KeycapShift = new Color(0.369f, 0.231f, 0.420f),   // Shift 层 紫（暗套加深）
         KeycapGlobal = new Color(0.290f, 0.353f, 0.333f),  // 全局 中性灰绿
         KeycapIdle = new Color(0.165f, 0.227f, 0.243f),    // 非活跃（源暗 inactive #2A3A3E）
+        KeycapShadow = new Color(1f, 1f, 1f, 0.10f),       // 暗底用浅色硬阴影（假环境光，人类拍板）
     };
 
     /// <summary>
@@ -101,6 +102,7 @@ public sealed class Palette
         KeycapShift = new Color(0.478f, 0.306f, 0.549f),  // Shift 层 紫 #7A4E8C
         KeycapGlobal = new Color(0.604f, 0.659f, 0.639f), // 全局 灰绿 #9AA8A3
         KeycapIdle = new Color(1f, 1f, 1f),               // 非活跃（源亮 inactive #FFF）
+        KeycapShadow = new Color(0f, 0f, 0f, 0.14f),      // 亮底用深色硬阴影（源 0 4px 0）
     };
 
     /// <summary>当前生效套（运行时可切换；默认暗色）。</summary>
@@ -146,6 +148,7 @@ public sealed class Palette
         KeycapShift = KeycapShift,
         KeycapGlobal = KeycapGlobal,
         KeycapIdle = KeycapIdle,
+        KeycapShadow = KeycapShadow,
     };
 
     /// <summary>按色弱开关取当前套的变体（壳层统一入口）。</summary>
@@ -205,4 +208,6 @@ public sealed class Palette
     public Color KeycapShift { get; private init; }
     public Color KeycapGlobal { get; private init; }
     public Color KeycapIdle { get; private init; }
+    /// <summary>键帽硬阴影色：亮底深影/暗底浅影（暗底浅影=假环境光，非炫光）。</summary>
+    public Color KeycapShadow { get; private init; }
 }

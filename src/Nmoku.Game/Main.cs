@@ -51,8 +51,8 @@ public partial class Main : Node
     private AIDifficulty _aiDifficulty = AIDifficulty.Medium;
     private Vector2 _lastViewportSize;
 
-    /// <summary>全局 UI 观感放大系数（人类拍板 2026-09-25 ×2.5）：乘在 OS DPI 缩放之上，
-    /// 等效设计分辨率约 768×432；调全局 UI 大小只动这里。</summary>
+    /// <summary>全局 UI 观感放大系数（人类拍板 2026-09-25）：内容缩放绝对值（×2.5 基准设计），
+    /// 窗口固定 1920×1080，等效逻辑视口 768×432；调全局 UI 大小只动这里。</summary>
     private const float UiScaleFactor = 2.5f;
     private bool _rotating;
     private bool _panning;
@@ -164,15 +164,14 @@ public partial class Main : Node
     }
 
     /// <summary>
-    /// 高分屏 UI 适配（M4 验收反馈：高分下 UI 过小）：内容缩放取 OS 每-监视器 DPI 缩放
-    /// 再乘 UI 放大系数（人类拍板 2026-09-25：全游戏 UI ×2.5），窗口按工作区 85% 居中。
-    /// 拉伸模式 canvas_items+expand 下逻辑视口=物理尺寸/缩放，布局自适应；3D 视口仍由
-    /// SyncViewport3DResolution 拉到原生像素（不受影响）。UI_SCALE_FACTOR 是全局观感唯一调节点。
+    /// UI 缩放（人类拍板 2026-09-25）：窗口固定项目默认 1920×1080，内容缩放=2.5 绝对值
+    /// （等效设计基准 768×432）。不再随 DPI/工作区调整——那是"UI 过小"首版的方案，
+    /// 实测观感更差（窗口过大+发糊）后回退。3D 视口由 SyncViewport3DResolution 直接吃
+    /// 原生像素保持清晰。
     /// </summary>
     private void ApplyDisplayScaling()
     {
-        // headless 的 dummy DisplayServer 返回 0×0 usable rect——照搬会把窗口设成 0×0
-        // （无头自测/CI 必须跳过；这也曾让 guard 包装的进程静默异常）
+        // headless 的 dummy DisplayServer 无有效窗口参数——跳过（无头自测/CI 必须跳过）
         if (DisplayServer.GetName() == "headless")
         {
             return;
@@ -182,14 +181,7 @@ public partial class Main : Node
         {
             return;
         }
-        int screen = DisplayServer.WindowGetCurrentScreen();
-        window.ContentScaleFactor = Math.Clamp(DisplayServer.ScreenGetScale(screen), 1.0f, 3.0f) * UiScaleFactor;
-        var usable = DisplayServer.ScreenGetUsableRect(screen);
-        if (usable.Size.X <= 0 || usable.Size.Y <= 0)
-        {
-            return; // 异常环境值兜底：宁可用项目默认尺寸
-        }
-        window.Size = new Vector2I((int)(usable.Size.X * 0.85f), (int)(usable.Size.Y * 0.85f));
+        window.ContentScaleFactor = UiScaleFactor;
         window.MoveToCenter();
     }
 
@@ -1469,28 +1461,29 @@ public partial class Main : Node
     }
 
     /// <summary>
-    /// 子视口原生分辨率（M4R-2 引入，B16 v2 定稿）：Stretch=true 时引擎每帧把视口设为逻辑像素，
-    /// 手动 SetSize 被拒绝（viewport.cpp 警告刷屏且从未生效）；改用引擎内建 3D 缓冲超采样——
-    /// Scaling3DMode=Bilinear + Scaling3DScale=窗口最终变换缩放，3D 按原生像素渲染后由引擎
-    /// 降采样回视口纹理，与 2D 同清晰度，且完全不触碰 Viewport.Size。
-    /// （B16 v1 的 stretch=false 手动喂尺寸方案在缩放 >1 时有致命回环：SubViewportContainer
-    /// 以视口尺寸为最小尺寸 → 容器被撑到视口大小 → 下一帧 desired 再乘缩放 → 视口每帧 ×1.4167
-    /// 指数增长，21 帧内 int32 饱和、8–14GB 分配churn、texture_create 失败刷屏 = 黑屏事故根因。）
+    /// 子视口原生分辨率（B16 v4 定稿）：视口 Size=宿主逻辑尺寸×内容缩放=物理像素，自绘纹理
+    /// 与屏幕 1:1。历史：v1 SubViewportContainer(stretch=false) 手动喂尺寸 → 容器最小尺寸=视口
+    /// 尺寸 → 每帧 ×缩放回环（黑屏事故）；v2 Scaling3DScale 超采样 → 纹理仍是逻辑尺寸被放大
+    /// 显示（发糊）；v3 _GetMinimumSize 清零 → C++ 侧 get_minimum_size 不经脚本虚方法，无效；
+    /// v4 弃用 SubViewportContainer，自绘宿主（GameScreen.ViewportHost）结构性解耦。
     /// </summary>
     private void SyncViewport3DResolution()
     {
+        if (_viewport3D.GetParent() is not Control host)
+        {
+            return;
+        }
         var scale = GetWindow().GetFinalTransform().Scale;
         float factor = MathF.Min(scale.X, scale.Y);
         if (factor <= 0.1f)
         {
             return; // headless dummy 值（≈0.033）：无从换算
         }
-        if (MathF.Abs(_viewport3D.Scaling3DScale - factor) <= 0.001f)
+        var desired = (Vector2I)(((Vector2)host.Size * factor).Floor());
+        if (desired.X > 0 && desired.Y > 0 && _viewport3D.Size != desired)
         {
-            return; // 已同步（每帧调用）
+            _viewport3D.Size = desired;
         }
-        _viewport3D.Scaling3DMode = Viewport.Scaling3DModeEnum.Bilinear;
-        _viewport3D.Scaling3DScale = factor;
     }
 
     private void ApplyCamera()

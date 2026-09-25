@@ -20,20 +20,19 @@ public static class KeyboardLayout
         "ZXCVBNM".Select((c, i) => new PhysicalKey(c.ToString(), 0.75 + i)).ToArray(),
     ];
 
-    /// <summary>空格条（第三排下方，含边距）。</summary>
+    /// <summary>空格条 + 方向键（紧凑排布：倒 T 靠右缘，↑ 在上一排右端、←↓→ 与空格同排）。</summary>
     public static readonly PhysicalKey Space = new("Space", 2.5, 5);
 
-    /// <summary>方向键簇（倒 T：↑ 居上，← ↓ → 居下）。</summary>
     public static readonly IReadOnlyList<PhysicalKey> ArrowRow =
     [
-        new("←", 0), new("↓", 1), new("→", 2),
+        new("←", 7.75), new("↓", 8.75), new("→", 9.75),
     ];
-    public static readonly PhysicalKey ArrowUp = new("↑", 1);
+    public static readonly PhysicalKey ArrowUp = new("↑", 8.75);
 
-    /// <summary>整幅布局总行数（字母三排 + 空格排 + 方向键排）。</summary>
-    public const int TotalRows = 5;
+    /// <summary>整幅布局总行数（字母三排 + 空格/方向键排）。</summary>
+    public const int TotalRows = 4;
 
-    /// <summary>按键名查找物理位置；找不到返回 null（调用方决定是否渲染为非活跃空键）。</summary>
+    /// <summary>按键名查找物理位置；找不到返回 null（调用方决定是否渲染）。</summary>
     public static (int Row, PhysicalKey Key)? Find(string name)
     {
         for (int row = 0; row < LetterRows.Count; row++)
@@ -52,13 +51,13 @@ public static class KeyboardLayout
         }
         if (name == ArrowUp.Name)
         {
-            return (3, ArrowUp);
+            return (2, ArrowUp);
         }
         foreach (var key in ArrowRow)
         {
             if (key.Name == name)
             {
-                return (4, key);
+                return (3, key);
             }
         }
         return null;

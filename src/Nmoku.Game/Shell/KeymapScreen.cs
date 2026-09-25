@@ -20,10 +20,10 @@ public sealed partial class KeymapScreen : Control
 
         var margin = new MarginContainer();
         margin.SetAnchorsAndOffsetsPreset(LayoutPreset.FullRect);
-        margin.AddThemeConstantOverride("margin_left", 24);
-        margin.AddThemeConstantOverride("margin_right", 24);
-        margin.AddThemeConstantOverride("margin_top", 16);
-        margin.AddThemeConstantOverride("margin_bottom", 16);
+        margin.AddThemeConstantOverride("margin_left", 10);
+        margin.AddThemeConstantOverride("margin_right", 10);
+        margin.AddThemeConstantOverride("margin_top", 8);
+        margin.AddThemeConstantOverride("margin_bottom", 8);
         AddChild(margin);
 
         var panel = new PanelContainer();
@@ -35,23 +35,24 @@ public sealed partial class KeymapScreen : Control
             CornerRadiusTopRight = 10,
             CornerRadiusBottomLeft = 10,
             CornerRadiusBottomRight = 10,
-            ContentMarginLeft = 20,
-            ContentMarginRight = 20,
-            ContentMarginTop = 12,
-            ContentMarginBottom = 12,
+            ContentMarginLeft = 12,
+            ContentMarginRight = 12,
+            ContentMarginTop = 8,
+            ContentMarginBottom = 8,
         });
         margin.AddChild(panel);
 
         var outer = new VBoxContainer();
-        outer.AddThemeConstantOverride("separation", 8);
+        outer.AddThemeConstantOverride("separation", 4);
         panel.AddChild(outer);
 
         var header = new HBoxContainer();
         outer.AddChild(header);
         var title = new Label { Text = "快捷键说明（F1）", SizeFlagsHorizontal = SizeFlags.Expand };
-        title.AddThemeFontSizeOverride("font_size", 22);
+        title.AddThemeFontSizeOverride("font_size", 14);
         title.AddThemeColorOverride("font_color", Palette.Active.TextPrimary);
         header.AddChild(title);
+        header.AddChild(KeymapContent.BuildLegend());
         var close = new Button { Text = Text.Overlay.Cancel + " (Esc)" };
         close.Pressed += () => CloseRequested?.Invoke();
         header.AddChild(close);

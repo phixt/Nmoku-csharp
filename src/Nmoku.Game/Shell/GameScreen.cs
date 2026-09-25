@@ -12,6 +12,7 @@ namespace Nmoku.Game.Shell;
 public sealed partial class GameScreen : Control
 {
     public SubViewport Viewport3D { get; private set; } = null!;
+    public ViewportHost Host3D { get; private set; } = null!;
     public Camera3D Camera { get; private set; } = null!;
     public Board3DView Board3D { get; private set; } = null!;
     public Board2DView Board2D { get; private set; } = null!;
@@ -39,18 +40,20 @@ public sealed partial class GameScreen : Control
         hbox.SetAnchorsAndOffsetsPreset(LayoutPreset.FullRect);
         AddChild(hbox);
 
-        var viewportContainer = new SubViewportContainer
+        var viewportHost = new ViewportHost
         {
-            Stretch = true,
+            // B16 v4：自绘视口纹理（见 ViewportHost 注释），布局尺寸与视口尺寸零耦合。
             // ExpandFill：Expand 只分配不填充，子视口会塌缩到最小宽 2px（首轮验收灰屏根因）
             SizeFlagsHorizontal = SizeFlags.ExpandFill,
             SizeFlagsStretchRatio = 0.62f,
         };
-        hbox.AddChild(viewportContainer);
+        hbox.AddChild(viewportHost);
+        Host3D = viewportHost;
 
         // MSAA 8×：场景极小（≤1014 球体 + 数百线盒），细网格线在远景掠射角下 4× 仍有锯齿（M4R 反馈）
         Viewport3D = new SubViewport { OwnWorld3D = true, Msaa3D = Viewport.Msaa.Msaa8X };
-        viewportContainer.AddChild(Viewport3D);
+        viewportHost.Viewport = Viewport3D;
+        viewportHost.AddChild(Viewport3D);
 
         _environment = new Godot.Environment
         {
@@ -96,6 +99,30 @@ public sealed partial class GameScreen : Control
         _environment.BackgroundColor = Palette.Active.Background;
         _environment.AmbientLightColor = Palette.Active.AmbientLight;
         ApplyStatusStyle();
+    }
+
+    /// <summary>
+    /// 3D 视口宿主（B16 v4）：自绘 SubViewport 纹理（拉伸铺满自身矩形）。弃用 SubViewportContainer——
+    /// 其 stretch=false 时 C++ 侧 get_minimum_size 直接返回视口尺寸、不经脚本虚方法
+    /// （_GetMinimumSize 清零无效，B16 v3 实测回环重现："几次放大聚焦左上角"）。
+    /// 本宿主最小尺寸恒零（Control 默认），布局尺寸与视口尺寸结构性解耦；每帧重绘跟随纹理。
+    /// 视口由 Main.SyncViewport3DResolution 按「宿主逻辑尺寸×内容缩放」喂原生像素，纹理与
+    /// 物理像素 1:1（高内容缩放下不再发糊）。
+    /// </summary>
+    public sealed partial class ViewportHost : Control
+    {
+        public SubViewport? Viewport { get; set; }
+
+        public override void _Process(double delta) => QueueRedraw();
+
+        public override void _Draw()
+        {
+            var texture = Viewport?.GetTexture();
+            if (texture != null)
+            {
+                DrawTextureRect(texture, new Rect2(Vector2.Zero, Size), false, Colors.White);
+            }
+        }
     }
 
     /// <summary>状态字随主题取色并加描边（M4 二轮：状态字在棋盘底色上不可读）。</summary>
