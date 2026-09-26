@@ -96,6 +96,10 @@ public partial class Main : Node
                 custom++;
         }
         GD.Print($"Nmoku M0: engine boot OK (custom input actions={custom}, audio buses={AudioServer.BusCount})");
+        // 诊断：确认运行的是最新构建（Assembly.Location 在 Godot 4.6 为空，走 temp 输出路径）
+        string buildDll = System.IO.Path.Combine(ProjectSettings.GlobalizePath("res://"),
+            ".godot/mono/temp/bin/Debug/Nmoku.Game.dll");
+        GD.Print($"build: {System.IO.File.GetLastWriteTime(buildDll):yyyy-MM-dd HH:mm:ss}");
 
         // 1) 对局基座组件（不入树，由路由器首个 ShowState 挂载并 KeepAlive 常驻——保留现场）
         _gameScreen = new GameScreen(_boardSize, _layers, _spacing);
@@ -188,6 +192,10 @@ public partial class Main : Node
         {
             return;
         }
+        // 批11 根治：Godot 4.6 的 ContentScaleSize 默认=启动窗口尺寸（1920×1080），其存在把逻辑面
+        // 钉死在 css/csf=768×432，窗口缩放时按 factor×window/css 抬缩放（最大化=×1.67 非整数发糊+
+        // 底部内容下压）——显式归零恢复 expand 语义：逻辑面=窗口/因子，元素物理尺寸恒定。
+        window.ContentScaleSize = Vector2I.Zero;
         window.ContentScaleFactor = UiScaleFactor;
         window.MoveToCenter();
     }
@@ -400,6 +408,8 @@ public partial class Main : Node
         _lastWinKey = key;
         string line = $"[wintrace] t={Time.GetTicksMsec()}ms state={_store?.State.ToString() ?? "boot"} " +
                       $"pos={pos} size={size} mode={(DisplayServer.WindowMode)mode} focus={GetWindow().HasFocus()} " +
+                      $"view={GetViewport().GetVisibleRect().Size} scale={GetWindow().GetFinalTransform().Scale} " +
+                      $"csf={GetWindow().ContentScaleFactor} css={GetWindow().ContentScaleSize} " +
                       $"screen={screen} usable={usable}";
         GD.Print(line);
         try
