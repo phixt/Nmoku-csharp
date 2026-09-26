@@ -12,13 +12,22 @@ public static class KeyboardLayout
 
     public const double RowAdvance = 1.0; // 排距（单位：键帽宽）
 
-    /// <summary>字母区三排（标准 QWERTY 顺序与错位）。</summary>
+    /// <summary>字母区三排（标准 QWERTY 顺序与错位；Esc 在 Q 排左端——对局/复盘/暂停三层共用）。</summary>
     public static readonly IReadOnlyList<IReadOnlyList<PhysicalKey>> LetterRows =
     [
-        "QWERTYUIOP".Select((c, i) => new PhysicalKey(c.ToString(), i)).ToArray(),
+        new PhysicalKey[] { new("Esc", -1.5) }
+            .Concat("QWERTYUIOP".Select((c, i) => new PhysicalKey(c.ToString(), i)))
+            .ToArray(),
         "ASDFGHJKL".Select((c, i) => new PhysicalKey(c.ToString(), 0.25 + i)).ToArray(),
         "ZXCVBNM".Select((c, i) => new PhysicalKey(c.ToString(), 0.75 + i)).ToArray(),
     ];
+
+    /// <summary>布局水平范围（单元）：视图据此定宽，禁止手算。</summary>
+    public static (double MinOffset, double MaxEnd) Extents =>
+    (
+        LetterRows.SelectMany(r => r).Min(k => k.OffsetUnits),
+        LetterRows.SelectMany(r => r).Max(k => k.OffsetUnits + k.WidthUnits)
+    );
 
     /// <summary>空格条 + 方向键（紧凑排布：倒 T 靠右缘，↑ 在上一排右端、←↓→ 与空格同排）。</summary>
     public static readonly PhysicalKey Space = new("Space", 2.5, 5);

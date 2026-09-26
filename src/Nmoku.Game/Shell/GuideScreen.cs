@@ -18,6 +18,8 @@ public sealed partial class GuideScreen : Control
     public event Action? ResumeRequested;
     public event Action? BackRequested;
 
+    public KeymapContent Content { get; private set; } = null!;
+
     private Button _start = null!;
     private Button _resume = null!;
     private Button _back = null!;
@@ -63,7 +65,8 @@ public sealed partial class GuideScreen : Control
         header.AddChild(title);
         header.AddChild(KeymapContent.BuildLegend());
 
-        outer.AddChild(new KeymapContent());
+        Content = new KeymapContent();
+        outer.AddChild(Content);
 
         var buttons = new HBoxContainer { Alignment = BoxContainer.AlignmentMode.End };
         header.AddChild(buttons);

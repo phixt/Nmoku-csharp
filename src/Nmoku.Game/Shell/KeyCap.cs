@@ -12,8 +12,8 @@ namespace Nmoku.Game.Shell;
 /// </summary>
 public sealed partial class KeyCap : Control
 {
-    private const float FontSizeFull = 11;
-    private const float FontSizeSub = 7;
+    private const float FontSizeFull = 12;
+    private const float FontSizeNote = 7;
     private const float FontSizeMini = 9;
     private const int CornerRadius = 6;
     private const float ShadowOffset = 4f;
@@ -31,7 +31,7 @@ public sealed partial class KeyCap : Control
         _scope = scope;
         _idle = idle;
         _mini = mini;
-        _sub = mini ? null : sub;
+        _sub = sub;
         MouseFilter = MouseFilterEnum.Ignore;
         if (mini)
         {
@@ -125,10 +125,10 @@ public sealed partial class KeyCap : Control
                 HorizontalAlignment.Center, Size.X, (int)FontSizeFull, textColor);
             return;
         }
-        // 上下分层：上层主键名，下层小字（跨层例外提示）
-        DrawString(font, new Vector2(0, Size.Y * 0.44f), _label,
+        // 分层页版式：上部 ≤3 字注记，下部键名
+        DrawString(font, new Vector2(0, Size.Y * 0.34f), _sub,
+            HorizontalAlignment.Center, Size.X, (int)FontSizeNote, new Color(textColor, 0.9f));
+        DrawString(font, new Vector2(0, Size.Y * 0.72f), _label,
             HorizontalAlignment.Center, Size.X, (int)FontSizeFull, textColor);
-        DrawString(font, new Vector2(0, Size.Y * 0.84f), _sub,
-            HorizontalAlignment.Center, Size.X, (int)FontSizeSub, new Color(textColor, 0.85f));
     }
 }

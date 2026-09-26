@@ -5,59 +5,173 @@ using Nmoku.Game.Theme;
 namespace Nmoku.Game.Shell;
 
 /// <summary>
-/// 快捷键页共用内容（对齐源 guide 视觉，紧凑单屏版）：①键盘模拟区（坐标由 Core KeyboardLayout
-/// 正式排布数据生成，只渲染有功能的键）②分类说明（三列网格，键帽小样化，无滚动条——
-/// 人类要求 2026-09-25：滚动条不该出现，整页一屏放下）。
-/// 由 F1 帮助浮层（KeymapScreen）与引导屏（GuideScreen，标题「快捷键说明」/暂停 G 入口）共用。
-/// 内容完全由 Core KeymapTable 派生（KeycapScopeMap / KeycapParser），与 ShortcutRouter 门控同源。
+/// 快捷键页共用内容（分页版，人类拍板 2026-09-26）：分层=分页——对局/复盘/暂停/Ctrl/Shift/全局
+/// 六页，页间用 ←/→（宿主层拦截）或圆圈数字页码点击切换。每页只渲染该层按键：键帽尺寸统一、
+/// 上部 ≤3 字注记（KeymapEntry.Short）、下部键名；完整说明统一在页面底部（仅当前层，两列）。
+/// 由 F1 帮助浮层（KeymapScreen）与引导屏（GuideScreen）共用；数据全部由 Core KeymapTable 派生。
 /// </summary>
 public sealed partial class KeymapContent : VBoxContainer
 {
-    private const float Unit = 28f;        // 键帽单元（含间隙）
-    private const float KeyHeight = 22f;
-    private const float KeyGap = 3f;
-    private const float KeyboardPad = 5f;
-    private const float KeyboardUnits = 10f; // 最宽排（QWERTYUIOP）单元数
-    private const int DescColumns = 3;
+    private static readonly KeycapScope[] PageOrder =
+    [
+        KeycapScope.Game, KeycapScope.Replay, KeycapScope.PauseMenu,
+        KeycapScope.Ctrl, KeycapScope.Shift, KeycapScope.Global,
+    ];
 
-    /// <summary>同键跨层例外的底部小字（少量分层显示，人类拍板 2026-09-25；须适配键帽宽度）。</summary>
-    private static readonly Dictionary<string, string> SubHints = new()
-    {
-        ["Esc"] = "继续",
-        ["R"] = "重开",
-        ["S"] = "Ctrl+S",
-    };
+    private const float Unit = 34f;        // 键帽单元（含间隙）
+    private const float KeyHeight = 30f;
+    private const float KeyGap = 4f;
+    private const float KeyboardPad = 5f;
+    private const int DescColumns = 2;
+
+    private int _page;
+    private Control _keyboardHost = null!;
+    private GridContainer _descHost = null!;
+    private HBoxContainer _indicatorRow = null!;
 
     public KeymapContent()
     {
         AddThemeConstantOverride("separation", 6);
         SizeFlagsHorizontal = SizeFlags.ExpandFill;
         SizeFlagsVertical = SizeFlags.ExpandFill;
-        AddChild(BuildKeyboard());
-        AddChild(BuildDescriptionGrid());
+
+        _indicatorRow = new HBoxContainer { Alignment = BoxContainer.AlignmentMode.Center };
+        _indicatorRow.AddThemeConstantOverride("separation", 6);
+        AddChild(_indicatorRow);
+
+        _keyboardHost = new Control { SizeFlagsHorizontal = SizeFlags.ShrinkCenter };
+        AddChild(_keyboardHost);
+
+        _descHost = new GridContainer { Columns = DescColumns };
+        _descHost.AddThemeConstantOverride("h_separation", 16);
+        _descHost.AddThemeConstantOverride("v_separation", 3);
+        AddChild(_descHost);
+
+        RebuildPage();
     }
 
-    // ---- ① 键盘模拟区：坐标全部来自 KeyboardLayout 数据，只渲染有功能的键 ----
+    /// <summary>翻页（宿主在 ←/→ 时调用；±1 循环）。</summary>
+    public void PageStep(int delta) => SetPage((_page + delta + PageOrder.Length) % PageOrder.Length);
 
-    private Control BuildKeyboard()
+    public void SetPage(int index)
     {
-        var scopeMap = BuildPhysicalScopeMap();
-        var kb = new Control
+        _page = Mathf.Clamp(index, 0, PageOrder.Length - 1);
+        RebuildPage();
+    }
+
+    private void RebuildPage()
+    {
+        RebuildIndicators();
+        RebuildKeyboard(PageOrder[_page]);
+        RebuildDescriptions(PageOrder[_page]);
+    }
+
+    /// <summary>当前页的登记行（声明序；浮层专属行不入页）。</summary>
+    private static List<KeymapEntry> PageEntries(KeycapScope scope) =>
+        KeymapTable.Entries.Where(e => !e.OverlayOnly && KeycapScopeMap.ScopeOf(e) == scope).ToList();
+
+    // ---- 页码指示（圆圈数字，可点击）----
+
+    private void RebuildIndicators()
+    {
+        foreach (var child in _indicatorRow.GetChildren())
         {
-            CustomMinimumSize = new Vector2(KeyboardUnits * Unit + KeyboardPad * 2, KeyboardLayout.TotalRows * Unit + KeyboardPad * 2),
-            SizeFlagsHorizontal = SizeFlags.ShrinkCenter,
+            child.QueueFree();
+        }
+        for (int i = 0; i < PageOrder.Length; i++)
+        {
+            var button = new Button
+            {
+                Text = (i + 1).ToString(),
+                CustomMinimumSize = new Vector2(22, 22),
+                FocusMode = FocusModeEnum.None,
+            };
+            button.AddThemeFontSizeOverride("font_size", 11);
+            bool selected = i == _page;
+            button.AddThemeStyleboxOverride("normal", CircleBox(selected));
+            button.AddThemeStyleboxOverride("hover", CircleBox(true));
+            button.AddThemeStyleboxOverride("pressed", CircleBox(true));
+            button.AddThemeStyleboxOverride("focus", new StyleBoxEmpty());
+            button.AddThemeColorOverride("font_color", selected ? Colors.White : Palette.Active.TextDim);
+            button.AddThemeColorOverride("font_hover_color", Colors.White);
+            button.AddThemeColorOverride("font_pressed_color", Colors.White);
+            var page = i;
+            button.Pressed += () => SetPage(page);
+            _indicatorRow.AddChild(button);
+        }
+        var name = new Label { Text = KeycapScopeMap.DisplayName(PageOrder[_page]) + "层" };
+        name.AddThemeFontSizeOverride("font_size", 12);
+        name.AddThemeColorOverride("font_color", Palette.Active.Accent);
+        name.SizeFlagsVertical = SizeFlags.ShrinkCenter;
+        _indicatorRow.AddChild(name);
+    }
+
+    /// <summary>圆圈样式：选中/激活=强调色实心，未选=描边空心。</summary>
+    private static StyleBoxFlat CircleBox(bool filled)
+    {
+        var box = new StyleBoxFlat
+        {
+            CornerRadiusTopLeft = 11,
+            CornerRadiusTopRight = 11,
+            CornerRadiusBottomLeft = 11,
+            CornerRadiusBottomRight = 11,
         };
+        if (filled)
+        {
+            box.BgColor = Palette.Active.Accent;
+        }
+        else
+        {
+            box.BgColor = new Color(0, 0, 0, 0);
+            box.BorderColor = Palette.Active.PanelBorder;
+            box.BorderWidthBottom = 1;
+            box.BorderWidthTop = 1;
+            box.BorderWidthLeft = 1;
+            box.BorderWidthRight = 1;
+        }
+        return box;
+    }
+
+    // ---- 键盘模拟区：仅当前层的键，尺寸统一，注记在上 ----
+
+    private void RebuildKeyboard(KeycapScope scope)
+    {
+        foreach (var child in _keyboardHost.GetChildren())
+        {
+            child.QueueFree();
+        }
+        // 宿主自身定尺寸：普通 Control 不传播子节点最小尺寸，塌缩会让说明网格叠上键盘
+        var (minOffset, maxEnd) = KeyboardLayout.Extents;
+        _keyboardHost.CustomMinimumSize = new Vector2(
+            (float)((maxEnd - minOffset) * Unit) + KeyboardPad * 2,
+            KeyboardLayout.TotalRows * Unit + KeyboardPad * 2);
+
+        // 物理键 → 注记：声明序首个登记（同页同键去重）
+        var keys = new Dictionary<string, string>();
+        foreach (var entry in PageEntries(scope))
+        {
+            foreach (var group in KeycapParser.Parse(entry.Keys))
+            {
+                foreach (var cap in group.Caps)
+                {
+                    if (KeyboardLayout.Find(cap) != null)
+                    {
+                        keys.TryAdd(cap, entry.Short ?? "");
+                    }
+                }
+            }
+        }
 
         void Place(KeyboardLayout.PhysicalKey key, int row)
         {
-            if (!scopeMap.TryGetValue(key.Name, out var scope))
+            if (!keys.TryGetValue(key.Name, out var note))
             {
-                return; // 无功能的物理键不渲染（对齐源 keyboard-sim）
+                return; // 非本层的键不渲染
             }
-            var cap = new KeyCap(key.Name, scope, mini: false, sub: SubHints.GetValueOrDefault(key.Name));
-            cap.Position = new Vector2((float)(key.OffsetUnits * Unit) + KeyboardPad, row * Unit + KeyboardPad);
+            var cap = new KeyCap(key.Name, scope, mini: false, sub: note);
+            cap.Position = new Vector2((float)((key.OffsetUnits - minOffset) * Unit) + KeyboardPad, row * Unit + KeyboardPad);
             cap.Size = new Vector2((float)(key.WidthUnits * Unit) - KeyGap, KeyHeight);
-            kb.AddChild(cap);
+            _keyboardHost.AddChild(cap);
         }
 
         for (int row = 0; row < KeyboardLayout.LetterRows.Count; row++)
@@ -73,89 +187,36 @@ public sealed partial class KeymapContent : VBoxContainer
         {
             Place(key, 3);
         }
-        return kb;
     }
 
-    /// <summary>物理键 → 作用域：两遍法——素键（无修饰）先登记，组合键（Ctrl+S 等）只补空位。
-    /// 否则先声明的组合键会抢占素键的层（S/Z/方向键实测被 Ctrl/Shift 组合抢走）。</summary>
-    private static Dictionary<string, KeycapScope> BuildPhysicalScopeMap()
+    // ---- 底部说明：当前层的完整说明（统一两列）----
+
+    private void RebuildDescriptions(KeycapScope scope)
     {
-        var map = new Dictionary<string, KeycapScope>();
-        for (int pass = 0; pass < 2; pass++)
+        foreach (var child in _descHost.GetChildren())
         {
-            foreach (var entry in KeymapTable.Entries)
-            {
-                var scope = KeycapScopeMap.ScopeOf(entry);
-                foreach (var group in KeycapParser.Parse(entry.Keys))
-                {
-                    bool compound = group.Caps.Length > 1;
-                    if ((pass == 0) == compound)
-                    {
-                        continue; // 第一遍只收素键，第二遍只收组合键
-                    }
-                    foreach (var cap in group.Caps)
-                    {
-                        if (KeyboardLayout.Find(cap) != null)
-                        {
-                            map.TryAdd(cap, scope);
-                        }
-                    }
-                }
-            }
+            child.QueueFree();
         }
-        return map;
-    }
-
-    /// <summary>作用域图例行（六层单色，宿主屏标题行右对齐嵌入）。</summary>
-    public static Control BuildLegend()
-    {
-        var legend = new HBoxContainer { Alignment = BoxContainer.AlignmentMode.End };
-        legend.AddThemeConstantOverride("separation", 8);
-        foreach (var scope in Enum.GetValues<KeycapScope>())
-        {
-            var item = new HBoxContainer { SizeFlagsVertical = SizeFlags.ShrinkCenter };
-            item.AddThemeConstantOverride("separation", 3);
-            item.AddChild(MakeSwatch(scope));
-            var label = new Label { Text = KeycapScopeMap.DisplayName(scope) };
-            label.AddThemeFontSizeOverride("font_size", 9);
-            label.AddThemeColorOverride("font_color", Palette.Active.TextDim);
-            item.AddChild(label);
-            legend.AddChild(item);
-        }
-        return legend;
-    }
-
-    // ---- ② 分类说明：三列网格（列主序铺放），键帽小样 + 作用域色点 + 描述 ----
-
-    private Control BuildDescriptionGrid()
-    {
-        var entries = KeymapTable.Entries
-            .Select(e => (Entry: e, Scope: KeycapScopeMap.ScopeOf(e), Caps: KeycapParser.Parse(e.Keys)))
-            .ToList();
+        var entries = PageEntries(scope);
         int rows = Mathf.CeilToInt(entries.Count / (float)DescColumns);
-        var grid = new GridContainer { Columns = DescColumns };
-        grid.AddThemeConstantOverride("h_separation", 10);
-        grid.AddThemeConstantOverride("v_separation", 2);
-        // 列主序铺放（竖读同类相邻：全局→标题→引导→对局…按声明序竖排）
         for (int row = 0; row < rows; row++)
         {
             for (int col = 0; col < DescColumns; col++)
             {
-                int index = col * rows + row;
+                int index = col * rows + row; // 列主序：同类相邻竖排
                 if (index < entries.Count)
                 {
-                    grid.AddChild(BuildDescItem(entries[index].Entry, entries[index].Scope, entries[index].Caps));
+                    _descHost.AddChild(BuildDescItem(entries[index], KeycapScopeMap.ScopeOf(entries[index])));
                 }
                 else
                 {
-                    grid.AddChild(new Control { SizeFlagsHorizontal = SizeFlags.Expand });
+                    _descHost.AddChild(new Control());
                 }
             }
         }
-        return grid;
     }
 
-    private static Control BuildDescItem(KeymapEntry entry, KeycapScope scope, List<KeycapParser.CapGroup> caps)
+    private static Control BuildDescItem(KeymapEntry entry, KeycapScope scope)
     {
         var item = new HBoxContainer();
         item.AddThemeConstantOverride("separation", 4);
@@ -165,7 +226,7 @@ public sealed partial class KeymapContent : VBoxContainer
         dot.SizeFlagsVertical = SizeFlags.ShrinkCenter;
         item.AddChild(dot);
 
-        foreach (var group in caps)
+        foreach (var group in KeycapParser.Parse(entry.Keys))
         {
             if (group.Caps.Length <= 3)
             {
@@ -176,7 +237,7 @@ public sealed partial class KeymapContent : VBoxContainer
             }
             else
             {
-                // 大组合（Shift+WASD / Shift+方向键）合并键帽，避免撑破三列网格
+                // 大组合（Shift+WASD / Shift+方向键）合并键帽，避免撑破列宽
                 item.AddChild(new KeyCap(group.Modifier, scope, mini: true));
                 item.AddChild(new KeyCap(string.Join("", group.Keys), scope, mini: true));
             }
@@ -188,13 +249,13 @@ public sealed partial class KeymapContent : VBoxContainer
             SizeFlagsHorizontal = SizeFlags.ExpandFill,
             AutowrapMode = TextServer.AutowrapMode.WordSmart,
         };
-        desc.AddThemeFontSizeOverride("font_size", 9);
+        desc.AddThemeFontSizeOverride("font_size", 10);
         desc.AddThemeColorOverride("font_color", Palette.Active.TextDim);
         item.AddChild(desc);
         return item;
     }
 
-    /// <summary>作用域色板（图例圆点/说明行小点共用）。</summary>
+    /// <summary>作用域色板（图例/说明行小点共用）。</summary>
     private static Control MakeSwatch(KeycapScope scope)
     {
         var swatch = new Panel { CustomMinimumSize = new Vector2(9, 9) };
@@ -217,5 +278,24 @@ public sealed partial class KeymapContent : VBoxContainer
         }
         swatch.AddThemeStyleboxOverride("panel", box);
         return swatch;
+    }
+
+    /// <summary>作用域图例行（宿主屏标题行右对齐嵌入）。</summary>
+    public static Control BuildLegend()
+    {
+        var legend = new HBoxContainer { Alignment = BoxContainer.AlignmentMode.End };
+        legend.AddThemeConstantOverride("separation", 8);
+        foreach (var scope in PageOrder)
+        {
+            var item = new HBoxContainer { SizeFlagsVertical = SizeFlags.ShrinkCenter };
+            item.AddThemeConstantOverride("separation", 3);
+            item.AddChild(MakeSwatch(scope));
+            var label = new Label { Text = KeycapScopeMap.DisplayName(scope) };
+            label.AddThemeFontSizeOverride("font_size", 9);
+            label.AddThemeColorOverride("font_color", Palette.Active.TextDim);
+            item.AddChild(label);
+            legend.AddChild(item);
+        }
+        return legend;
     }
 }

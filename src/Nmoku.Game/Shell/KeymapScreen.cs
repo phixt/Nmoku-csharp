@@ -12,6 +12,7 @@ namespace Nmoku.Game.Shell;
 public sealed partial class KeymapScreen : Control
 {
     public event Action? CloseRequested;
+    public KeymapContent Content { get; private set; } = null!;
 
     public override void _Ready()
     {
@@ -57,6 +58,7 @@ public sealed partial class KeymapScreen : Control
         close.Pressed += () => CloseRequested?.Invoke();
         header.AddChild(close);
 
-        outer.AddChild(new KeymapContent());
+        Content = new KeymapContent();
+        outer.AddChild(Content);
     }
 }

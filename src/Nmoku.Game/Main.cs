@@ -36,6 +36,7 @@ public partial class Main : Node
     private GameOverModal _gameOverModal = null!;
     private SaveMenu _saveMenu = null!;
     private GuideScreen _guideScreen = null!;
+    private KeymapScreen _keymapScreen = null!;
     private ReplayBar _replayBar = null!;
     private SandboxPanel _sandboxPanel = null!;
     private FileDialog? _exportFileDialog;
@@ -316,6 +317,7 @@ public partial class Main : Node
             Factory = () =>
             {
                 var screen = new KeymapScreen();
+                _keymapScreen = screen;
                 screen.CloseRequested += () => _router.PopOverlay("help");
                 return screen;
             },
@@ -1226,6 +1228,12 @@ public partial class Main : Node
         switch (@event)
         {
             case InputEventKey { Pressed: true, Echo: false } key:
+                // 快捷键页打开时 ←/→ 翻层（优先于动作分发：复盘态开页时也不会误触步进）
+                if (TryPageKeymap(key))
+                {
+                    GetViewport().SetInputAsHandled();
+                    break;
+                }
                 // 单次动作事件驱动：echo 直接忽略（按住不重复，与 A/D 同语义）；匹配即吞
                 if (TryDispatchKey(key))
                 {
@@ -1316,6 +1324,30 @@ public partial class Main : Node
                 break;
         }
     }
+/// <summary>快捷键页（F1 浮层/引导屏）打开时 ←/→ 翻层；未打开返回 false 走正常分发。</summary>
+    private bool TryPageKeymap(InputEventKey key)
+    {
+        bool keymapOpen = _router.IsOverlayOpen("help")
+                          || _store.State is GameState.GuideFromTitle or GameState.GuideFromGame;
+        if (!keymapOpen)
+        {
+            return false;
+        }
+        if (key.PhysicalKeycode == Key.Left)
+        {
+            _keymapScreen.Content.PageStep(-1);
+            _guideScreen.Content.PageStep(-1);
+            return true;
+        }
+        if (key.PhysicalKeycode == Key.Right)
+        {
+            _keymapScreen.Content.PageStep(1);
+            _guideScreen.Content.PageStep(1);
+            return true;
+        }
+        return false;
+    }
+
 
     /// <summary>
     /// 键盘单次动作的事件驱动分发（M4R-2：echo 过滤=按一下动一下，键回显不再重复触发，

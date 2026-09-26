@@ -216,3 +216,18 @@ public class KeyboardLayoutTests
         Assert.Null(KeyboardLayout.Find("F1")); // 功能键不在本布局（字母区+空格+方向键）
     }
 }
+
+public class KeymapShortAnnotationTests
+{
+    [Fact]
+    public void Short_AllNonDocEntries_PresentAndWithinThreeChars()
+    {
+        // 分层页键帽注记（人类拍板 2026-09-26）：≤3 字；@文档行（鼠标行为）与浮层行除外
+        var missing = KeymapTable.Entries
+            .Where(e => !e.Actions.Any(a => a.StartsWith('@')) && !e.OverlayOnly)
+            .Where(e => string.IsNullOrWhiteSpace(e.Short) || e.Short.Length > 3)
+            .Select(e => string.Join(",", e.Actions))
+            .ToList();
+        Assert.True(missing.Count == 0, $"注记缺失或超长: {string.Join(", ", missing)}");
+    }
+}
