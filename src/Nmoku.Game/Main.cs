@@ -166,6 +166,12 @@ public partial class Main : Node
         EventBus.ThemeToggled += ApplyTheme;
         EventBus.LanguageChanged += OnLanguageChanged;
         _store.LevelChanged += OnLevelChanged;
+        // 系统标题栏的最大化/还原也要同步偏好（设置页下拉初值=实际状态的前提；headless 无窗口）。
+        // Window 无 mode_changed 信号，size_changed 覆盖全部尺寸变化的模式切换（最小化不误写）
+        if (DisplayServer.GetName() != "headless")
+        {
+            GetWindow().SizeChanged += SyncWindowModeToPrefs;
+        }
 
         var defaultLevel = new LevelConfig
         {
@@ -217,6 +223,9 @@ public partial class Main : Node
         window.ContentScaleSize = Vector2I.Zero;
         window.ContentScaleFactor = UiScaleFactor;
         window.MoveToCenter();
+        // 窗口最小尺寸保护（2026-09-26 根治配套）：逻辑面高 ≥416（1080p 屏可用高），
+        // 标题屏内容 ~406 在最小窗口也 fit——阻断"拖矮窗口→底部按钮溢出"
+        window.MinSize = new Vector2I(800, (int)(416 * UiScaleFactor));
         RestoreWindowMode(); // 上次会话若是最大化/全屏，启动即恢复（设置页 general 节）
     }
 
@@ -912,6 +921,17 @@ public partial class Main : Node
         _autotestSteps.Enqueue(("m4c-keymap-paging", AutotestKeymapPaging));
         _autotestSteps.Enqueue(("m5-audio-settings", AutotestAudioSettings));
         _autotestSteps.Enqueue(("m5-i18n", AutotestI18n));
+        _autotestSteps.Enqueue(("m5-title-fit", AutotestTitleFit));
+    }
+
+    /// <summary>标题屏布局容量锁（2026-09-26 根治回归）：最坏情况（继续对局按钮可见=7 按钮）
+    /// 内容最小高必须 ≤ 416——窗口最小尺寸保护下的最小逻辑面高。headless 可跑（纯布局计算）。</summary>
+    private string AutotestTitleFit()
+    {
+        _titleScreen.UpdateResumeButton(true);
+        float minH = _titleScreen.GetCombinedMinimumSize().Y;
+        _titleScreen.UpdateResumeButton(_store.HasLiveGame);
+        return minH <= 416f ? "ok" : $"FAIL title-min-height={minH:0.0} > 416";
     }
 
     /// <summary>M5 i18n 端到端（2026-09-26）：CSV→Translation→I18n.T 全链路——切 en_US 后
@@ -2264,7 +2284,21 @@ public partial class Main : Node
         }
     }
 
-    /// <summary>启动恢复持久化窗口模式（设置页写入；ApplyDisplayScaling 尾部调用）。</summary>
+    /// <summary>窗口模式变化（含系统标题栏操作）写回偏好，保证 cfg 与实际状态一致。</summary>
+    private void SyncWindowModeToPrefs()
+    {
+        string mode = GetWindow().Mode switch
+        {
+            Window.ModeEnum.Maximized => "maximized",
+            Window.ModeEnum.Fullscreen or Window.ModeEnum.ExclusiveFullscreen => "fullscreen",
+            _ => "windowed",
+        };
+        SettingsStore.Set("general", "window_mode", mode);
+    }
+
+    /// <summary>启动恢复持久化窗口模式（设置页写入；ApplyDisplayScaling 尾部调用）。
+    /// CallDeferred：_Ready 早期窗口尚未完成 DPI/工作区初始化，立即设 Fullscreen 会被
+    /// 引擎覆盖回 Maximized（2026-09-26 wintrace 取证 t=1081 mode=Maximized ≠ cfg fullscreen）。</summary>
     private void RestoreWindowMode()
     {
         if (DisplayServer.GetName() == "headless")
@@ -2272,14 +2306,16 @@ public partial class Main : Node
             return;
         }
         string mode = SettingsStore.Get("general", "window_mode", "windowed").AsString();
-        if (mode == "maximized")
+        if (mode != "maximized" && mode != "fullscreen")
         {
-            GetWindow().Mode = Window.ModeEnum.Maximized;
+            return;
         }
-        else if (mode == "fullscreen")
-        {
-            GetWindow().Mode = Window.ModeEnum.Fullscreen;
-        }
+        CallDeferred(nameof(ApplyRestoredMode), mode);
+    }
+
+    private void ApplyRestoredMode(string mode)
+    {
+        GetWindow().Mode = mode == "fullscreen" ? Window.ModeEnum.Fullscreen : Window.ModeEnum.Maximized;
     }
 
     /// <summary>语言切换热刷新（B20 ④ 源语义：立即重注入文本）——重建已挂载壳屏（game 基座除外，
