@@ -32,6 +32,13 @@ window/stretch/aspect="expand"
 
 project/assembly_name="Nmoku.Game"
 
+[internationalization]
+
+; i18n 四语言表（§3.5）：CSV 键=zh-CN 文本本身；zh-CN 不注册 translation——
+; 查不到翻译时 TranslationServer 返回消息原文（=zh-CN），fallback 也指回 zh-CN 兜底
+locale/translations=PackedStringArray("res://assets/i18n/translations.zh_CN.translation", "res://assets/i18n/translations.zh_Hant.translation", "res://assets/i18n/translations.en_US.translation", "res://assets/i18n/translations.ja_JP.translation")
+locale/fallback="zh-CN"
+
 [input]
 
 pause={

@@ -170,7 +170,7 @@ public partial class Main : Node
         var defaultLevel = new LevelConfig
         {
             Id = "cmdline",
-            Name = Text.Levels.Cmdline,
+            Name = I18n.T(Text.Levels.Cmdline),
             BoardSize = _boardSize,
             Layers = _layers,
             Rules = _rules,
@@ -910,6 +910,23 @@ public partial class Main : Node
         _autotestSteps.Enqueue(("m4c-window-sequence", AutotestWindowSequence));
         _autotestSteps.Enqueue(("m4c-keymap-paging", AutotestKeymapPaging));
         _autotestSteps.Enqueue(("m5-audio-settings", AutotestAudioSettings));
+        _autotestSteps.Enqueue(("m5-i18n", AutotestI18n));
+    }
+
+    /// <summary>M5 i18n 端到端（2026-09-26）：CSV→Translation→I18n.T 全链路——切 en_US 后
+    /// Text 常量（zh 键）应查出英文译文、带参模板正确格式化、切回 zh-CN 回落原文。幂等无副作用。</summary>
+    private string AutotestI18n()
+    {
+        TranslationServer.SetLocale("en_US");
+        string start = I18n.T(Text.Title.Start);
+        string slot = I18n.T(Text.Save.SlotLabel, 3);
+        string fallback = I18n.T("不在翻译表中的键");
+        TranslationServer.SetLocale("zh_CN");
+        string restored = I18n.T(Text.Title.Start);
+        return start == "New Game" && slot == "Slot 3" && fallback == "不在翻译表中的键"
+            && restored == "开始游戏"
+            ? "ok"
+            : $"FAIL start={start} slot={slot} fallback={fallback} restored={restored}";
     }
 
     private int _kmPhase;
@@ -1443,7 +1460,7 @@ public partial class Main : Node
                 }
                 if (!_replayBar.ZeroMoveMode || _gm.ReplayCount != 0 || _gm.LastVisibleMove != null
                     || _gm.Current != PlayerColor.Black
-                    || _turnIndicator.TextForTests != Text.Turn.BlackTurn || !_turnIndicator.StoneVisible)
+                    || _turnIndicator.TextForTests != I18n.T(Text.Turn.BlackTurn) || !_turnIndicator.StoneVisible)
                 {
                     _rhPhase = 0;
                     return "FAIL zero-move";
@@ -1472,7 +1489,7 @@ public partial class Main : Node
                 }
                 if (_gm.LastVisibleMove is not { } last || !last.Equals(_gm.History[0])
                     || _gm.Current != PlayerColor.White
-                    || _turnIndicator.TextForTests != Text.Turn.WhiteTurn)
+                    || _turnIndicator.TextForTests != I18n.T(Text.Turn.WhiteTurn))
                 {
                     _rhPhase = 0;
                     return "FAIL cursor-follow";
@@ -2278,7 +2295,7 @@ public partial class Main : Node
             Exclusive = true,
             Unresizable = false,
             MinSize = new Vector2I(720, 480),
-            Filters = ["*.nzsave ; Nmoku 存档文件"],
+            Filters = ["*.nzsave ; " + I18n.T(Text.Save.SaveFileFilter)],
         };
         dialog.FileSelected += path => onSelected(path);
         AddChild(dialog);
@@ -2289,7 +2306,7 @@ public partial class Main : Node
     private void ToggleMute()
     {
         _audio.ToggleMute();
-        _overlay.ShowToast(_audio.Muted ? Text.Settings.MuteToastOn : Text.Settings.MuteToastOff);
+        _overlay.ShowToast(_audio.Muted ? I18n.T(Text.Settings.MuteToastOn) : I18n.T(Text.Settings.MuteToastOff));
     }
 
     private void ToggleHelp()
@@ -2336,11 +2353,11 @@ public partial class Main : Node
     /// <summary>SWAP2 决策（§4.1 扩展：取消=继续执白，是有效决策而非放弃）。</summary>
     private void ShowSwapDialog()
     {
-        _overlay.ShowConfirmDialog("SWAP2", Text.Swap.ChooseSwapOrDefault,
+        _overlay.ShowConfirmDialog("SWAP2", I18n.T(Text.Swap.ChooseSwapOrDefault),
             onYes: () => _gm.ResolveSwap(true),
             onCancel: () => _gm.ResolveSwap(false),
-            yesText: Text.Overlay.SwapYes,
-            noText: Text.Overlay.SwapNo);
+            yesText: I18n.T(Text.Overlay.SwapYes),
+            noText: I18n.T(Text.Overlay.SwapNo));
     }
 
     private void UpdateStatus()
@@ -2355,20 +2372,20 @@ public partial class Main : Node
         if (_gm.IsOver)
         {
             _turnIndicator.SetTextOnly(_gm.IsDraw
-                ? Text.Result.Draw
-                : _gm.Winner == 1 ? Text.Result.BlackWin : Text.Result.WhiteWin);
+                ? I18n.T(Text.Result.Draw)
+                : _gm.Winner == 1 ? I18n.T(Text.Result.BlackWin) : I18n.T(Text.Result.WhiteWin));
             return;
         }
         if (_gm.SwapPending)
         {
-            _turnIndicator.SetTextOnly(Text.Swap.ChooseSwapOrDefault);
+            _turnIndicator.SetTextOnly(I18n.T(Text.Swap.ChooseSwapOrDefault));
             return;
         }
         _turnIndicator.SetTurn(_gm.Current.ToCell(), TurnText());
     }
 
     private string TurnText() =>
-        _gm.Current == PlayerColor.Black ? Text.Turn.BlackTurn : Text.Turn.WhiteTurn;
+        _gm.Current == PlayerColor.Black ? I18n.T(Text.Turn.BlackTurn) : I18n.T(Text.Turn.WhiteTurn);
 
     private bool IsOver2DPanel() =>
         _board2D.GetGlobalRect().HasPoint(GetViewport().GetMousePosition());

@@ -2,6 +2,7 @@ using Godot;
 using Nmoku.Core;
 using Nmoku.Game.Audio;
 using Nmoku.Game.Theme;
+using Nmoku.Game;
 
 namespace Nmoku.Game.Shell;
 
@@ -60,19 +61,19 @@ public sealed partial class SettingsScreen : Control
 
         var header = new HBoxContainer();
         box.AddChild(header);
-        var title = new Label { Text = Text.Settings.Title, SizeFlagsHorizontal = SizeFlags.Expand };
+        var title = new Label { Text = I18n.T(Text.Settings.Title), SizeFlagsHorizontal = SizeFlags.Expand };
         title.AddThemeFontSizeOverride("font_size", 24);
         title.AddThemeColorOverride("font_color", Palette.Active.TextPrimary);
         header.AddChild(title);
-        header.AddChild(MakeButton(Text.Overlay.Cancel, () => CloseRequested?.Invoke()));
+        header.AddChild(MakeButton(I18n.T(Text.Overlay.Cancel), () => CloseRequested?.Invoke()));
 
         var audio = AudioManager.Instance;
         float sfx = audio?.SfxVolume ?? 0.6f;
         float bgm = audio?.BgmVolume ?? 0.3f;
 
-        box.AddChild(MakeVolumeRow(Text.Settings.SfxVolume, sfx, v =>
+        box.AddChild(MakeVolumeRow(I18n.T(Text.Settings.SfxVolume), sfx, v =>
             audio?.SetVolumes(v, audio.BgmVolume)));
-        box.AddChild(MakeVolumeRow(Text.Settings.BgmVolume, bgm, v =>
+        box.AddChild(MakeVolumeRow(I18n.T(Text.Settings.BgmVolume), bgm, v =>
             audio?.SetVolumes(audio.SfxVolume, v)));
 
         _muteButton = MakeButton(MuteText(), ToggleMute);
@@ -114,15 +115,15 @@ public sealed partial class SettingsScreen : Control
     {
         var row = new HBoxContainer();
         row.AddThemeConstantOverride("separation", 10);
-        row.AddChild(MakeRowLabel(Text.Settings.WindowMode));
+        row.AddChild(MakeRowLabel(I18n.T(Text.Settings.WindowMode)));
 
         var select = new OptionButton { SizeFlagsHorizontal = SizeFlags.Expand };
         string current = SettingsStore.Get("general", "window_mode", "windowed").AsString();
         foreach (var (key, text) in new[]
                  {
-                     (ModeKeys[0], Text.Settings.ModeWindowed),
-                     (ModeKeys[1], Text.Settings.ModeMaximized),
-                     (ModeKeys[2], Text.Settings.ModeFullscreen),
+                     (ModeKeys[0], I18n.T(Text.Settings.ModeWindowed)),
+                     (ModeKeys[1], I18n.T(Text.Settings.ModeMaximized)),
+                     (ModeKeys[2], I18n.T(Text.Settings.ModeFullscreen)),
                  })
         {
             int idx = select.ItemCount;
@@ -153,7 +154,7 @@ public sealed partial class SettingsScreen : Control
     {
         var row = new HBoxContainer();
         row.AddThemeConstantOverride("separation", 10);
-        row.AddChild(MakeRowLabel(Text.Settings.Language));
+        row.AddChild(MakeRowLabel(I18n.T(Text.Settings.Language)));
 
         var select = new OptionButton { SizeFlagsHorizontal = SizeFlags.Expand };
         // 选项=语言自称（不翻译），当前值来自持久化偏好
@@ -192,7 +193,7 @@ public sealed partial class SettingsScreen : Control
     }
 
     private string MuteText() =>
-        AudioManager.Instance?.Muted == true ? Text.Settings.MutedOn : Text.Settings.MutedOff;
+        AudioManager.Instance?.Muted == true ? I18n.T(Text.Settings.MutedOn) : I18n.T(Text.Settings.MutedOff);
 
     private void ToggleMute()
     {

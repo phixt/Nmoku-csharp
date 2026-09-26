@@ -103,7 +103,7 @@ public sealed partial class KeymapContent : VBoxContainer
             button.Pressed += () => SetPage(page);
             _indicatorRow.AddChild(button);
         }
-        var name = new Label { Text = KeycapScopeMap.DisplayName(PageOrder[_page]) + "层" };
+        var name = new Label { Text = I18n.T(Text.Guide.LayerPageFormat, I18n.T(KeycapScopeMap.DisplayName(PageOrder[_page]))) };
         name.AddThemeFontSizeOverride("font_size", 12);
         name.AddThemeColorOverride("font_color", Palette.Active.Accent);
         name.SizeFlagsVertical = SizeFlags.ShrinkCenter;
@@ -163,7 +163,7 @@ public sealed partial class KeymapContent : VBoxContainer
                 {
                     if (KeyboardLayout.Find(cap) != null)
                     {
-                        keys.TryAdd(cap, entry.Short ?? "");
+                        keys.TryAdd(cap, I18n.T(entry.Short ?? ""));
                     }
                 }
             }
@@ -250,7 +250,7 @@ public sealed partial class KeymapContent : VBoxContainer
 
         var desc = new Label
         {
-            Text = entry.Description,
+            Text = I18n.T(entry.Description),
             SizeFlagsHorizontal = SizeFlags.ExpandFill,
             AutowrapMode = TextServer.AutowrapMode.WordSmart,
         };
@@ -295,7 +295,7 @@ public sealed partial class KeymapContent : VBoxContainer
             var item = new HBoxContainer { SizeFlagsVertical = SizeFlags.ShrinkCenter };
             item.AddThemeConstantOverride("separation", 3);
             item.AddChild(MakeSwatch(scope));
-            var label = new Label { Text = KeycapScopeMap.DisplayName(scope) };
+            var label = new Label { Text = I18n.T(KeycapScopeMap.DisplayName(scope)) };
             label.AddThemeFontSizeOverride("font_size", 9);
             label.AddThemeColorOverride("font_color", Palette.Active.TextDim);
             item.AddChild(label);

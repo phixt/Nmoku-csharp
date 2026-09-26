@@ -1,0 +1,141 @@
+using System.Reflection;
+using System.Text;
+using Nmoku.Core;
+
+namespace Nmoku.Core.Tests;
+
+/// <summary>
+/// i18n 翻译表完备性（M5 §3.5）：translations.csv 的键=zh-CN 文本本身，必须覆盖全部
+/// 用户可见文本——Text 常量全集（反射枚举，含 const 拼接的 Guide.Body 完整值）、
+/// KeymapTable 的 Description/Short/Category、KeycapScope 图例名。四语言列键集一致。
+/// 测试在 Core.Tests 而测的是 Game 的数据文件：键的权威来源是 Core 的 Text 常量，
+/// 文件按相对仓库根定位（.gitattributes 已锁仓库内 LF，键的换行与 C# 常量逐字符一致）。
+/// </summary>
+public class I18nCsvTests
+{
+    private static readonly string[] LocaleColumns = ["zh-CN", "zh-Hant", "en-US", "ja-JP"];
+
+    private static string FindCsvPath()
+    {
+        var dir = new DirectoryInfo(AppContext.BaseDirectory);
+        while (dir != null && !File.Exists(Path.Combine(dir.FullName, "Nmoku.slnx")))
+        {
+            dir = dir.Parent;
+        }
+        Assert.NotNull(dir);
+        return Path.Combine(dir!.FullName, "src", "Nmoku.Game", "assets", "i18n", "translations.csv");
+    }
+
+    /// <summary>单遍 RFC4180 状态机解析（引号内的逗号/换行不拆分；仓库锁 LF，无 \r）。</summary>
+    private static List<string[]> ReadCsv()
+    {
+        string text = File.ReadAllText(FindCsvPath());
+        var rows = new List<string[]>();
+        var row = new List<string>();
+        var field = new StringBuilder();
+        bool inQuotes = false;
+        foreach (char c in text)
+        {
+            if (inQuotes)
+            {
+                if (c == '"')
+                {
+                    inQuotes = false;
+                }
+                else
+                {
+                    field.Append(c);
+                }
+            }
+            else if (c == '"')
+            {
+                inQuotes = true;
+            }
+            else if (c == ',')
+            {
+                row.Add(field.ToString());
+                field.Clear();
+            }
+            else if (c == '\n')
+            {
+                row.Add(field.ToString());
+                field.Clear();
+                rows.Add([.. row]);
+                row.Clear();
+            }
+            else if (c != '\r')
+            {
+                field.Append(c);
+            }
+        }
+        Assert.False(inQuotes, "CSV 引号未闭合");
+        if (field.Length > 0 || row.Count > 0)
+        {
+            row.Add(field.ToString());
+            rows.Add([.. row]);
+        }
+        Assert.True(rows.Count > 100, $"CSV 行数异常: {rows.Count}");
+        return rows;
+    }
+
+    private static HashSet<string> ExpectedKeys()
+    {
+        HashSet<string> keys = [];
+        foreach (Type nested in typeof(Text).GetNestedTypes(BindingFlags.Public | BindingFlags.Static))
+        {
+            foreach (FieldInfo field in nested.GetFields(BindingFlags.Public | BindingFlags.Static))
+            {
+                if (field.FieldType == typeof(string) && field.GetValue(null) is string value)
+                {
+                    keys.Add(value);
+                }
+            }
+        }
+        foreach (KeymapEntry entry in KeymapTable.Entries)
+        {
+            keys.Add(entry.Description);
+            if (entry.Short != null)
+            {
+                keys.Add(entry.Short);
+            }
+            keys.Add(entry.Category);
+        }
+        foreach (KeycapScope scope in Enum.GetValues<KeycapScope>())
+        {
+            keys.Add(KeycapScopeMap.DisplayName(scope));
+        }
+        return keys;
+    }
+
+    [Fact]
+    public void Csv_CoversAllUserVisibleText_WithAlignedLocaleColumns()
+    {
+        List<string[]> rows = ReadCsv();
+        Assert.Equal("keys", rows[0][0]);
+        Assert.Equal(LocaleColumns, rows[0].Skip(1).ToArray());
+
+        HashSet<string> csvKeys = [];
+        foreach (string[] row in rows.Skip(1))
+        {
+            Assert.True(row.Length == 5, $"列数异常: {row[0]}");
+            Assert.True(row.All(f => f.Length > 0), $"空值: {row[0]}");
+            Assert.True(csvKeys.Add(row[0]), $"重复键: {row[0]}");
+        }
+
+        HashSet<string> expected = ExpectedKeys();
+        List<string> missing = expected.Where(k => !csvKeys.Contains(k)).ToList();
+        Assert.True(missing.Count == 0, $"CSV 缺键: {string.Join(" | ", missing.Take(10))}");
+    }
+
+    [Fact]
+    public void Csv_Keys_AreZhSourceValues()
+    {
+        // 键=zh-CN 文本本身（gettext 消息风格）：排除点分小写伪键（如 save.quicksaved）；
+        // SWAP2 等纯 ASCII 术语为合法键
+        var pseudoKey = new System.Text.RegularExpressions.Regex(@"^[a-z0-9-]+(\.[a-z0-9-]+)+$");
+        foreach (string[] row in ReadCsv().Skip(1))
+        {
+            Assert.False(pseudoKey.IsMatch(row[0]), $"键应为 zh-CN 文本: {row[0]}");
+        }
+    }
+}

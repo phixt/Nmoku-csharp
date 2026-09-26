@@ -1,6 +1,7 @@
 using Godot;
 using Nmoku.Core;
 using Nmoku.Game.Theme;
+using Nmoku.Game;
 
 namespace Nmoku.Game;
 
@@ -36,8 +37,8 @@ public sealed partial class OverlayManager : CanvasLayer, IOverlayManager
         _confirm = new ConfirmationDialog
         {
             Exclusive = true,
-            OkButtonText = Text.Overlay.Confirm,
-            CancelButtonText = Text.Overlay.Cancel,
+            OkButtonText = I18n.T(Text.Overlay.Confirm),
+            CancelButtonText = I18n.T(Text.Overlay.Cancel),
             Unresizable = true,
             MinSize = new Vector2I(360, 120),
         };
@@ -48,8 +49,8 @@ public sealed partial class OverlayManager : CanvasLayer, IOverlayManager
         _inputDialog = new ConfirmationDialog
         {
             Exclusive = true,
-            OkButtonText = Text.Overlay.Confirm,
-            CancelButtonText = Text.Overlay.Cancel,
+            OkButtonText = I18n.T(Text.Overlay.Confirm),
+            CancelButtonText = I18n.T(Text.Overlay.Cancel),
             Unresizable = true,
             MinSize = new Vector2I(360, 140),
         };
@@ -96,8 +97,8 @@ public sealed partial class OverlayManager : CanvasLayer, IOverlayManager
         _onCancel = onCancel;
         _confirm.Title = title;
         _confirm.DialogText = message;
-        _confirm.OkButtonText = yesText ?? Text.Overlay.Confirm;
-        _confirm.CancelButtonText = noText ?? Text.Overlay.Cancel;
+        _confirm.OkButtonText = yesText ?? I18n.T(Text.Overlay.Confirm);
+        _confirm.CancelButtonText = noText ?? I18n.T(Text.Overlay.Cancel);
         _confirm.PopupCentered();
     }
 

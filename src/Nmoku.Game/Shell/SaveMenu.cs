@@ -2,6 +2,7 @@ using Godot;
 using Nmoku.Core;
 using Nmoku.Core.Saves;
 using Nmoku.Game.Theme;
+using Nmoku.Game;
 
 namespace Nmoku.Game.Shell;
 
@@ -57,12 +58,12 @@ public sealed partial class SaveMenu : Control
 
         var header = new HBoxContainer();
         box.AddChild(header);
-        var title = new Label { Text = Text.Save.ManageTitle, SizeFlagsHorizontal = SizeFlags.Expand };
+        var title = new Label { Text = I18n.T(Text.Save.ManageTitle), SizeFlagsHorizontal = SizeFlags.Expand };
         title.AddThemeFontSizeOverride("font_size", 24);
         title.AddThemeColorOverride("font_color", Palette.Active.TextPrimary);
         header.AddChild(title);
-        header.AddChild(MakeButton(Text.Save.Import, () => ImportFileRequested?.Invoke()));
-        header.AddChild(MakeButton(Text.Overlay.Cancel, () => CloseRequested?.Invoke()));
+        header.AddChild(MakeButton(I18n.T(Text.Save.Import), () => ImportFileRequested?.Invoke()));
+        header.AddChild(MakeButton(I18n.T(Text.Overlay.Cancel), () => CloseRequested?.Invoke()));
 
         _rows = new VBoxContainer();
         _rows.AddThemeConstantOverride("separation", 4);
@@ -70,7 +71,7 @@ public sealed partial class SaveMenu : Control
 
         var hint = new Label
         {
-            Text = Text.Save.MenuKeyHint,
+            Text = I18n.T(Text.Save.MenuKeyHint),
             HorizontalAlignment = HorizontalAlignment.Center,
             SizeFlagsHorizontal = SizeFlags.Expand,
         };
@@ -97,18 +98,18 @@ public sealed partial class SaveMenu : Control
         row.AddThemeConstantOverride("separation", 6);
 
         string label = index == GameConfig.QuickSaveIndex
-            ? string.Format(Text.Save.QuickSlotLabel, index + 1)
-            : string.Format(Text.Save.SlotLabel, index + 1);
+            ? I18n.T(Text.Save.QuickSlotLabel, index + 1)
+            : I18n.T(Text.Save.SlotLabel, index + 1);
         if (data != null)
         {
             var time = DateTimeOffset.FromUnixTimeMilliseconds(data.Timestamp).LocalDateTime;
-            label += " — " + string.Format(Text.Save.SlotInfo, data.BoardSize, data.BoardSize, data.Layers,
+            label += " — " + I18n.T(Text.Save.SlotInfo, data.BoardSize, data.BoardSize, data.Layers,
                 data.Moves.Count,
-                (data.Status == "finished" ? Text.Save.SlotFinished : Text.Save.SlotPlaying) + " · " + time.ToString("MM-dd HH:mm"));
+                (data.Status == "finished" ? I18n.T(Text.Save.SlotFinished) : I18n.T(Text.Save.SlotPlaying)) + " · " + time.ToString("MM-dd HH:mm"));
         }
         else
         {
-            label += " — " + Text.Save.SlotEmpty;
+            label += " — " + I18n.T(Text.Save.SlotEmpty);
         }
 
         var nameLabel = new Label
@@ -123,17 +124,17 @@ public sealed partial class SaveMenu : Control
 
         if (data != null)
         {
-            row.AddChild(MakeButton(Text.Save.Read, () => LoadSlotRequested?.Invoke(index)));
-            row.AddChild(MakeButton(Text.Replay.Label, () => ReplaySlotRequested?.Invoke(index)));
-            row.AddChild(MakeButton(Text.Save.Overwrite, () => FillSlotRequested?.Invoke(index)));
-            row.AddChild(MakeButton(Text.Save.Copy, () => ExportSlotRequested?.Invoke(index)));
-            row.AddChild(MakeButton(Text.Save.Export, () => ExportFileRequested?.Invoke(index)));
-            row.AddChild(MakeButton(Text.Save.Delete, () => DeleteSlotRequested?.Invoke(index)));
+            row.AddChild(MakeButton(I18n.T(Text.Save.Read), () => LoadSlotRequested?.Invoke(index)));
+            row.AddChild(MakeButton(I18n.T(Text.Replay.Label), () => ReplaySlotRequested?.Invoke(index)));
+            row.AddChild(MakeButton(I18n.T(Text.Save.Overwrite), () => FillSlotRequested?.Invoke(index)));
+            row.AddChild(MakeButton(I18n.T(Text.Save.Copy), () => ExportSlotRequested?.Invoke(index)));
+            row.AddChild(MakeButton(I18n.T(Text.Save.Export), () => ExportFileRequested?.Invoke(index)));
+            row.AddChild(MakeButton(I18n.T(Text.Save.Delete), () => DeleteSlotRequested?.Invoke(index)));
         }
         else
         {
-            row.AddChild(MakeButton(Text.Save.Fill, () => FillSlotRequested?.Invoke(index)));
-            row.AddChild(MakeButton(Text.Save.Import, () => ImportFileSlotRequested?.Invoke(index)));
+            row.AddChild(MakeButton(I18n.T(Text.Save.Fill), () => FillSlotRequested?.Invoke(index)));
+            row.AddChild(MakeButton(I18n.T(Text.Save.Import), () => ImportFileSlotRequested?.Invoke(index)));
         }
         return row;
     }

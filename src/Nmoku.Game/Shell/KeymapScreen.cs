@@ -1,6 +1,7 @@
 using Godot;
 using Nmoku.Core;
 using Nmoku.Game.Theme;
+using Nmoku.Game;
 
 namespace Nmoku.Game.Shell;
 
@@ -49,12 +50,12 @@ public sealed partial class KeymapScreen : Control
 
         var header = new HBoxContainer();
         outer.AddChild(header);
-        var title = new Label { Text = "快捷键说明（F1）", SizeFlagsHorizontal = SizeFlags.Expand };
+        var title = new Label { Text = I18n.T(Text.Guide.KeymapTitle), SizeFlagsHorizontal = SizeFlags.Expand };
         title.AddThemeFontSizeOverride("font_size", 14);
         title.AddThemeColorOverride("font_color", Palette.Active.TextPrimary);
         header.AddChild(title);
         header.AddChild(KeymapContent.BuildLegend());
-        var close = new Button { Text = Text.Overlay.Cancel + " (Esc)" };
+        var close = new Button { Text = I18n.T(Text.Overlay.Cancel) + " (Esc)" };
         close.Pressed += () => CloseRequested?.Invoke();
         header.AddChild(close);
 

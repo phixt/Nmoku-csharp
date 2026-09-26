@@ -1,6 +1,7 @@
 using Godot;
 using Nmoku.Core;
 using Nmoku.Game.Theme;
+using Nmoku.Game;
 
 namespace Nmoku.Game.Shell;
 
@@ -46,11 +47,11 @@ public sealed partial class ReplayBar : Control
         row.AddThemeConstantOverride("separation", 10);
         panel.AddChild(row);
 
-        var title = new Label { Text = Text.Replay.Label };
+        var title = new Label { Text = I18n.T(Text.Replay.Label) };
         title.AddThemeColorOverride("font_color", Palette.Active.TextPrimary);
         row.AddChild(title);
 
-        _prev = MakeButton("上一步", () => StepRequested?.Invoke(-1));
+        _prev = MakeButton(I18n.T(Text.Replay.PrevStep), () => StepRequested?.Invoke(-1));
         row.AddChild(_prev);
 
         // 滑条 280→200：批10 修右侧出界（CenterBottom+Grow.Both 下面板最小宽不得超过 768 逻辑宽，
@@ -66,14 +67,14 @@ public sealed partial class ReplayBar : Control
         _slider.ValueChanged += v => SeekRequested?.Invoke((int)v);
         row.AddChild(_slider);
 
-        _next = MakeButton("下一步", () => StepRequested?.Invoke(1));
+        _next = MakeButton(I18n.T(Text.Replay.NextStep), () => StepRequested?.Invoke(1));
         row.AddChild(_next);
 
         _position = new Label { Text = "0 / 0" };
         _position.AddThemeColorOverride("font_color", Palette.Active.TextPrimary);
         row.AddChild(_position);
 
-        row.AddChild(MakeButton(Text.Replay.Exit, () => ExitRequested?.Invoke()));
+        row.AddChild(MakeButton(I18n.T(Text.Replay.Exit), () => ExitRequested?.Invoke()));
     }
 
     /// <summary>同步游标显示（GM.StateChanged 驱动）。count=总手数，index=当前可见手数。</summary>
@@ -86,7 +87,7 @@ public sealed partial class ReplayBar : Control
         _next.Disabled = ZeroMoveMode;
         _slider.MaxValue = Math.Max(count, 1);
         _slider.SetValueNoSignal(Math.Clamp(index, 0, count));
-        _position.Text = string.Format(Text.Replay.StepInfo, index, count);
+        _position.Text = I18n.T(Text.Replay.StepInfo, index, count);
     }
 
     private Button MakeButton(string text, Action onPressed)

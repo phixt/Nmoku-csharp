@@ -1,6 +1,7 @@
 using Godot;
 using Nmoku.Core;
 using Nmoku.Game.Theme;
+using Nmoku.Game;
 
 namespace Nmoku.Game.Shell;
 
@@ -53,15 +54,15 @@ public sealed partial class GameOverModal : Control
 
         var buttons = new HBoxContainer { Alignment = BoxContainer.AlignmentMode.Center };
         box.AddChild(buttons);
-        buttons.AddChild(MakeButton(Text.Menu.Restart, () => RestartRequested?.Invoke()));
-        buttons.AddChild(MakeButton(Text.Menu.BackToTitle, () => TitleRequested?.Invoke()));
+        buttons.AddChild(MakeButton(I18n.T(Text.Menu.Restart), () => RestartRequested?.Invoke()));
+        buttons.AddChild(MakeButton(I18n.T(Text.Menu.BackToTitle), () => TitleRequested?.Invoke()));
     }
 
     /// <summary>进入 GameOver 态时由壳层填充：winner 1=黑 2=白，0=判和。</summary>
     public void SetResult(int winner, int moveCount)
     {
-        _result.Text = winner == 0 ? Text.Result.Draw : winner == 1 ? Text.Result.BlackWin : Text.Result.WhiteWin;
-        _subtitle.Text = string.Format(Text.Result.GameOverSubtitle, moveCount);
+        _result.Text = winner == 0 ? I18n.T(Text.Result.Draw) : winner == 1 ? I18n.T(Text.Result.BlackWin) : I18n.T(Text.Result.WhiteWin);
+        _subtitle.Text = I18n.T(Text.Result.GameOverSubtitle, moveCount);
     }
 
     private Button MakeButton(string text, Action onPressed)

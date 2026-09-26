@@ -32,8 +32,8 @@ public static class KeymapTable
     [
         // ---- 全局 ----
         new() { Actions = ["toggle_help"], Keys = "F1", Description = "快捷键帮助屏", Short = "帮助", Category = "全局", AllowWhenOverlay = true },
-        new() { Actions = ["toggle_theme"], Keys = "T", Description = "明暗主题切换（M4 第二轮实装）", Short = "主题", Category = "全局", AllowWhenOverlay = true },
-        new() { Actions = ["toggle_mute"], Keys = "M", Description = "静音开关（M5 实装）", Short = "静音", Category = "全局", AllowWhenOverlay = true },
+        new() { Actions = ["toggle_theme"], Keys = "T", Description = "明暗主题切换", Short = "主题", Category = "全局", AllowWhenOverlay = true },
+        new() { Actions = ["toggle_mute"], Keys = "M", Description = "静音开关", Short = "静音", Category = "全局", AllowWhenOverlay = true },
 
         // ---- 标题 ----
         new() { Actions = ["confirm"], Keys = "Space / Enter", Description = "开始新对局（进行中的保留局会先确认）", Short = "开始", Contexts = [GameState.Title], Category = "标题" },

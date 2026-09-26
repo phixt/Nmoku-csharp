@@ -1,6 +1,7 @@
 using Godot;
 using Nmoku.Core;
 using Nmoku.Game.Theme;
+using Nmoku.Game;
 
 /// <summary>
 /// 暂停菜单（GameState.Paused）：六项与源项目 esc-menu 对齐，每项旁带键位提示
@@ -35,18 +36,18 @@ public sealed partial class PauseMenu : Control
         box.CustomMinimumSize = new Vector2(300, 0);
         panel.AddChild(box);
 
-        var label = new Label { Text = Text.Menu.Paused, HorizontalAlignment = HorizontalAlignment.Center };
+        var label = new Label { Text = I18n.T(Text.Menu.Paused), HorizontalAlignment = HorizontalAlignment.Center };
         label.AddThemeFontSizeOverride("font_size", 28);
         label.AddThemeColorOverride("font_color", Palette.Active.TextPrimary);
         box.AddChild(label);
 
-        box.AddChild(MakeMenuButton(Text.Menu.Resume, "resume", () => ResumeRequested?.Invoke()));
-        box.AddChild(MakeMenuButton(Text.Menu.Restart, "restart", () => RestartRequested?.Invoke()));
-        box.AddChild(MakeMenuButton(Text.Menu.SaveProgress, "save_first_empty", () => SaveProgressRequested?.Invoke()));
-        box.AddChild(MakeMenuButton(Text.Title.LoadGame, action: null, () => LoadRequested?.Invoke()));
-        box.AddChild(MakeMenuButton(Text.Title.Guide, "open_guide", () => GuideRequested?.Invoke()));
-        box.AddChild(MakeMenuButton(Text.Settings.Title, action: null, () => SettingsRequested?.Invoke()));
-        box.AddChild(MakeMenuButton(Text.Menu.BackToTitle, "return_to_title", () => TitleRequested?.Invoke()));
+        box.AddChild(MakeMenuButton(I18n.T(Text.Menu.Resume), "resume", () => ResumeRequested?.Invoke()));
+        box.AddChild(MakeMenuButton(I18n.T(Text.Menu.Restart), "restart", () => RestartRequested?.Invoke()));
+        box.AddChild(MakeMenuButton(I18n.T(Text.Menu.SaveProgress), "save_first_empty", () => SaveProgressRequested?.Invoke()));
+        box.AddChild(MakeMenuButton(I18n.T(Text.Title.LoadGame), action: null, () => LoadRequested?.Invoke()));
+        box.AddChild(MakeMenuButton(I18n.T(Text.Title.Guide), "open_guide", () => GuideRequested?.Invoke()));
+        box.AddChild(MakeMenuButton(I18n.T(Text.Settings.Title), action: null, () => SettingsRequested?.Invoke()));
+        box.AddChild(MakeMenuButton(I18n.T(Text.Menu.BackToTitle), "return_to_title", () => TitleRequested?.Invoke()));
     }
 
     /// <summary>选项文案 + 键位提示（KeymapTable.HintKeyOf；action 为 null 或查不到时只显示文案）。</summary>

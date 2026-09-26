@@ -1,6 +1,7 @@
 using Godot;
 using Nmoku.Core;
 using Nmoku.Game.Theme;
+using Nmoku.Game;
 
 namespace Nmoku.Game.Shell;
 
@@ -59,7 +60,7 @@ public sealed partial class GuideScreen : Control
 
         var header = new HBoxContainer();
         outer.AddChild(header);
-        var title = new Label { Text = Text.Guide.Title, SizeFlagsHorizontal = SizeFlags.Expand };
+        var title = new Label { Text = I18n.T(Text.Guide.Title), SizeFlagsHorizontal = SizeFlags.Expand };
         title.AddThemeFontSizeOverride("font_size", 14);
         title.AddThemeColorOverride("font_color", Palette.Active.TextPrimary);
         header.AddChild(title);
@@ -70,9 +71,9 @@ public sealed partial class GuideScreen : Control
 
         var buttons = new HBoxContainer { Alignment = BoxContainer.AlignmentMode.End };
         header.AddChild(buttons);
-        buttons.AddChild(_start = MakeButton(Text.Guide.StartFromGuide, () => StartRequested?.Invoke()));
-        buttons.AddChild(_resume = MakeButton(Text.Guide.ResumeFromGuide, () => ResumeRequested?.Invoke()));
-        buttons.AddChild(_back = MakeButton(Text.Guide.Back, () => BackRequested?.Invoke()));
+        buttons.AddChild(_start = MakeButton(I18n.T(Text.Guide.StartFromGuide), () => StartRequested?.Invoke()));
+        buttons.AddChild(_resume = MakeButton(I18n.T(Text.Guide.ResumeFromGuide), () => ResumeRequested?.Invoke()));
+        buttons.AddChild(_back = MakeButton(I18n.T(Text.Guide.Back), () => BackRequested?.Invoke()));
     }
 
     /// <summary>按入口来源切换按钮可见性（_Ready 之后由壳层调用）。</summary>

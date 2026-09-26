@@ -2,6 +2,7 @@ using Godot;
 using Nmoku.Core;
 using Nmoku.Core.AI;
 using Nmoku.Game.Theme;
+using Nmoku.Game;
 
 namespace Nmoku.Game.Shell;
 
@@ -45,11 +46,11 @@ public sealed partial class SandboxPanel : Control
 
         var header = new HBoxContainer();
         box.AddChild(header);
-        var title = new Label { Text = Text.Levels.Custom, SizeFlagsHorizontal = SizeFlags.Expand };
+        var title = new Label { Text = I18n.T(Text.Levels.Custom), SizeFlagsHorizontal = SizeFlags.Expand };
         title.AddThemeFontSizeOverride("font_size", 24);
         title.AddThemeColorOverride("font_color", Palette.Active.TextPrimary);
         header.AddChild(title);
-        header.AddChild(MakeButton(Text.Overlay.Cancel, () => CloseRequested?.Invoke()));
+        header.AddChild(MakeButton(I18n.T(Text.Overlay.Cancel), () => CloseRequested?.Invoke()));
 
         var form = new GridContainer { Columns = 2 };
         form.AddThemeConstantOverride("h_separation", 10);
@@ -59,42 +60,42 @@ public sealed partial class SandboxPanel : Control
         _preset = new OptionButton();
         foreach (var preset in LevelCatalog.Presets)
         {
-            _preset.AddItem(preset.Name);
+            _preset.AddItem(I18n.T(preset.Name));
         }
         _preset.ItemSelected += i => Prefill((int)i);
-        form.AddRow(Text.Levels.Preset, _preset);
+        form.AddRow(I18n.T(Text.Levels.Preset), _preset);
 
         _size = new SpinBox { MinValue = 5, MaxValue = 19, Step = 1, Value = 13 };
-        form.AddRow(Text.Levels.BoardSize, _size);
+        form.AddRow(I18n.T(Text.Levels.BoardSize), _size);
 
         _layers = new SpinBox { MinValue = 1, MaxValue = 8, Step = 1, Value = 6 };
-        form.AddRow(Text.Levels.Layers, _layers);
+        form.AddRow(I18n.T(Text.Levels.Layers), _layers);
 
         _winLength = new SpinBox { MinValue = GameConfig.MinWinLength, MaxValue = GameConfig.MaxWinLength, Step = 1, Value = GameConfig.WinLength };
-        form.AddRow(Text.Levels.WinLength, _winLength);
+        form.AddRow(I18n.T(Text.Levels.WinLength), _winLength);
 
         _rules = new OptionButton();
-        _rules.AddItem(Text.Levels.Gomoku);
-        _rules.AddItem(Text.Levels.Swap2);
-        form.AddRow(Text.Levels.Rules, _rules);
+        _rules.AddItem(I18n.T(Text.Levels.Gomoku));
+        _rules.AddItem(I18n.T(Text.Levels.Swap2));
+        form.AddRow(I18n.T(Text.Levels.Rules), _rules);
 
         _mode = new OptionButton();
-        _mode.AddItem(Text.Levels.PvP);
-        _mode.AddItem(Text.Levels.PvE);
+        _mode.AddItem(I18n.T(Text.Levels.PvP));
+        _mode.AddItem(I18n.T(Text.Levels.PvE));
         _mode.ItemSelected += _ => _aiLabel.Modulate = new Color(1, 1, 1, _mode.Selected == 1 ? 1f : 0.4f);
-        form.AddRow(Text.Levels.Mode, _mode);
+        form.AddRow(I18n.T(Text.Levels.Mode), _mode);
 
-        _aiLabel = new Label { Text = Text.Levels.AiDifficulty };
+        _aiLabel = new Label { Text = I18n.T(Text.Levels.AiDifficulty) };
         _aiLabel.AddThemeColorOverride("font_color", Palette.Active.TextDim);
         _ai = new OptionButton();
-        _ai.AddItem(Text.Levels.Easy);
-        _ai.AddItem(Text.Levels.Medium);
-        _ai.AddItem(Text.Levels.Hard);
+        _ai.AddItem(I18n.T(Text.Levels.Easy));
+        _ai.AddItem(I18n.T(Text.Levels.Medium));
+        _ai.AddItem(I18n.T(Text.Levels.Hard));
         _ai.Select(1);
         form.AddChild(_aiLabel);
         form.AddChild(_ai);
 
-        var start = new Button { Text = Text.Levels.Start, CustomMinimumSize = new Vector2(0, 40) };
+        var start = new Button { Text = I18n.T(Text.Levels.Start), CustomMinimumSize = new Vector2(0, 40) };
         start.AddThemeColorOverride("font_color", Palette.Active.TextPrimary);
         start.Pressed += OnStart;
         box.AddChild(start);
@@ -105,13 +106,13 @@ public sealed partial class SandboxPanel : Control
         int size = (int)_size.Value;
         if (size < GameConfig.MinBoardSize || size % 2 == 0)
         {
-            ToastRequested?.Invoke(Text.Levels.SizeInvalid, true);
+            ToastRequested?.Invoke(I18n.T(Text.Levels.SizeInvalid), true);
             return;
         }
         var level = new LevelConfig
         {
             Id = "custom",
-            Name = Text.Levels.Custom,
+            Name = I18n.T(Text.Levels.Custom),
             BoardSize = size,
             Layers = (int)_layers.Value,
             WinLength = (int)_winLength.Value,

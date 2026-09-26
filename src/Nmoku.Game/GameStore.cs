@@ -3,6 +3,7 @@ using Nmoku.Core;
 using Nmoku.Core.AI;
 using Nmoku.Core.Saves;
 using FileAccess = Godot.FileAccess;
+using Nmoku.Game;
 
 namespace Nmoku.Game;
 
@@ -123,7 +124,7 @@ public sealed partial class GameStore : Node
         }
         if (HasLiveGame)
         {
-            Overlay.ShowConfirmDialog(Text.Title.Start, Text.Title.NewGameConfirm, onYes: DoStart);
+            Overlay.ShowConfirmDialog(I18n.T(Text.Title.Start), I18n.T(Text.Title.NewGameConfirm), onYes: DoStart);
             return;
         }
         DoStart();
@@ -147,7 +148,7 @@ public sealed partial class GameStore : Node
     /// <summary>重开请求（PAUSED/GAME_OVER）：确认框通过后走 NewGame。</summary>
     public void RequestRestart()
     {
-        Overlay.ShowConfirmDialog(Text.Menu.Restart, Text.Menu.RestartConfirm,
+        Overlay.ShowConfirmDialog(I18n.T(Text.Menu.Restart), I18n.T(Text.Menu.RestartConfirm),
             onYes: () => Fire(GameTrigger.NewGame));
     }
 
@@ -163,7 +164,7 @@ public sealed partial class GameStore : Node
         int idx = Saves.GetLatestIndex();
         if (idx < 0)
         {
-            Overlay?.ShowToast(Text.Save.NoSaveToLoad, isError: true);
+            Overlay?.ShowToast(I18n.T(Text.Save.NoSaveToLoad), isError: true);
             return false;
         }
         return LoadSlot(idx);
@@ -184,7 +185,7 @@ public sealed partial class GameStore : Node
         var data = Saves.Load(index);
         if (data == null || !GM.LoadFrom(data, Saves.GetSlotWinLength(index)))
         {
-            Overlay?.ShowToast(Text.Save.LoadSlotFailed, isError: true);
+            Overlay?.ShowToast(I18n.T(Text.Save.LoadSlotFailed), isError: true);
             return false;
         }
         ApplySavedTheme(data); // 存档主题随档恢复（SaveData.isDarkTheme）
@@ -204,7 +205,7 @@ public sealed partial class GameStore : Node
         var data = Saves.Load(slot);
         if (data == null || !GM.BeginReplay(data, Saves.GetSlotWinLength(slot)))
         {
-            Overlay?.ShowToast(Text.Save.LoadSlotFailed, isError: true);
+            Overlay?.ShowToast(I18n.T(Text.Save.LoadSlotFailed), isError: true);
             return false;
         }
         ApplySavedTheme(data);
@@ -248,7 +249,7 @@ public sealed partial class GameStore : Node
             return;
         }
         Saves.QuickSaveAsync(GM.BuildSaveData(IsDarkTheme), GM.WinLength).GetAwaiter().GetResult();
-        Overlay?.ShowToast(Text.Save.QuickSaved);
+        Overlay?.ShowToast(I18n.T(Text.Save.QuickSaved));
     }
 
     /// <summary>
@@ -263,7 +264,7 @@ public sealed partial class GameStore : Node
         }
         if (Saves.IsSlotEmpty(GameConfig.QuickSaveIndex))
         {
-            Overlay?.ShowToast(Text.Save.NoQuickSave, isError: true);
+            Overlay?.ShowToast(I18n.T(Text.Save.NoQuickSave), isError: true);
             return false;
         }
         return LoadSlot(GameConfig.QuickSaveIndex);
@@ -292,13 +293,13 @@ public sealed partial class GameStore : Node
     public void SaveToSlot(int index)
     {
         Saves.SaveAsync(index, GM.BuildSaveData(IsDarkTheme), GM.WinLength).GetAwaiter().GetResult();
-        Overlay?.ShowToast(string.Format(Text.Save.SavedToSlot, index + 1));
+        Overlay?.ShowToast(I18n.T(Text.Save.SavedToSlot, index + 1));
     }
 
     public void DeleteSlot(int index)
     {
-        Overlay.ShowConfirmDialog(Text.Save.DeleteTitle,
-            string.Format(Text.Save.DeleteConfirm, index + 1),
+        Overlay.ShowConfirmDialog(I18n.T(Text.Save.DeleteTitle),
+            I18n.T(Text.Save.DeleteConfirm, index + 1),
             onYes: () => Saves.DeleteAsync(index).GetAwaiter().GetResult());
     }
 
@@ -308,12 +309,12 @@ public sealed partial class GameStore : Node
         var data = Saves.Load(index);
         if (data == null)
         {
-            Overlay?.ShowToast(Text.Save.LoadSlotFailed, isError: true);
+            Overlay?.ShowToast(I18n.T(Text.Save.LoadSlotFailed), isError: true);
             return "";
         }
         string b64 = SaveData.SerializeToBase64(data);
         DisplayServer.ClipboardSet(b64);
-        Overlay?.ShowToast(Text.Save.Copied);
+        Overlay?.ShowToast(I18n.T(Text.Save.Copied));
         return b64;
     }
 
@@ -329,7 +330,7 @@ public sealed partial class GameStore : Node
         var parsed = SaveArchive.TryParsePackage(input);
         if (parsed == null)
         {
-            Overlay?.ShowToast(Text.Save.ImportFailed, isError: true);
+            Overlay?.ShowToast(I18n.T(Text.Save.ImportFailed), isError: true);
             return;
         }
         WriteImportToSlot(index, parsed!, confirmIfOccupied: true);
@@ -341,7 +342,7 @@ public sealed partial class GameStore : Node
         var parsed = ParseSaveFile(path);
         if (parsed == null)
         {
-            Overlay?.ShowToast(Text.Save.ImportFileFailed, isError: true);
+            Overlay?.ShowToast(I18n.T(Text.Save.ImportFileFailed), isError: true);
             return;
         }
         WriteImportToSlot(index, parsed!, confirmIfOccupied: true);
@@ -356,7 +357,7 @@ public sealed partial class GameStore : Node
         var parsed = ParseSaveFile(path);
         if (parsed == null)
         {
-            Overlay?.ShowToast(Text.Save.ImportFileFailed, isError: true);
+            Overlay?.ShowToast(I18n.T(Text.Save.ImportFileFailed), isError: true);
             return;
         }
         ImportData(parsed!);
@@ -368,7 +369,7 @@ public sealed partial class GameStore : Node
         var parsed = SaveArchive.TryParsePackage(input);
         if (parsed == null)
         {
-            Overlay?.ShowToast(Text.Save.ImportFailed, isError: true);
+            Overlay?.ShowToast(I18n.T(Text.Save.ImportFailed), isError: true);
             return;
         }
         ImportData(parsed!);
@@ -411,15 +412,15 @@ public sealed partial class GameStore : Node
         void DoWrite()
         {
             Saves.SaveAsync(index, package.Data, package.WinLength).GetAwaiter().GetResult();
-            Overlay?.ShowToast(string.Format(Text.Save.ImportedToSlot, index + 1));
+            Overlay?.ShowToast(I18n.T(Text.Save.ImportedToSlot, index + 1));
         }
         if (!confirmIfOccupied || Saves.IsSlotEmpty(index))
         {
             DoWrite();
             return;
         }
-        Overlay.ShowConfirmDialog(Text.Save.OverwriteTitle,
-            string.Format(Text.Save.OverwriteConfirm, index + 1), onYes: DoWrite);
+        Overlay.ShowConfirmDialog(I18n.T(Text.Save.OverwriteTitle),
+            I18n.T(Text.Save.OverwriteConfirm, index + 1), onYes: DoWrite);
     }
 
     /// <summary>导出槽位为 .nzsave 文件（manifest+savedata zip 容器，manifest 随带外圈 winLength）。</summary>
@@ -428,7 +429,7 @@ public sealed partial class GameStore : Node
         var data = Saves.Load(index);
         if (data == null)
         {
-            Overlay?.ShowToast(Text.Save.LoadSlotFailed, isError: true);
+            Overlay?.ShowToast(I18n.T(Text.Save.LoadSlotFailed), isError: true);
             return;
         }
         byte[] zip = NzSaveContainer.Pack(data, DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(),
@@ -436,11 +437,11 @@ public sealed partial class GameStore : Node
         using var file = FileAccess.Open(path, FileAccess.ModeFlags.Write);
         if (file == null)
         {
-            Overlay?.ShowToast(Text.Save.ExportFailed, isError: true);
+            Overlay?.ShowToast(I18n.T(Text.Save.ExportFailed), isError: true);
             return;
         }
         file.StoreBuffer(zip);
-        Overlay?.ShowToast(Text.Save.ExportedToFile);
+        Overlay?.ShowToast(I18n.T(Text.Save.ExportedToFile));
     }
 
     private void SetState(GameState state)

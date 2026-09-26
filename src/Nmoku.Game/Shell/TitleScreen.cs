@@ -1,6 +1,7 @@
 using Godot;
 using Nmoku.Core;
 using Nmoku.Game.Theme;
+using Nmoku.Game;
 
 namespace Nmoku.Game.Shell;
 
@@ -33,26 +34,26 @@ public sealed partial class TitleScreen : Control
         box.AddThemeConstantOverride("separation", 12);
         center.AddChild(box);
 
-        var title = new Label { Text = Text.Title.GameName, HorizontalAlignment = HorizontalAlignment.Center };
+        var title = new Label { Text = I18n.T(Text.Title.GameName), HorizontalAlignment = HorizontalAlignment.Center };
         title.AddThemeFontSizeOverride("font_size", 48);
         title.AddThemeColorOverride("font_color", Palette.Active.TextPrimary);
         box.AddChild(title);
 
-        var subtitle = new Label { Text = Text.Title.Subtitle, HorizontalAlignment = HorizontalAlignment.Center };
+        var subtitle = new Label { Text = I18n.T(Text.Title.Subtitle), HorizontalAlignment = HorizontalAlignment.Center };
         subtitle.AddThemeColorOverride("font_color", Palette.Active.TextDim);
         box.AddChild(subtitle);
 
         box.AddChild(MakeSpacer(16));
-        box.AddChild(MakeButton(Text.Title.Start, () => StartRequested?.Invoke()));
-        _resumeButton = MakeButton(Text.Title.ContinueGame, () => ResumeRequested?.Invoke());
+        box.AddChild(MakeButton(I18n.T(Text.Title.Start), () => StartRequested?.Invoke()));
+        _resumeButton = MakeButton(I18n.T(Text.Title.ContinueGame), () => ResumeRequested?.Invoke());
         _resumeButton.Visible = false;
         box.AddChild(_resumeButton);
-        box.AddChild(MakeButton(Text.Title.CustomGame, () => CustomGameRequested?.Invoke()));
-        box.AddChild(MakeButton(Text.Title.LoadGame, () => LoadRequested?.Invoke()));
-        box.AddChild(MakeButton(Text.Title.Guide, () => GuideRequested?.Invoke()));
-        box.AddChild(MakeButton(Text.Settings.Title, () => SettingsRequested?.Invoke()));
+        box.AddChild(MakeButton(I18n.T(Text.Title.CustomGame), () => CustomGameRequested?.Invoke()));
+        box.AddChild(MakeButton(I18n.T(Text.Title.LoadGame), () => LoadRequested?.Invoke()));
+        box.AddChild(MakeButton(I18n.T(Text.Title.Guide), () => GuideRequested?.Invoke()));
+        box.AddChild(MakeButton(I18n.T(Text.Settings.Title), () => SettingsRequested?.Invoke()));
         box.AddChild(MakeSpacer(8));
-        box.AddChild(MakeButton(Text.Title.Quit, () => QuitRequested?.Invoke()));
+        box.AddChild(MakeButton(I18n.T(Text.Title.Quit), () => QuitRequested?.Invoke()));
     }
 
     /// <summary>进入标题态时由壳层更新：是否存在保留现场的对局。</summary>

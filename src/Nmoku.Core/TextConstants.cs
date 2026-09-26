@@ -59,6 +59,8 @@ public static class Text
         public const string LoadSlotFailed = "该存档无法读取";
         public const string SavedToSlot = "已保存到存档 {0}";
         public const string MenuKeyHint = "保存当前对局：Ctrl+S 写快存 · S 存入首个空槽 · Ctrl+L 读快存";
+        /// <summary>.nzsave 文件对话框的筛选描述（文件类型通配符不入翻译）。</summary>
+        public const string SaveFileFilter = "Nmoku 存档文件";
     }
 
     public static class Title
@@ -90,6 +92,8 @@ public static class Text
         public const string Label = "复盘";
         public const string Exit = "退出复盘";
         public const string StepInfo = "{0} / {1}";
+        public const string PrevStep = "上一步";
+        public const string NextStep = "下一步";
     }
 
     public static class Guide
@@ -103,6 +107,9 @@ public static class Text
         public const string StartFromGuide = "开始游戏";
         public const string ResumeFromGuide = "回到对局";
         public const string Back = "返回";
+        public const string KeymapTitle = "快捷键说明（F1）";
+        /// <summary>F1 页作用域名拼接模板（en: "{0} layer"）。</summary>
+        public const string LayerPageFormat = "{0} 层";
     }
 
     public static class Overlay
