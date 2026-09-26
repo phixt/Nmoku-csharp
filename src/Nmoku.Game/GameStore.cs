@@ -450,6 +450,7 @@ public sealed partial class GameStore : Node
             return;
         }
         State = state;
+        GD.Print($"[state] → {state}"); // 批11 诊断：与 wintrace 窗口几何变化做时间关联
         StateChanged?.Invoke(state);
     }
 }

@@ -399,7 +399,8 @@ public partial class Main : Node
         }
         _lastWinKey = key;
         string line = $"[wintrace] t={Time.GetTicksMsec()}ms state={_store?.State.ToString() ?? "boot"} " +
-                      $"pos={pos} size={size} mode={(DisplayServer.WindowMode)mode} screen={screen} usable={usable}";
+                      $"pos={pos} size={size} mode={(DisplayServer.WindowMode)mode} focus={GetWindow().HasFocus()} " +
+                      $"screen={screen} usable={usable}";
         GD.Print(line);
         try
         {
@@ -1523,6 +1524,38 @@ public partial class Main : Node
                 return _maxOcclusion.Length == 0
                     ? "ok"
                     : $"FAIL maximize-over-workarea {_maxOcclusion}";
+            case 13: // 人类真实路径补测：带保留局开始游戏 → RequestStartNew 弹确认框（子窗口开关！）
+                if (_store.State != GameState.Title || !_store.HasLiveGame)
+                {
+                    return "wait";
+                }
+                _store.RequestStartNew();
+                _wsPhase = 14;
+                return "wait";
+            case 14:
+                if (!_overlay.IsModalOpen)
+                {
+                    return "wait";
+                }
+                _overlay.ConfirmDialogForTests.EmitSignal("confirmed");
+                _wsPhase = 15;
+                return "wait";
+            case 15:
+                if (_store.State != GameState.Playing)
+                {
+                    return "wait";
+                }
+                _store.Pause();
+                _store.ReturnToTitle();
+                _wsPhase = 16;
+                return "wait";
+            case 16: // 确认框（子窗口）开→关后窗口模式不得被翻动
+                var postMode = DisplayServer.WindowGetMode();
+                _wsPhase = 0;
+                return postMode == DisplayServer.WindowMode.Windowed
+                    ? "ok"
+                    : $"FAIL dialog-flipped-mode pos={DisplayServer.WindowGetPosition()} " +
+                      $"size={DisplayServer.WindowGetSize()} mode={postMode}";
             default:
                 _wsPhase = 0;
                 return "FAIL";
