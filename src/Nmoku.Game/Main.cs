@@ -108,8 +108,10 @@ public partial class Main : Node
         _router = new SceneRouter(BuildRoutes());
         AddChild(_router);
 
-        // 4) 壳状态机宿主
-        _store = new GameStore { Name = "GameStore" };
+        // 4) 壳状态机宿主（自测走隔离目录——AutotestSaveDir 此前是死常量，m4c 清槽步骤会毁真实存档）
+        _store = _autotestArmed
+            ? new GameStore(new FileSystemStorageAdapter(GameStore.AutotestSaveDir)) { Name = "GameStore" }
+            : new GameStore { Name = "GameStore" };
         AddChild(_store); // 触发 GameStore._Ready → GM 入树
         _store.Overlay = _overlay;
 
@@ -362,6 +364,7 @@ public partial class Main : Node
 
     public override void _Process(double delta)
     {
+        TraceWindowGeometry();
         if (_autotestArmed)
         {
             RunAutotest();
@@ -371,6 +374,44 @@ public partial class Main : Node
         HandleViewportChange();
         _rig.Advance(delta);
         ApplyCamera();
+    }
+
+    // ---- 批11 窗口几何追踪（任务栏遮挡根因调查，B16 式"先机制结论后修复"）：窗口 pos/size/
+    // mode/工作区任一变化即落 .trace/window-trace.log（res:// = 游戏项目目录）并 GD.Print，带状态
+    // 关联。最小化/最大化不动 pos/size，只有 mode 会变——mode 必须进键。追踪绝不影响主流程。
+    private ((int X, int Y) Pos, (int X, int Y) Size, Rect2I Usable, float Scale, int Mode)? _lastWinKey;
+
+    private void TraceWindowGeometry(bool force = false)
+    {
+        if (DisplayServer.GetName() == "headless")
+        {
+            return;
+        }
+        var pos = DisplayServer.WindowGetPosition();
+        var size = DisplayServer.WindowGetSize();
+        int screen = DisplayServer.WindowGetCurrentScreen();
+        var usable = DisplayServer.ScreenGetUsableRect(screen);
+        int mode = (int)DisplayServer.WindowGetMode();
+        var key = ((pos.X, pos.Y), (size.X, size.Y), usable, GetWindow().ContentScaleFactor, mode);
+        if (!force && key.Equals(_lastWinKey))
+        {
+            return;
+        }
+        _lastWinKey = key;
+        string line = $"[wintrace] t={Time.GetTicksMsec()}ms state={_store?.State.ToString() ?? "boot"} " +
+                      $"pos={pos} size={size} mode={(DisplayServer.WindowMode)mode} screen={screen} usable={usable}";
+        GD.Print(line);
+        try
+        {
+            string dir = System.IO.Path.Combine(ProjectSettings.GlobalizePath("res://"), ".trace");
+            System.IO.Directory.CreateDirectory(dir);
+            System.IO.File.AppendAllText(System.IO.Path.Combine(dir, "window-trace.log"),
+                line + System.Environment.NewLine);
+        }
+        catch
+        {
+            // 落盘失败只丢追踪不丢功能（只读环境/导出包等）
+        }
     }
 
     // ---- 无头对局自测（-- --autotest）：M3 对局闭环 + M4 状态机/存档/复盘；CI 冒烟依赖 AUTOTEST ALL PASS ----
@@ -732,13 +773,18 @@ public partial class Main : Node
         }));
         _autotestSteps.Enqueue(("m4b-nzsave-file-roundtrip", () =>
         {
-            // .nzsave 文件往返：导出槽位 → 删除 → 文件导入（zip 容器直解）→ 落首空槽内容一致
-            var iso = new GameStore(new FileSystemStorageAdapter("user://saves_autotest"));
+            // .nzsave 文件往返：导出槽位 → 删除 → 文件导入（zip 容器直解）→ 落首空槽内容一致。
+            // 自备目录+预清理——"首空槽=0" 断言不得依赖其他步骤的落槽残留（批11 教训同 m4-import）
+            var iso = new GameStore(new FileSystemStorageAdapter("user://saves_autotest_nzsave"));
             iso.InitializeSaves();
+            for (int i = 0; i < GameConfig.SaveSlotCount; i++)
+            {
+                iso.Saves.DeleteAsync(i).GetAwaiter().GetResult();
+            }
             var data = _gm.BuildSaveData(false);
             iso.Saves.SaveAsync(1, data).GetAwaiter().GetResult();
 
-            string path = "user://saves_autotest/file_roundtrip.nzsave";
+            string path = "user://saves_autotest_nzsave/file_roundtrip.nzsave";
             iso.ExportSlotToFile(1, path);
             iso.Saves.DeleteAsync(1).GetAwaiter().GetResult();
             iso.ImportFile(path);
@@ -814,6 +860,7 @@ public partial class Main : Node
         _autotestSteps.Enqueue(("m4c-quick-load", AutotestQuickLoad));
         _autotestSteps.Enqueue(("m4c-replay-entry", AutotestReplayEntry));
         _autotestSteps.Enqueue(("m4c-replay-hud", AutotestReplayHud));
+        _autotestSteps.Enqueue(("m4c-window-sequence", AutotestWindowSequence));
         _autotestSteps.Enqueue(("m4c-keymap-paging", AutotestKeymapPaging));
     }
 
@@ -1343,6 +1390,145 @@ public partial class Main : Node
         }
     }
 
+    private int _wsPhase;
+    private Vector2I _wsPos0;
+    private Vector2I _wsSize0;
+    private string _maxOcclusion = "";
+
+    /// <summary>批11 任务栏遮挡（人类指示"不要遍历，彻底解决"）：自动驱动人类复现序列——
+    /// 游戏→退出→读取→退出 + 存档菜单开→关 + 导出文件对话框开→关，全程窗口几何由
+    /// TraceWindowGeometry 落盘关联；结束断言 pos/size 未被改动，被改动即几何证据。
+    /// headless 无窗口管理器，恒 ok。</summary>
+    private string AutotestWindowSequence()
+    {
+        if (DisplayServer.GetName() == "headless")
+        {
+            return "ok";
+        }
+        switch (_wsPhase)
+        {
+            case 0:
+                if (_store.State != GameState.Title)
+                {
+                    _store.Pause();
+                    _store.ReturnToTitle();
+                    return "wait";
+                }
+                if (_store.Saves.GetLatestIndex() < 0)
+                {
+                    _gm.Configure(9, 3, RuleSet.Gomoku, false, AIDifficulty.Medium);
+                    if (!_store.StartGame() || !_gm.TryPlace(4, 4, 0))
+                    {
+                        _wsPhase = 0;
+                        return "FAIL setup";
+                    }
+                    _store.SaveToSlot(0);
+                    _store.Pause();
+                    _store.ReturnToTitle();
+                    return "wait";
+                }
+                _wsPos0 = DisplayServer.WindowGetPosition();
+                _wsSize0 = DisplayServer.WindowGetSize();
+                if (!_store.StartGame()) // 进游戏（有保留局则为"继续对局"，语义等价）
+                {
+                    _wsPhase = 0;
+                    return "FAIL start";
+                }
+                _wsPhase = 1;
+                return "wait";
+            case 1: // 游戏 → 退出到标题
+                _store.Pause();
+                if (!_store.ReturnToTitle())
+                {
+                    _wsPhase = 0;
+                    return "FAIL exit1";
+                }
+                _wsPhase = 2;
+                return "wait";
+            case 2: // 读取（L/读最新同语义）
+                if (_store.State != GameState.Title)
+                {
+                    return "wait";
+                }
+                if (!_store.LoadLatest())
+                {
+                    _wsPhase = 0;
+                    return "FAIL load";
+                }
+                _wsPhase = 3;
+                return "wait";
+            case 3: // 退出
+                _store.Pause();
+                if (!_store.ReturnToTitle())
+                {
+                    _wsPhase = 0;
+                    return "FAIL exit2";
+                }
+                _wsPhase = 4;
+                return "wait";
+            case 4: // 存档菜单开
+                if (_store.State != GameState.Title)
+                {
+                    return "wait";
+                }
+                _router.PushOverlay("save-menu");
+                _wsPhase = 5;
+                return "wait";
+            case 5: // 存档菜单关
+                CloseSaveMenu();
+                _wsPhase = 6;
+                return "wait";
+            case 6: // 导出文件对话框开（人类另一线索：FileDialog 页面出现时）
+                OpenExportFileDialog(_store.Saves.GetLatestIndex());
+                _wsPhase = 7;
+                return "wait";
+            case 7: // 对话框关（不落盘）
+                _exportFileDialog?.Hide();
+                _wsPhase = 8;
+                return "wait";
+            case 8: // 最小化→还原：人类实际使用中最高频的窗口态变化（alt-tab/最小化偶现特征的头号嫌疑）
+                DisplayServer.WindowSetMode(DisplayServer.WindowMode.Minimized);
+                _wsPhase = 9;
+                return "wait";
+            case 9:
+                DisplayServer.WindowSetMode(DisplayServer.WindowMode.Windowed);
+                _wsPhase = 10;
+                return "wait";
+            case 10: // 最大化：Godot-on-Windows 若把最大化窗口画进整屏（越过工作区），任务栏即遮挡——可自动化取证
+                DisplayServer.WindowSetMode(DisplayServer.WindowMode.Maximized);
+                _wsPhase = 11;
+                return "wait";
+            case 11:
+            {
+                var maxedPos = DisplayServer.WindowGetPosition();
+                var maxed = DisplayServer.WindowGetSize(); // (宽, 高)
+                var usable = DisplayServer.ScreenGetUsableRect(DisplayServer.WindowGetCurrentScreen());
+                bool occluded = maxedPos.Y + maxed.Y > usable.Position.Y + usable.Size.Y;
+                _maxOcclusion = occluded
+                    ? $"maximized pos={maxedPos} size={maxed} usable={usable}"
+                    : "";
+                DisplayServer.WindowSetMode(DisplayServer.WindowMode.Windowed);
+                _wsPhase = 12;
+                return "wait";
+            }
+            case 12: // 终判：窗口几何未被动过，且最大化未越过工作区
+                var pos = DisplayServer.WindowGetPosition();
+                var size = DisplayServer.WindowGetSize();
+                bool stable = pos == _wsPos0 && size == _wsSize0;
+                _wsPhase = 0;
+                if (!stable)
+                {
+                    return $"FAIL moved pos {_wsPos0}→{pos} size {_wsSize0}→{size}";
+                }
+                return _maxOcclusion.Length == 0
+                    ? "ok"
+                    : $"FAIL maximize-over-workarea {_maxOcclusion}";
+            default:
+                _wsPhase = 0;
+                return "FAIL";
+        }
+    }
+
     /// <summary>M4R-2 自测：合成真实按键事件验证 echo 过滤——非 echo 按键转 90°，echo 按键不再触发。</summary>
     private int _echoPhase;
     private double _yawAtStart, _yawAfterPress, _yawAfterEcho;
@@ -1406,12 +1592,17 @@ public partial class Main : Node
         return saved && flow ? "ok" : "FAIL";
     }
 
-    /// <summary>M4 自测：Base64 导入路径（统一嗅探入口）落入首个空槽。</summary>
+    /// <summary>M4 自测：Base64 导入路径（统一嗅探入口）落入首个空槽。自备目录+预清理——
+    /// "首空槽=0" 断言不得依赖其他步骤的落槽残留（批11 主 store 隔离后曾与其共享目录而互相污染）。</summary>
     private string AutotestImportClipboardPath()
     {
         var data = _gm.BuildSaveData(false);
-        var isoStore = new GameStore(new FileSystemStorageAdapter("user://saves_autotest"));
+        var isoStore = new GameStore(new FileSystemStorageAdapter("user://saves_autotest_import"));
         isoStore.InitializeSaves();
+        for (int i = 0; i < GameConfig.SaveSlotCount; i++)
+        {
+            isoStore.Saves.DeleteAsync(i).GetAwaiter().GetResult();
+        }
         isoStore.ImportText(SaveData.SerializeToBase64(data));
         int filled = -1;
         for (int i = 0; i < GameConfig.SaveSlotCount; i++)

@@ -13,7 +13,8 @@ namespace Nmoku.Game;
 /// </summary>
 public sealed partial class GameStore : Node
 {
-    private const string AutotestSaveDir = "user://saves_autotest";
+    /// <summary>自测隔离存档目录（批11 修正：此前主 store 自测也走 user://saves，清槽步骤会毁真实存档）。</summary>
+    public const string AutotestSaveDir = "user://saves_autotest";
 
     public GameState State { get; private set; } = GameState.Title;
     public GameManager GM { get; } = new();
