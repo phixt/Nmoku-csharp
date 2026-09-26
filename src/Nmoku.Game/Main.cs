@@ -837,7 +837,7 @@ public partial class Main : Node
                 return "wait";
             case 1:
                 Input.ParseInputEvent(new InputEventKey { PhysicalKeycode = Key.Left, Pressed = false });
-                int expected = 5; // PageStep(-1) 自第 1 页循环到第 6 页（全局）
+                // PageStep(-1) 自第 1 页循环到第 6 页（全局层）；页状态由 KeymapContent 自持
                 bool ok = _keymapScreen.Content != null && _router.IsOverlayOpen("help");
                 ToggleHelp();
                 _kmPhase = 0;

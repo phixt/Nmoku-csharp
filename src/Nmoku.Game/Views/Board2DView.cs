@@ -38,7 +38,7 @@ public sealed partial class Board2DView : Control
     private GradientTexture2D? _glowTex;
     // 球面明暗纹理（人类反馈 2026-09-26：2D 棋子玩具感——按 3D 受光面渲染：
     // 与高光同心的径向暗环，远缘变暗模拟球体背光侧）
-    private GradientTexture2D? _shadeTex;
+    private Texture2D? _shadeTex;
 
     private void EnsureGlowTexture()
     {
@@ -68,20 +68,31 @@ public sealed partial class Board2DView : Control
         {
             return;
         }
-        var gradient = new Gradient
+        // 逐像素生成：方形径向渐变的圆外区域无法归零（各方向距光源距离不同，浅底下泄露为
+        // "超界半透明深色方框"，人类反馈 2026-09-26）——必须按圆内遮罩生成，圆外强制透明。
+        const int size = 256;
+        var image = Image.CreateEmpty(size, size, false, Image.Format.Rgba8);
+        var light = new Vector2(0.35f, 0.30f);           // 与高光同侧：对侧边缘进入暗环
+        float maxDist = (Vector2.One - light).Length();  // 与旧 FillTo 标度一致
+        for (int y = 0; y < size; y++)
         {
-            Colors = [new Color(0f, 0f, 0f, 0f), new Color(0f, 0f, 0f, 0.08f), new Color(0f, 0f, 0f, 0.45f)],
-            Offsets = [0f, 0.62f, 1f],
-        };
-        _shadeTex = new GradientTexture2D
-        {
-            Gradient = gradient,
-            Fill = GradientTexture2D.FillEnum.Radial,
-            FillFrom = new Vector2(0.35f, 0.30f),  // 与高光同侧：对侧边缘进入暗环
-            FillTo = new Vector2(1f, 1f),
-            Width = 256,
-            Height = 256,
-        };
+            for (int x = 0; x < size; x++)
+            {
+                var uv = new Vector2((x + 0.5f) / size, (y + 0.5f) / size);
+                float t = (uv - light).Length() / maxDist;
+                float alpha = t switch
+                {
+                    <= 0.62f => Mathf.Remap(t, 0f, 0.62f, 0f, 0.08f),
+                    <= 0.93f => Mathf.Remap(t, 0.62f, 0.93f, 0.08f, 0.45f),
+                    _ => Mathf.Remap(t, 0.93f, 1f, 0.45f, 0f),
+                };
+                // 圆内遮罩 + 2% 羽化（体色圆自身有 AA 边缘，硬切会出毛边）
+                float edge = (0.5f - (uv - new Vector2(0.5f, 0.5f)).Length()) / 0.02f;
+                alpha *= Mathf.Clamp(edge, 0f, 1f);
+                image.SetPixel(x, y, new Color(0f, 0f, 0f, alpha));
+            }
+        }
+        _shadeTex = ImageTexture.CreateFromImage(image);
     }
 
     public override void _Ready()
@@ -151,7 +162,7 @@ public sealed partial class Board2DView : Control
             if (last.Z == focus)
             {
                 DrawArc(CellToScreen(last.X, last.Y), LastMoveRingRadius * _scale,
-                    0, MathF.Tau, 40, Palette.LastMoveRing, 3f, true);
+                    0, MathF.Tau, 64, Palette.LastMoveRing, 1.5f, false);
             }
         }
 
@@ -192,7 +203,7 @@ public sealed partial class Board2DView : Control
                 continue;
             }
             DrawLine(CellToScreen(line.Start.X, line.Start.Y), CellToScreen(line.End.X, line.End.Y),
-                RoleColor(role, 0.9f), 2f, true);
+                RoleColor(role, 0.9f), 1.2f, true);
         }
     }
 
