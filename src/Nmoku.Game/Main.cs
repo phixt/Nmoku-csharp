@@ -4,6 +4,7 @@ using Nmoku.Core.AI;
 using Nmoku.Core.Camera;
 using Nmoku.Core.Saves;
 using Nmoku.Game;
+using Nmoku.Game.Audio;
 using Nmoku.Game.Shell;
 using Nmoku.Game.Theme;
 using Nmoku.Game.Views;
@@ -31,6 +32,7 @@ public partial class Main : Node
     private GameScreen _gameScreen = null!;
     private SceneRouter _router = null!;
     private OverlayManager _overlay = null!;
+    private AudioManager _audio = null!;
     private TitleScreen _titleScreen = null!;
     private PauseMenu _pauseMenu = null!;
     private GameOverModal _gameOverModal = null!;
@@ -74,6 +76,10 @@ public partial class Main : Node
     public override void _Ready()
     {
         ApplyDisplayScaling();
+
+        // 0) 音频管理器（§3.5）：SFX 池 + BGM 引擎 + 偏好恢复；shell 各屏经 AudioManager.Instance 访问
+        _audio = new AudioManager();
+        AddChild(_audio);
 
         // 全局字体：霞鹜文楷 Lite（OFL，assets-src/fonts 本地转换版）——根窗口 Theme 全体控件生效
         var uiTheme = new Theme();
@@ -132,7 +138,13 @@ public partial class Main : Node
         _turnIndicator = _gameScreen.TurnIndicator;
         _board2D.Game = _gm; // 2D 面板状态源（此前遗漏导致右半屏空白）
         _board2D.HoverChanged += cell => _gm.SetHover(cell);
-        _board2D.PlaceRequested += cell => _gm.TryPlace(cell.X, cell.Y, cell.Z);
+        _board2D.PlaceRequested += cell =>
+        {
+            if (_gm.TryPlace(cell.X, cell.Y, cell.Z))
+            {
+                _audio.PlaySfx(SfxKind.Click); // 落子成功才有声（源 main.ts:144/336，B20 ①）
+            }
+        };
         _store.StateChanged += OnStateChanged;
         _store.SavesChanged += () =>
         {
@@ -141,7 +153,11 @@ public partial class Main : Node
                 _saveMenu.RefreshSlots(_store.Saves.GetSlots());
             }
         };
-        _gm.GameOver += _ => _store.NotifyGameOver();
+        _gm.GameOver += _ =>
+        {
+            _audio.PlaySfx(SfxKind.Win); // 源语义：任意方获胜（含 AI 胜）同播 win（B20 ①）
+            _store.NotifyGameOver();
+        };
         _gm.SwapPhaseStarted += ShowSwapDialog;
         _gm.StateChanged += Refresh;
         _gm.FocusChanged += _ => Refresh();
@@ -170,6 +186,7 @@ public partial class Main : Node
         GD.Print($"display: window={DisplayServer.WindowGetSize()}, screen={DisplayServer.ScreenGetSize(screen)}, " +
                  $"dpi={DisplayServer.ScreenGetDpi(screen)}, canvasScale={GetWindow().GetFinalTransform().Scale} " +
                  $"(诊断高分屏：window 应为物理像素；3D 视口={_viewport3D.Size})");
+        _audio.PlayBgm(BgmTrack.Menu); // 启动即标题轨（源 main.ts:1392）
         GD.Print($"Nmoku M4R: game ready (board={_boardSize}x{_boardSize}x{_layers}, spacing={_spacing:0.0}, " +
                  $"rules={_rules}, mode={(_pve ? "pve" : "pvp")}, distance={_rig.Current.Distance:0.00})");
     }
@@ -1754,6 +1771,7 @@ public partial class Main : Node
     {
         yield return ("toggle_help", ToggleHelp);
         yield return ("toggle_theme", () => _store.ToggleTheme());
+        yield return ("toggle_mute", ToggleMute);
         yield return ("rotate_left", () => _rig.Orbit(-90));
         yield return ("rotate_right", () => _rig.Orbit(90));
         yield return ("pause", () => _store.Pause());
@@ -1847,6 +1865,17 @@ public partial class Main : Node
             if (InputMap.EventIsAction(key, "toggle_help", exactMatch: true))
             {
                 ToggleHelp();
+                return true;
+            }
+            // M/T 同为 KeymapTable 宣称的浮层可用键（AllowWhenOverlay）——此前漂移未接线，M5 补齐
+            if (InputMap.EventIsAction(key, "toggle_mute", exactMatch: true))
+            {
+                ToggleMute();
+                return true;
+            }
+            if (InputMap.EventIsAction(key, "toggle_theme", exactMatch: true))
+            {
+                _store.ToggleTheme();
                 return true;
             }
             if (InputMap.EventIsAction(key, "ui_cancel", exactMatch: true) && _router.TopOverlay is { } top)
@@ -2017,6 +2046,7 @@ public partial class Main : Node
     private void OnStateChanged(GameState state)
     {
         _router.ShowState(state);
+        SyncBgm(state);
         if (state == GameState.Replay)
         {
             Refresh(); // replay-hud 此刻才挂载：补一次同步（BeginReplay 内的首刷落在挂载前）
@@ -2033,6 +2063,24 @@ public partial class Main : Node
         {
             _guideScreen.FromGame = state == GameState.GuideFromGame;
             _guideScreen.ApplyMode();
+        }
+    }
+
+    /// <summary>BGM 场景分发（B20 ②）：menu=标题、game=对局、pause=暂停、guide=引导；
+    /// 复盘与结算不切轨（源退出复盘 playBGM("game") 撞同轨守卫，全程沿用进入前轨道）。</summary>
+    private void SyncBgm(GameState state)
+    {
+        BgmTrack? track = state switch
+        {
+            GameState.Title => BgmTrack.Menu,
+            GameState.Playing => BgmTrack.Game,
+            GameState.Paused => BgmTrack.Pause,
+            GameState.GuideFromTitle or GameState.GuideFromGame => BgmTrack.Guide,
+            _ => null,
+        };
+        if (track is { } t)
+        {
+            _audio.PlayBgm(t);
         }
     }
 
@@ -2093,6 +2141,13 @@ public partial class Main : Node
         dialog.FileSelected += path => onSelected(path);
         AddChild(dialog);
         return dialog;
+    }
+
+    /// <summary>M 静音（源语义：全局翻转 + toast 提示状态）。</summary>
+    private void ToggleMute()
+    {
+        _audio.ToggleMute();
+        _overlay.ShowToast(_audio.Muted ? "静音已开启" : "静音已关闭");
     }
 
     private void ToggleHelp()

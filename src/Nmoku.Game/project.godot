@@ -17,7 +17,8 @@ config/features=PackedStringArray("4.6", "C#", "Forward Plus")
 
 [audio]
 
-driver/driver_type="Dummy"
+; M4R 曾临时改 Dummy 缓解 WASAPI 设备失效报错（见 CHANGELOG），M5 音频落地恢复默认 WASAPI；
+; 若真实窗口再遇设备失效/混音撕裂，须实测窗口切换/设备切换场景后另定方案（TODO M5）
 default_bus_layout="res://default_bus_layout.tres"
 
 [display]
