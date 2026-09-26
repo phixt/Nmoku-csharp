@@ -113,6 +113,23 @@ public static class Text
         public const string SwapNo = "继续执白";
     }
 
+    public static class Settings
+    {
+        public const string Title = "设置";
+        public const string SfxVolume = "音效音量";
+        public const string BgmVolume = "音乐音量";
+        public const string Mute = "静音";
+        public const string MutedOn = "静音：开";
+        public const string MutedOff = "静音：关";
+        public const string MuteToastOn = "静音已开启";
+        public const string MuteToastOff = "静音已关闭";
+        public const string WindowMode = "窗口模式";
+        public const string ModeWindowed = "窗口化";
+        public const string ModeMaximized = "最大化";
+        public const string ModeFullscreen = "全屏";
+        public const string Language = "语言";
+    }
+
     public static class Levels
     {
         public const string Classic = "标准对局";

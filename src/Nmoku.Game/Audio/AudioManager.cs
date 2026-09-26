@@ -14,13 +14,12 @@ public enum SfxKind
 /// <summary>
 /// 音频管理器（§3.5）：SFX 池（Sfx 总线）+ BGM 引擎装配 + 主音量/静音 + 偏好持久化。
 /// 语义对齐源 AudioManager（B20 ③）：默认 sfx=0.6/bgm=0.3、0–1 钳制、mute=Master 全局翻转。
-/// 偏好存 user://settings.cfg（audio 节）；保存走"读全文再写"避免抹掉其他节。
+/// 偏好存 user://settings.cfg（audio 节，经 SettingsStore）。
 /// </summary>
 public sealed partial class AudioManager : Node
 {
     public static AudioManager? Instance { get; private set; }
 
-    private const string SettingsPath = "user://settings.cfg";
     private const float DefaultSfxVolume = 0.6f; // 源 AudioManager.ts:219
     private const float DefaultBgmVolume = 0.3f; // 源 AudioManager.ts:220
 
@@ -102,24 +101,15 @@ public sealed partial class AudioManager : Node
 
     private void LoadSettings()
     {
-        var cfg = new ConfigFile();
-        if (cfg.Load(SettingsPath) != Error.Ok)
-        {
-            return; // 首次运行用源默认值
-        }
-        SfxVolume = Mathf.Clamp((float)cfg.GetValue("audio", "volume_sfx", SfxVolume), 0f, 1f);
-        BgmVolume = Mathf.Clamp((float)cfg.GetValue("audio", "volume_bgm", BgmVolume), 0f, 1f);
-        Muted = (bool)cfg.GetValue("audio", "muted", Muted);
+        SfxVolume = Mathf.Clamp((float)SettingsStore.Get("audio", "volume_sfx", SfxVolume).AsSingle(), 0f, 1f);
+        BgmVolume = Mathf.Clamp((float)SettingsStore.Get("audio", "volume_bgm", BgmVolume).AsSingle(), 0f, 1f);
+        Muted = SettingsStore.Get("audio", "muted", Muted).AsBool();
     }
 
     private void SaveSettings()
     {
-        // 读全文再改：与设置页共享同一 cfg 文件，避免整文件重写丢其他节
-        var cfg = new ConfigFile();
-        cfg.Load(SettingsPath);
-        cfg.SetValue("audio", "volume_sfx", SfxVolume);
-        cfg.SetValue("audio", "volume_bgm", BgmVolume);
-        cfg.SetValue("audio", "muted", Muted);
-        cfg.Save(SettingsPath);
+        SettingsStore.Set("audio", "volume_sfx", SfxVolume);
+        SettingsStore.Set("audio", "volume_bgm", BgmVolume);
+        SettingsStore.Set("audio", "muted", Muted);
     }
 }

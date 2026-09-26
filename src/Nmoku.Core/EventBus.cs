@@ -16,6 +16,7 @@ public static class EventBus
     public static event Action<bool>? ColorblindModeToggled;
     public static event Action? AiMoveRequest;
     public static event Action<string, float>? PlaySound;
+    public static event Action<string>? LanguageChanged;
 
     public static void EmitThemeToggled(bool isDark) => ThemeToggled?.Invoke(isDark);
     public static void EmitLayerChanged(int layerIndex) => LayerChanged?.Invoke(layerIndex);
@@ -25,6 +26,7 @@ public static class EventBus
     public static void EmitColorblindModeToggled(bool enabled) => ColorblindModeToggled?.Invoke(enabled);
     public static void EmitAiMoveRequest() => AiMoveRequest?.Invoke();
     public static void EmitPlaySound(string soundId, float volume = 1f) => PlaySound?.Invoke(soundId, volume);
+    public static void EmitLanguageChanged(string lang) => LanguageChanged?.Invoke(lang);
 
     /// <summary>测试辅助：清空全部订阅。</summary>
     public static void ClearAll()
@@ -37,5 +39,6 @@ public static class EventBus
         ColorblindModeToggled = null;
         AiMoveRequest = null;
         PlaySound = null;
+        LanguageChanged = null;
     }
 }

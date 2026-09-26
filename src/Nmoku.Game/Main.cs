@@ -38,6 +38,7 @@ public partial class Main : Node
     private GameOverModal _gameOverModal = null!;
     private SaveMenu _saveMenu = null!;
     private GuideScreen _guideScreen = null!;
+    private SettingsScreen _settingsScreen = null!;
     private KeymapScreen _keymapScreen = null!;
     private ReplayBar _replayBar = null!;
     private SandboxPanel _sandboxPanel = null!;
@@ -163,6 +164,7 @@ public partial class Main : Node
         _gm.FocusChanged += _ => Refresh();
         _gm.HoverChanged += OnHoverChanged;
         EventBus.ThemeToggled += ApplyTheme;
+        EventBus.LanguageChanged += OnLanguageChanged;
         _store.LevelChanged += OnLevelChanged;
 
         var defaultLevel = new LevelConfig
@@ -215,6 +217,7 @@ public partial class Main : Node
         window.ContentScaleSize = Vector2I.Zero;
         window.ContentScaleFactor = UiScaleFactor;
         window.MoveToCenter();
+        RestoreWindowMode(); // 上次会话若是最大化/全屏，启动即恢复（设置页 general 节）
     }
 
     /// <summary>T 键/存档恢复触发的主题换肤：调色板切套 → 3D 环境 → 已挂载壳屏重建（game 基座除外，其视图走 ApplyPalette 通道）。</summary>
@@ -259,6 +262,7 @@ public partial class Main : Node
                 screen.CustomGameRequested += () => _router.PushOverlay("sandbox");
                 screen.LoadRequested += OpenSaveMenu;
                 screen.GuideRequested += () => _store.OpenGuide();
+                screen.SettingsRequested += OpenSettings;
                 screen.QuitRequested += () => GetTree().Quit();
                 _titleScreen = screen;
                 return screen;
@@ -284,6 +288,7 @@ public partial class Main : Node
                 screen.SaveProgressRequested += () => _store.SaveToFirstEmpty();
                 screen.LoadRequested += OpenSaveMenu; // 暂停读档=打开存档菜单可选槽位（P1）；L 键仍是读最新
                 screen.GuideRequested += () => _store.OpenGuide();
+                screen.SettingsRequested += OpenSettings;
                 screen.TitleRequested += () => _store.ReturnToTitle();
                 _pauseMenu = screen;
                 return screen;
@@ -336,6 +341,20 @@ public partial class Main : Node
                 screen.DeleteSlotRequested += i => _store.DeleteSlot(i);
                 screen.CloseRequested += CloseSaveMenu;
                 _saveMenu = screen;
+                return screen;
+            },
+        },
+        new RouteDef
+        {
+            Id = "settings",
+            Layer = RouteLayer.Overlay,
+            Backdrop = BackdropKind.Dim,
+            Factory = () =>
+            {
+                var screen = new SettingsScreen();
+                screen.CloseRequested += () => _router.PopOverlay("settings");
+                screen.WindowModeChanged += ApplyWindowMode;
+                _settingsScreen = screen;
                 return screen;
             },
         },
@@ -890,6 +909,7 @@ public partial class Main : Node
         _autotestSteps.Enqueue(("m4c-replay-hud", AutotestReplayHud));
         _autotestSteps.Enqueue(("m4c-window-sequence", AutotestWindowSequence));
         _autotestSteps.Enqueue(("m4c-keymap-paging", AutotestKeymapPaging));
+        _autotestSteps.Enqueue(("m5-audio-settings", AutotestAudioSettings));
     }
 
     private int _kmPhase;
@@ -922,6 +942,72 @@ public partial class Main : Node
                 _kmPhase = 0;
                 return "FAIL";
         }
+    }
+
+    private bool _audioPhase;
+    private (float Sfx, float Bgm, bool Muted) _audioSnapshot;
+
+    /// <summary>M5 音频+设置屏回归（2026-09-26）： AudioManager 装配、四轨 BGM/四件 SFX 播放调用
+    /// （headless Dummy 驱动不抛）、音量钳制与静音翻转（M 键动作路径）、设置浮层开关。测试前后
+    /// 快照/恢复 settings.cfg 的 audio 节——不污染真实偏好。</summary>
+    private string AutotestAudioSettings()
+    {
+        if (!_audioPhase)
+        {
+            _audioPhase = true;
+            _audioSnapshot = (_audio.SfxVolume, _audio.BgmVolume, _audio.Muted);
+            if (AudioManager.Instance == null)
+            {
+                return "FAIL no-audio-manager";
+            }
+            // 播放调用冒烟：占位资产加载失败会抛（GD.Load null → player.Play 空转但不抛；资产缺失本身在 _Ready 抛）
+            foreach (BgmTrack track in Enum.GetValues<BgmTrack>())
+            {
+                _audio.PlayBgm(track);
+            }
+            foreach (SfxKind kind in Enum.GetValues<SfxKind>())
+            {
+                _audio.PlaySfx(kind);
+            }
+            _audio.SetVolumes(1.5f, -1f); // 钳制语义（源 setVolume 0–1）
+            if (_audio.SfxVolume != 1f || _audio.BgmVolume != 0f)
+            {
+                return "FAIL clamp";
+            }
+            _audio.SetVolumes(_audioSnapshot.Sfx, _audioSnapshot.Bgm);
+            _audio.ToggleMute();
+            if (!_audio.Muted)
+            {
+                return "FAIL mute-on";
+            }
+            _audio.ToggleMute();
+            if (_audio.Muted != _audioSnapshot.Muted)
+            {
+                return "FAIL mute-restore";
+            }
+            // M 键动作路径（SingleActions → ToggleMute → toast）与设置浮层
+            SimulateActionPress("toggle_mute");
+            if (_audio.Muted == _audioSnapshot.Muted)
+            {
+                return "FAIL mute-action";
+            }
+            _audio.ToggleMute(); // 恢复
+            OpenSettings();
+            return _router.IsOverlayOpen("settings") ? "ok" : "FAIL no-settings";
+        }
+        // 第二帧：关浮层 + 最终恢复
+        _router.PopOverlay("settings");
+        if (_router.IsOverlayOpen("settings"))
+        {
+            return "wait";
+        }
+        _audio.SetVolumes(_audioSnapshot.Sfx, _audioSnapshot.Bgm);
+        if (_audio.Muted != _audioSnapshot.Muted)
+        {
+            _audio.ToggleMute();
+        }
+        _audioPhase = false;
+        return "ok";
     }
 
     private int _saveAlignPhase;
@@ -2092,6 +2178,62 @@ public partial class Main : Node
 
     private void CloseSaveMenu() => _router.PopOverlay("save-menu");
 
+    private void OpenSettings() => _router.PushOverlay("settings");
+
+    /// <summary>窗口模式切换（设置页事件）：窗口化恢复项目默认 1920×1080 居中；headless 跳过。</summary>
+    private void ApplyWindowMode(WindowMode mode)
+    {
+        if (DisplayServer.GetName() == "headless")
+        {
+            return;
+        }
+        var window = GetWindow();
+        switch (mode)
+        {
+            case WindowMode.Maximized:
+                window.Mode = Window.ModeEnum.Maximized;
+                break;
+            case WindowMode.Fullscreen:
+                window.Mode = Window.ModeEnum.Fullscreen;
+                break;
+            default:
+                window.Mode = Window.ModeEnum.Windowed;
+                window.Size = new Vector2I(1920, 1080);
+                window.MoveToCenter();
+                break;
+        }
+    }
+
+    /// <summary>启动恢复持久化窗口模式（设置页写入；ApplyDisplayScaling 尾部调用）。</summary>
+    private void RestoreWindowMode()
+    {
+        if (DisplayServer.GetName() == "headless")
+        {
+            return;
+        }
+        string mode = SettingsStore.Get("general", "window_mode", "windowed").AsString();
+        if (mode == "maximized")
+        {
+            GetWindow().Mode = Window.ModeEnum.Maximized;
+        }
+        else if (mode == "fullscreen")
+        {
+            GetWindow().Mode = Window.ModeEnum.Fullscreen;
+        }
+    }
+
+    /// <summary>语言切换热刷新（B20 ④ 源语义：立即重注入文本）——重建已挂载壳屏（game 基座除外，
+    /// ApplyTheme 同款通道），游戏基座内动态文本随下次 Refresh 更新。语言持久化在设置页完成。</summary>
+    private void OnLanguageChanged(string lang)
+    {
+        TranslationServer.SetLocale(lang);
+        foreach (string id in _router.Mounted.Where(id => id != "game").ToList())
+        {
+            _router.Rebuild(id);
+        }
+        Refresh();
+    }
+
     private void CloseSandbox() => _router.PopOverlay("sandbox");
 
     // ---- .nzsave 文件级导入导出（FileDialog；容器/嗅探在 Core，Game 只管路径选择与字节读写）----
@@ -2147,7 +2289,7 @@ public partial class Main : Node
     private void ToggleMute()
     {
         _audio.ToggleMute();
-        _overlay.ShowToast(_audio.Muted ? "静音已开启" : "静音已关闭");
+        _overlay.ShowToast(_audio.Muted ? Text.Settings.MuteToastOn : Text.Settings.MuteToastOff);
     }
 
     private void ToggleHelp()

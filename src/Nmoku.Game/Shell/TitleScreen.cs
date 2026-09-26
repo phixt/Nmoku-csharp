@@ -15,6 +15,7 @@ public sealed partial class TitleScreen : Control
     public event Action? CustomGameRequested;
     public event Action? LoadRequested;
     public event Action? GuideRequested;
+    public event Action? SettingsRequested;
     public event Action? QuitRequested;
 
     private Button _resumeButton = null!;
@@ -49,6 +50,7 @@ public sealed partial class TitleScreen : Control
         box.AddChild(MakeButton(Text.Title.CustomGame, () => CustomGameRequested?.Invoke()));
         box.AddChild(MakeButton(Text.Title.LoadGame, () => LoadRequested?.Invoke()));
         box.AddChild(MakeButton(Text.Title.Guide, () => GuideRequested?.Invoke()));
+        box.AddChild(MakeButton(Text.Settings.Title, () => SettingsRequested?.Invoke()));
         box.AddChild(MakeSpacer(8));
         box.AddChild(MakeButton(Text.Title.Quit, () => QuitRequested?.Invoke()));
     }

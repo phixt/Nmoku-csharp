@@ -15,6 +15,7 @@ public sealed partial class PauseMenu : Control
     public event Action? LoadRequested;
     public event Action? GuideRequested;
     public event Action? TitleRequested;
+    public event Action? SettingsRequested;
 
     public override void _Ready()
     {
@@ -44,6 +45,7 @@ public sealed partial class PauseMenu : Control
         box.AddChild(MakeMenuButton(Text.Menu.SaveProgress, "save_first_empty", () => SaveProgressRequested?.Invoke()));
         box.AddChild(MakeMenuButton(Text.Title.LoadGame, action: null, () => LoadRequested?.Invoke()));
         box.AddChild(MakeMenuButton(Text.Title.Guide, "open_guide", () => GuideRequested?.Invoke()));
+        box.AddChild(MakeMenuButton(Text.Settings.Title, action: null, () => SettingsRequested?.Invoke()));
         box.AddChild(MakeMenuButton(Text.Menu.BackToTitle, "return_to_title", () => TitleRequested?.Invoke()));
     }
 
