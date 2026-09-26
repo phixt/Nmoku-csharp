@@ -52,6 +52,9 @@ public partial class Main : Node
     private AIDifficulty _aiDifficulty = AIDifficulty.Medium;
     private Vector2 _lastViewportSize;
 
+    /// <summary>3D 视口超采样倍率（在原生像素之上再 ×2，细网格线抗锯齿）。</summary>
+    private const float ViewportSupersample = 2f;
+
     /// <summary>全局 UI 观感放大系数（人类拍板 2026-09-25）：内容缩放绝对值（×2.5 基准设计），
     /// 窗口固定 1920×1080，等效逻辑视口 768×432；调全局 UI 大小只动这里。</summary>
     private const float UiScaleFactor = 2.5f;
@@ -810,6 +813,39 @@ public partial class Main : Node
         _autotestSteps.Enqueue(("m4c-newgame-default-context", AutotestNewGameDefaultContext));
         _autotestSteps.Enqueue(("m4c-quick-load", AutotestQuickLoad));
         _autotestSteps.Enqueue(("m4c-replay-entry", AutotestReplayEntry));
+        _autotestSteps.Enqueue(("m4c-keymap-paging", AutotestKeymapPaging));
+    }
+
+    private int _kmPhase;
+
+    /// <summary>快捷键页 ←/→ 翻层回归（NRE 事故 2026-09-26：引导屏未挂载时 Content 解引用）：
+    /// 开页合成 ← 键，须翻到末页（循环）且无异常；引导屏路径同函数。</summary>
+    private string AutotestKeymapPaging()
+    {
+        switch (_kmPhase)
+        {
+            case 0:
+                if (_store.State != GameState.Title)
+                {
+                    _store.Pause();
+                    _store.ReturnToTitle();
+                    return "wait";
+                }
+                ToggleHelp();
+                Input.ParseInputEvent(new InputEventKey { PhysicalKeycode = Key.Left, Pressed = true, Echo = false });
+                _kmPhase = 1;
+                return "wait";
+            case 1:
+                Input.ParseInputEvent(new InputEventKey { PhysicalKeycode = Key.Left, Pressed = false });
+                int expected = 5; // PageStep(-1) 自第 1 页循环到第 6 页（全局）
+                bool ok = _keymapScreen.Content != null && _router.IsOverlayOpen("help");
+                ToggleHelp();
+                _kmPhase = 0;
+                return ok ? "ok" : "FAIL help-not-open";
+            default:
+                _kmPhase = 0;
+                return "FAIL";
+        }
     }
 
     private int _saveAlignPhase;
@@ -1324,25 +1360,35 @@ public partial class Main : Node
                 break;
         }
     }
-/// <summary>快捷键页（F1 浮层/引导屏）打开时 ←/→ 翻层；未打开返回 false 走正常分发。</summary>
+    /// <summary>快捷键页（F1 浮层/引导屏）打开时 ←/→ 翻层；未打开返回 false 走正常分发。
+    /// 只操作实际打开的那个宿主——引导屏未挂载过时 _guideScreen.Content 为 null（NRE 事故 2026-09-26）。</summary>
     private bool TryPageKeymap(InputEventKey key)
     {
-        bool keymapOpen = _router.IsOverlayOpen("help")
-                          || _store.State is GameState.GuideFromTitle or GameState.GuideFromGame;
-        if (!keymapOpen)
+        if (_router.IsOverlayOpen("help"))
+        {
+            return StepContent(_keymapScreen.Content, key);
+        }
+        if (_store.State is GameState.GuideFromTitle or GameState.GuideFromGame)
+        {
+            return StepContent(_guideScreen.Content, key);
+        }
+        return false;
+    }
+
+    private bool StepContent(KeymapContent? content, InputEventKey key)
+    {
+        if (content == null)
         {
             return false;
         }
         if (key.PhysicalKeycode == Key.Left)
         {
-            _keymapScreen.Content.PageStep(-1);
-            _guideScreen.Content.PageStep(-1);
+            content.PageStep(-1);
             return true;
         }
         if (key.PhysicalKeycode == Key.Right)
         {
-            _keymapScreen.Content.PageStep(1);
-            _guideScreen.Content.PageStep(1);
+            content.PageStep(1);
             return true;
         }
         return false;
@@ -1511,7 +1557,9 @@ public partial class Main : Node
         {
             return; // headless dummy 值（≈0.033）：无从换算
         }
-        var desired = (Vector2I)(((Vector2)host.Size * factor).Floor());
+        // ×2 超采样（人类反馈 2026-09-26：3D 细网格线精度不足）——纹理由宿主缩小绘制，
+        // 等效 SSAA；场景极小，开销可忽略
+        var desired = (Vector2I)(((Vector2)host.Size * factor * ViewportSupersample).Floor());
         if (desired.X > 0 && desired.Y > 0 && _viewport3D.Size != desired)
         {
             _viewport3D.Size = desired;

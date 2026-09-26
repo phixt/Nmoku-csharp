@@ -35,7 +35,9 @@ public sealed partial class KeymapContent : VBoxContainer
         SizeFlagsHorizontal = SizeFlags.ExpandFill;
         SizeFlagsVertical = SizeFlags.ExpandFill;
 
-        _indicatorRow = new HBoxContainer { Alignment = BoxContainer.AlignmentMode.Center };
+        // 页码块位置固定（人类拍板：不要随层名长短左右跳）——两侧对称 Expand 撑满，
+        // 层名给固定宽度向右拓展/缩小
+        _indicatorRow = new HBoxContainer();
         _indicatorRow.AddThemeConstantOverride("separation", 6);
         AddChild(_indicatorRow);
 
@@ -78,6 +80,8 @@ public sealed partial class KeymapContent : VBoxContainer
         {
             child.QueueFree();
         }
+        var lead = new Control { SizeFlagsHorizontal = SizeFlags.Expand };
+        _indicatorRow.AddChild(lead);
         for (int i = 0; i < PageOrder.Length; i++)
         {
             var button = new Button
@@ -103,7 +107,10 @@ public sealed partial class KeymapContent : VBoxContainer
         name.AddThemeFontSizeOverride("font_size", 12);
         name.AddThemeColorOverride("font_color", Palette.Active.Accent);
         name.SizeFlagsVertical = SizeFlags.ShrinkCenter;
+        name.CustomMinimumSize = new Vector2(110, 0); // 固定宽度：页码不被层名长短推移
         _indicatorRow.AddChild(name);
+        var tail = new Control { SizeFlagsHorizontal = SizeFlags.Expand };
+        _indicatorRow.AddChild(tail);
     }
 
     /// <summary>圆圈样式：选中/激活=强调色实心，未选=描边空心。</summary>
@@ -164,11 +171,9 @@ public sealed partial class KeymapContent : VBoxContainer
 
         void Place(KeyboardLayout.PhysicalKey key, int row)
         {
-            if (!keys.TryGetValue(key.Name, out var note))
-            {
-                return; // 非本层的键不渲染
-            }
-            var cap = new KeyCap(key.Name, scope, mini: false, sub: note);
+            // 本层的键=作用域色+注记；其余键一律无色占位（人类拍板 2026-09-26）
+            bool mapped = keys.TryGetValue(key.Name, out var note);
+            var cap = new KeyCap(key.Name, scope, idle: !mapped, mini: false, sub: mapped ? note : null);
             cap.Position = new Vector2((float)((key.OffsetUnits - minOffset) * Unit) + KeyboardPad, row * Unit + KeyboardPad);
             cap.Size = new Vector2((float)(key.WidthUnits * Unit) - KeyGap, KeyHeight);
             _keyboardHost.AddChild(cap);

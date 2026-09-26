@@ -36,6 +36,9 @@ public sealed partial class Board2DView : Control
 
     // 高光光斑纹理（白色径向渐变到全透明——末档 alpha=0，四角不会出现方形色块）
     private GradientTexture2D? _glowTex;
+    // 球面明暗纹理（人类反馈 2026-09-26：2D 棋子玩具感——按 3D 受光面渲染：
+    // 与高光同心的径向暗环，远缘变暗模拟球体背光侧）
+    private GradientTexture2D? _shadeTex;
 
     private void EnsureGlowTexture()
     {
@@ -56,6 +59,28 @@ public sealed partial class Board2DView : Control
             FillTo = new Vector2(1f, 0.5f),
             Width = 64,
             Height = 64,
+        };
+    }
+
+    private void EnsureShadeTexture()
+    {
+        if (_shadeTex != null)
+        {
+            return;
+        }
+        var gradient = new Gradient
+        {
+            Colors = [new Color(0f, 0f, 0f, 0f), new Color(0f, 0f, 0f, 0.08f), new Color(0f, 0f, 0f, 0.45f)],
+            Offsets = [0f, 0.62f, 1f],
+        };
+        _shadeTex = new GradientTexture2D
+        {
+            Gradient = gradient,
+            Fill = GradientTexture2D.FillEnum.Radial,
+            FillFrom = new Vector2(0.35f, 0.30f),  // 与高光同侧：对侧边缘进入暗环
+            FillTo = new Vector2(1f, 1f),
+            Width = 256,
+            Height = 256,
         };
     }
 
@@ -83,14 +108,14 @@ public sealed partial class Board2DView : Control
         int size = board.BoardSize;
         int focus = Game.FocusZ;
 
-        // 网格
+        // 网格（人类反馈 2026-09-26：AA 线在高缩放下发糊——轴对齐线用硬边细线）
         for (int y = 0; y < size; y++)
         {
-            DrawLine(CellToScreen(0, y), CellToScreen(size - 1, y), Palette.GridLine, 1.5f, true);
+            DrawLine(CellToScreen(0, y), CellToScreen(size - 1, y), Palette.GridLine, 1.2f, false);
         }
         for (int x = 0; x < size; x++)
         {
-            DrawLine(CellToScreen(x, 0), CellToScreen(x, size - 1), Palette.GridLine, 1.5f, true);
+            DrawLine(CellToScreen(x, 0), CellToScreen(x, size - 1), Palette.GridLine, 1.2f, false);
         }
 
         // 星位（R4-3/D1：边星 max(1, floor(size/5)) + 中心，由 size 推导禁止硬编码）
@@ -173,12 +198,18 @@ public sealed partial class Board2DView : Control
 
     private void DrawStone(Vector2 pos, CellState state, float alpha)
     {
-        // 三层绘制（源 canvas 质感）：体色圆 + 左上高光光斑 + 描边。
-        // 体色/描边全部来自 Palette 语义字段（M4 二轮：2D 白子对比随主题适配，禁止视图内派生色值）。
+        // 四层绘制（人类反馈 2026-09-26：按 3D 受光面质感渲染，去玩具感）：
+        // 体色圆 → 球面明暗（对侧暗环）→ 左上高光光斑 → 硬边细描边。
+        // 体色/描边全部来自 Palette 语义字段（禁止视图内派生色值）。
         bool isBlack = state == CellState.Black;
         var body = isBlack ? Palette.StoneBlack2D : Palette.StoneWhite2D;
-        DrawCircle(pos, StoneRadius * _scale, new Color(body.R, body.G, body.B, alpha),
+        float radius = StoneRadius * _scale;
+        DrawCircle(pos, radius, new Color(body.R, body.G, body.B, alpha),
             filled: true, width: -1f, antialiased: true);
+
+        EnsureShadeTexture();
+        var stoneRect = new Rect2(pos - new Vector2(radius, radius), new Vector2(radius * 2, radius * 2));
+        DrawTextureRect(_shadeTex, stoneRect, tile: false, modulate: new Color(1, 1, 1, alpha));
 
         EnsureGlowTexture();
         var glowStrength = (isBlack ? 0.35f : 0.55f) * alpha;
@@ -190,9 +221,10 @@ public sealed partial class Board2DView : Control
             new Vector2(glowDiameter, glowDiameter));
         DrawTextureRect(_glowTex, glowRect, tile: false, modulate: new Color(1, 1, 1, glowStrength));
 
+        // 描边：1.5 逻辑宽 ×内容缩放 的 AA 弧 = "又厚又糊"（人类反馈）——改 1.0 硬边、64 段
         var outlineColor = isBlack ? Palette.StoneOutlineBlack2D : Palette.StoneOutlineWhite2D;
-        DrawArc(pos, StoneRadius * _scale, 0, MathF.Tau, 40,
-            new Color(outlineColor.R, outlineColor.G, outlineColor.B, MathF.Min(1f, alpha + 0.2f)), 1.5f, true);
+        DrawArc(pos, radius, 0, MathF.Tau, 64,
+            new Color(outlineColor.R, outlineColor.G, outlineColor.B, MathF.Min(1f, alpha + 0.2f)), 1.0f, false);
     }
 
     private Color RoleColor(AuxRole role, float alpha)

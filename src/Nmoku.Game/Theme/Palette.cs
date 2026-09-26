@@ -95,7 +95,7 @@ public sealed class Palette
         ButtonHover = new Color(0.784f, 0.878f, 0.894f),  // 源 hover #C8E0E4
         Accent = new Color(0.173f, 0.290f, 0.306f),       // 源强调/主按钮 #2C4A4E
         Error = new Color(0.545f, 0.227f, 0.227f),        // 源危险 #8B3A3A
-        KeycapGame = new Color(0.910f, 0.957f, 0.961f),   // 源亮 base #E8F4F5（靠描边+阴影与同色底区分）
+        KeycapGame = new Color(0.624f, 0.796f, 0.816f),   // 水蓝加深 #9FCBD0（人类反馈：原 #E8F4F5 与白色不分）
         KeycapReplay = new Color(0.176f, 0.416f, 0.310f), // 源复盘 #2D6A4F
         KeycapPause = new Color(0.118f, 0.227f, 0.373f),  // 源暂停 #1E3A5F
         KeycapCtrl = new Color(0.722f, 0.447f, 0.173f),   // Ctrl 层 赭 #B8722C
