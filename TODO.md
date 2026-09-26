@@ -96,9 +96,10 @@ Ctrl/Shift 修饰各自单独成层（颜色随层）；同键跨层的少量例
       **开工先恢复音频驱动**：project.godot 现为 `driver_type="Dummy"`（M4R 临时缓解 WASAPI 设备失效报错与
       系统混音撕裂，见 CHANGELOG），恢复 WASAPI 后必须实测窗口切换/设备切换场景
 - [ ] M5：TextConstants → CSV 四语言 + 语言切换；README 收尾
-- [ ] M5 打包（预备就绪）：`export_presets.cfg`+`scripts/package.ps1` 已入仓；**剩一次性下载 mono
-      导出模板**（编辑器 → 管理导出模板 → 下载，约 1GB）后脚本一键出包（构建→导出→冒烟→zip）。
-      产物需目标机 .NET 8 运行时（zip 附说明）；正式图标/自包含部署为可选项
+- [x] M5 打包管线（2026-09-26 已通）：`scripts/package.ps1` 一键出包（模板自检→构建→导出→
+      boot 冒烟→zip）；mono 导出模板已装；产物=自包含（内嵌 .NET 运行时，目标机免装）109MB exe +
+      data 目录，zip ≈ 可分发
+- [ ] M5 打包余项：正式游戏图标（预设 application/icon）；README 发布说明；GitHub Release 上传
 
 ## 远期挂账
 
