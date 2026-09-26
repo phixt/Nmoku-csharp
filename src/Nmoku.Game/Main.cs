@@ -1676,9 +1676,11 @@ public partial class Main : Node
                 break;
             case InputEventMouseButton { ButtonIndex: MouseButton.Left } button:
                 _rotating = button.Pressed && cameraAllowed && !IsOver2DPanel();
+                UpdateMouseCapture();
                 break;
             case InputEventMouseButton { ButtonIndex: MouseButton.Middle } middle:
                 _panning = middle.Pressed && cameraAllowed && !IsOver2DPanel();
+                UpdateMouseCapture();
                 break;
             case InputEventMouseButton { ButtonIndex: MouseButton.WheelUp, Pressed: true }:
                 // 径向缩放：与 W/S 同路径，单调无跳变（zoom-to-anchor 待拾取恢复）
@@ -1701,6 +1703,32 @@ public partial class Main : Node
                 }
                 break;
             }
+        }
+    }
+
+    /// <summary>
+    /// 相机拖拽期间把光标约束在窗口客户区内（批11 根治，2026-09-26 机制定案）：游玩中快速旋转/平移
+    /// 的拖拽一旦划出窗口顶部压到标题栏，Windows 接管为「拖动窗口」，拖至屏幕顶即 Aero-Snap 最大化
+    /// ——任务栏遮挡/窗口变巨/来回翻转的根因。Confined=光标裁剪在客户区（物理上不可能再逃逸到
+    /// 标题栏），松开或失焦即还原。
+    /// </summary>
+    private void UpdateMouseCapture()
+    {
+        if (DisplayServer.GetName() == "headless")
+        {
+            return;
+        }
+        Input.MouseMode = _rotating || _panning
+            ? Input.MouseModeEnum.Confined
+            : Input.MouseModeEnum.Visible;
+    }
+
+    public override void _Notification(int what)
+    {
+        if (what == NotificationApplicationFocusOut && (_rotating || _panning))
+        {
+            _rotating = _panning = false; // 拖拽中失焦（alt-tab 等）：防光标滞留 Confined 态
+            UpdateMouseCapture();
         }
     }
 
