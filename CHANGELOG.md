@@ -3,114 +3,68 @@
 > 维护规则见 `AGENTS.md`：只记"当前场景"相关事实；总量 ≤300 行，旧条目按里程碑压缩合并，但关键教训（踩坑结论）不删。
 > 提交级细节看 `git log`，这里只留人读的里程碑叙事。
 
-## 0.1.0-alpha（2026-09-26，M0–M4 收官）
+## 0.1.0-alpha（2026-09-26，M0–M5 收官）
 
 - **当前能力**：13×13×6 立体连珠全流程——纯逻辑层（标准/SWAP2 规则、启发式 AI 三档、存档 v2 兼容）、
   3D 左视图+自由相机、2D 右面板+辅助线、状态机七态壳层、六槽存档+.nzsave 文件互通+复盘、明暗主题+
-  色弱、关卡系统（预设+沙盒）、F1 分层分页快捷键、最大化/窗口化 UI 稳定。
-- **已知限制**：音频/i18n/Windows 打包未做（M5）；最大化瞬间布局重排为硬切（过渡动效待办）；
-  Connect6/禁手/开局库为远期挂账；键位重绑定延后。
-- **质量基线**：build 0 警告、302 单测、无头自测 ALL PASS（含 m4c 回归步）；C# 源码 GPL-3.0-only。
+  色弱、关卡系统（预设+沙盒）、F1 分层分页快捷键、最大化/窗口化 UI 稳定、**音频（四场景 BGM+落子/
+  胜负 SFX+M 静音+音量设置）、设置页（音量/静音/窗口模式/语言）、四语言界面（zh-CN/zh-Hant/en-US/
+  ja-JP 热切换）、游戏图标+自包含打包**。
+- **已知限制**：BGM 为占位音轨（正式版走 Strudel 谱面创作，谱面骨架已入库、WAV 留空）；最大化过渡
+  为淡入柔化（根治方案视反馈）；Connect6/禁手/开局库/键位重绑定为远期挂账。
+- **质量基线**：build 0 警告、304 单测、无头自测 ALL PASS（含 m5-audio-settings/m5-i18n 回归步）；
+  打包产物 120MB 自包含 exe（pck 内嵌），真窗口启动冒烟通过。C# 源码 GPL-3.0-only。
 
-## 当前状态（2026-09-25）
+## M5 — 音频/i18n/发布（2026-09-26）
 
-- **里程碑**：M0–M3 ✅（tag `m0`–`m3`）；M4 🚧 验收反馈批恢复（相机异常已定案修复，见下节），
-  **待人类真实窗口全流程走查 → tag `m4`**。
-- **质量门禁**：`dotnet test` 273 例全绿；build 0 警告；无头自测 ALL PASS（M3 对局 + M4 状态机/存档/复盘 +
-  M4R 路由/输入回归 + M4 收尾 + m4c-save-alignment）。
-- **架构红线**：`src/Nmoku.Core` 零 Godot 依赖（KeymapTable/GameStateMachine 均在 Core），xUnit 秒级运行。
-- **许可证**：项目源码采用 GNU GPL v3.0（GPL-3.0-only），完整协议见根目录 `LICENSE`，README 已加入授权说明。
+- **音频（占位版）**：`AudioManager`（Sfx/Bgm 总线+音量持久化）+ `IMusicEngine` 双实现
+  （`SampleMusicEngine` 采样循环 / `SynthMusicEngine` 留壳）；SFX 四件按源参数精确生成、BGM 四场景轨
+  （menu/game/pause/guide，复盘不切轨、同轨不重播）；M 静音全局翻转+toast；WASAPI 恢复（M4R 临时
+  Dummy 解除）。**正式 BGM=Strudel 谱面路线**（人类指示参照 programmed-music）：`assets-src/music/
+  strudel/` 四轨占位谱+渲染管线 README，WAV 暂留空；占位循环由 `tools/AudioBake`（源合成参数离线
+  烘焙）+`scripts/bake-audio.ps1` 生成。
+- **行为结论 B20**（§10，M5 开工读源）：SFX 全源仅 click/win 两处触发（lose/hover 预制未接线）；
+  BGM 四轨场景映射与同轨守卫；默认音量 sfx=0.6/bgm=0.3；**源切语言是热刷新**（injectUITexts 立即
+  重注入）——本项目等价=EventBus.LanguageChanged → 重建已挂载壳屏（ApplyTheme 同款通道）。
+- **设置页**：Overlay 浮层（标题/暂停入口）——音量滑条×2、静音（M 同步）、窗口模式三档+启动恢复
+  （`user://settings.cfg` general 节）、语言切换。`SettingsStore` 统一 cfg 读写（读全文再改防节覆盖）。
+- **i18n 四语言**：zh-CN 文本本身作键（gettext 风格，**Core 的 Text 常量零改动**，LevelCatalog/
+  SwapEngine/KeymapTable 的值原样流动、渲染点包 `I18n.T`——114 处调用点批量改造+散点手修）；
+  翻译表 `assets/i18n/translations.csv`（zh-Hant/en-US/ja-JP 手译）；Core 完备性测试（反射键集
+  全覆盖+伪键检测）+ 端到端自测。
+  **关键坑**：①`zh_CN` 查询按语言族误配 `zh_Hant`（Godot 语言前缀匹配）——注册 zh-CN 原文自映射
+  列后精确命中，端到端自测 `m5-i18n` 抓住；②批量替换正则误伤 `System.Text.Encoding`——加负向后顾
+  修复后重跑（教训：**批量改码先小样本验证再全量**）。
+- **图标/发布**：程序化图标 `tools/make-icon.py`（PIL 等距三层棋盘+五连：**paste 是替换语义、透明
+  像素会擦底，须 alpha_composite**）；README 发布说明；package.ps1 复验（120MB 自包含、真窗口冒烟）。
+  PowerShell 脚本含中文必须 UTF-8 **with BOM**（Windows PowerShell 5 按 ANSI 解析无 BOM 文件）。
+- **过渡动效（最小方案）**：进对局/最大化跳变时 GameScreen Modulate 0.4→1/160ms 淡入，掩盖 3D
+  首帧黑闪与一帧重排；不碰布局/缩放管线（B16 回环教训）。退出时 OGG playback 残留警告为引擎音频
+  线程退出时序噪音（Stop 已正确执行，无运行时危害，登记接受）。
+- **M/T 浮层内生效补齐**：KeymapTable 宣称 AllowWhenOverlay 但浮层分发只接了 F1/Esc（M4 遗留
+  漂移），M5 补接线。
+- 门禁：build 0 警告 / 304 测试 / 无头自测 ALL PASS / 发布包真窗口冒烟。
 
-## M4 批11 — 最大化 UI 异常根治（2026-09-26）
+## 0.1.0-alpha（2026-09-26，M4 收官节选）
 
-- **真机制（勘误误诊）**：人类澄清"一直点的是最大化按钮"后程序化等价复现，wintrace 引擎状态字段
-  定位——`Window.ContentScaleSize` 在 Godot 4.6 默认=启动窗口尺寸（1920×1080），逻辑面被钉死
-  768×432，最大化按 factor×window/css 抬缩放至 **4.1667 非整数**：UI 放大 1.67 倍+发糊+底部内容
-  压向任务栏=「遮挡/挤压」全部观感。此前"相机拖拽逃逸→Aero-Snap"系误诊（客户区事件 OS 层不可能
-  转窗口拖动）；教训：**自动化复现不了就先向人类逐动作澄清，别写"机制定案"**。
-- **根治**：`ApplyDisplayScaling` 显式 `ContentScaleSize=Zero` 恢复 expand 语义——最大化 view=
-  (1280,743.6)、scale 恒 2.5（截图验证）。启动日志新增 build 时间戳行（自检"是否最新构建"）。
-  拖拽期 Confined 光标约束保留（正确的交互卫生，非本因）；wintrace+看守步保留。
-- 门禁：build 0 警告 / 302 测试 / 无头自测 ALL PASS / 窗口化截图对照。
+- **M4 能力**：状态机/UI/存档/路由/主题/关卡/F1 帮助（细节见 git log 与 §10）；批 1–11 验收反馈
+  全落地（存档菜单定稿、复盘界面修复、最大化 ContentScaleSize 根治 B19 等）。
+- **关键教训（M4 精选，全文见 git 历史）**：B16 v4 视口原生像素四版迭代（回环只在内容缩放>1 时
+  发展）；`ContentScaleSize` 在 Godot 4.6 默认=启动窗口尺寸（批11 根治，B19）；headless 下
+  ConfirmationDialog 不自动确认（合成 confirmed 驱动）；窗口/视口/渲染类改动必须真实窗口实测；
+  自动化无法复现时先向人类逐动作澄清再写"机制定案"。
 
-## M4 验收反馈批10 — 复盘界面修复批（2026-09-26）
 
-- **行棋指示器统一**（人类拍板）：新 TurnIndicator 右下角——虚拟棋子在上、文字在下（字号 16→14），
-  对局/复盘两态共用（复盘首次获得该指示）；B13 右上角假棋子与底部居中状态字退役（CenterBottom
-  同锚重叠根除）。复盘态优先显示游标行棋方（即便载入已结束档）；结算/SWAP2 提示为纯文字态。
-- **环随游标**：GM 新 `LastVisibleMove`（对局=末手，复盘=游标前一手，0 手=无）；2D 环与 3D 红环换源，
-  修复复盘中环冻结在整局最后一手。行棋方随游标（ApplyReplayCursor，0 手=黑先）——"ghost 恒黑"根因。
-- **复盘 ghost/辅助线**：ghost 色随游标行棋方、降透明（0.35→0.21）呈不可落子暗示；ComputeAux 放开
-  复盘拦截，辅助线随游标棋盘扫描（3D 同步受益）。棋子四层绘制抽 `StonePainter` 共用（纹理静态缓存）。
-- **ReplayBar**：滑条 280→200 修右侧出界；0 手复盘滑条/步进禁用。新回归 `m4c-replay-hud`：几何断言
-  （不出界/不与指示器重叠）+ 0 手适配 + 游标环/行棋方断言。
-- 门禁：build 0 警告 / 302 测试 / 无头自测 ALL PASS。
+## M4 验收反馈批 2–11（2026-09-25/26，已压缩；细节见 git log 与 §10）
 
-## M4 验收反馈批9 — 存档菜单定稿与偶数阶销账（2026-09-26）
-
-- **菜单=档案管理**（人类拍板）：不再承担保存当前对局——写局只走 S（首空槽/满则快存）/Ctrl+S/Ctrl+L，
-  菜单底部键位提示行补可发现性。头部「导入」（原导入文件）=文件→统一落槽（首空槽，全满覆盖槽 5 并
-  确认，快存槽永不被动覆盖）；头部剪贴板导入删除。空槽行 [填写][导入]；非空槽行 [读取][复盘][覆盖
-  （剪贴板→该槽，占用先确认）][复制][导出（文件对话框直开）][删除]；「覆盖（写当前局）」「存为快存」
-  与字面「文件」按钮（全游戏唯一纯名词无意义标签，人类点名）退役。剪贴板=显式中转站，
-  复制↔填写/覆盖搬运闭环；导入原档保真（id/timestamp 随档）。
-- **偶数阶销账**：SaveValidator 拒绝偶数 boardSize（`SAVE_INVALID_EVEN_BOARD_SIZE`）；导入链路
-  （剪贴板/文件/zip）此前只迁移不校验结构的缺口一并补上（TryParsePackage/TryUnpackPackage 接入
-  Validate），全链路封闭。前提（拍板）：存档不与外部游戏互通+无偶数阶入口。migration-plan D1 定案。
-- 自测 m4c-save-alignment 重写：S×2/填写/覆盖（合成确认）/文件指定槽/统一落槽/全满覆盖槽5+快存保护。
-  教训：导入原档保真使时间戳断言失效 → 改档 Id 断言；headless 剪贴板不可靠 → ExportSlot 返回值 +
-  FillSlot(index, text)。
-- 门禁：build 0 警告 / 302 测试 / 无头自测 ALL PASS。
-
-## M4 验收反馈批 6–8 — 快捷键分页定稿与渲染精度（2026-09-26，已压缩）
-
-- 批6：分层=分页定稿（六页/圆圈页码/键帽注记 ≤3 字 `KeymapEntry.Short` 单源+排版防错锁）。
-- 批7：2D 棋子四层球面质感+格线硬边、3D 视口 ×2 超采样、翻层 NRE（引导屏未挂载解引用）修复、
-  页码固定、无色占位键。
-- 批8：暗环纹理改**逐像素圆内遮罩**（圆外强制透明——浅底"超界方框"根除；方形径向渐变的固有缺陷，
-  同 §10 B18 源项目同病教训）、辅助线/红圈减细。
-- 各批门禁：build 0 警告 / 298 测试 / 无头自测 ALL PASS。
-
-## M4 验收反馈批 4+5 — UI 缩放定稿与快捷键入口修复（2026-09-25，已压缩；细节见 §10 B16 与 git log）
-
-- 修复「没看到快捷键页」：标题/暂停 G 开的是引导占位页——抽共用 KeymapContent，引导屏与 F1 同内容。
-- UI 缩放两版迭代（批 4 被 5 否）：定稿=窗口固定 1920×1080 + ContentScaleFactor=2.5 绝对值
-  （等效基准 768×432）；"非常糊"根因=v2 超采样降采样回逻辑纹理再放大——3D 纹理必须原生像素。
-- 引擎事实：headless 下 ConfirmationDialog 不会自动确认——确认框语义用 ConfirmDialogForTests 合成驱动。
-
-## M4 验收反馈批 3 — 复盘 NRE 修复与 F1 页改版方案（2026-09-25）
-
-- **修复：首次进复盘 NRE 崩溃**（人类实测：存档菜单「复盘」→ `NullReferenceException at
-  Main.Refresh`）。根因：`BeginReplay` 先置 `InReplay` 再触发 `GM.StateChanged → Refresh`，此刻
-  replay-hud 路由尚未挂载（`_replayBar=null`）；再次进入时旧实例又已随浮层卸载 QueueFree——
-  两个窗口都会炸。**无头自测此前只在隔离 store（reborn）上测过 EnterReplay，主场景 UI 路径漏测**。
-  修复：`Refresh` 对 `_replayBar` 做 `IsInstanceValid` 守卫 + `OnStateChanged(Replay)` 挂载后补一次
-  `Refresh()` 同步。回归步 `m4c-replay-entry`（临时还原守卫验证：精确复现同款 NRE → 修复后 ok）。
-  **复盘功能本体（步进/进度条/门控）M4 第一轮已有，此为视图联动时序 bug，非缺失。**
-- **F1 快捷键页改版方案（待拍板，全文见 TODO「当前」）**：对齐源 guide 的 keyboard-sim 视觉
-  （40px 3D 阴影键帽 / 六作用域配色 / 图例+分组说明），增强①层级切换（作用域页签过滤+键帽联动）
-  与②多键组合键帽（Ctrl+S/Shift+WASD/Esc·R）；数据仍由 KeymapTable 单源派生，键位零改动。
-
-## M4 验收反馈批 2 — bug1 修复 + 存档 UX/亮色主题落地（2026-09-25）
-
-- **修复：开始新对局继承读档配置**（读 994 亮色档，重开仍是 994+亮色）。根因：`RequestStartNew`
-  只 `GM.Reset()`，不重配 `LoadFrom`/`StartLevel` 改过的维度/规则/模式/AI/主题。修复对齐源
-  `startGame = initGameContext(STANDARD_LEVEL)`：`CaptureDefaultContext` 捕获启动默认关卡，
-  新局恒 `StartLevel(默认)`；主题引入 **T 偏好模型**（`_themePreference` 随 T 更新，新局恢复偏好
-  ——读档带来的主题不进新局，用户 T 选择保留）。回归步 `m4c-newgame-default-context`。
-  **引擎事实修正**：headless 下 `ConfirmationDialog`（PopupCentered）**不会**自动确认——确认框
-  语义用 `ConfirmDialogForTests.EmitSignal("confirmed")` 合成驱动（此前交接教训 #4 表述有误）。
-- **存档 UX 落地（方案 1，人类拍板 P1–P3）**：源核实——槽位管理只嵌标题屏右列；暂停菜单 L=读最新；
-  快存=第 6 槽且源有 quick-load 按钮；缺口感 = 只有写快存没有读快存键。落地：P1 暂停「读档」按钮
-  打开存档菜单（L 键保持读最新，按钮无键位提示防误导）；P2 新增 **Ctrl+L=读快存槽**（生效态=Paused，
-  §3.4 读档仅 Title/Paused 合法，不扩转移表；空槽 toast「暂无快存」）；P3 存档菜单快存行标注
-  「快存 · Ctrl+S 写 / Ctrl+L 读」。回归步 `m4c-quick-load`（快存→续弈 2 手→暂停→Ctrl+L→恢复）。
-- **亮色主题对齐源（方案 2，B17）**：①根因修复——2D 面板与游戏基座无自有背景、透出根窗口默认
-  深灰清屏色（暗色下不可见），现 `SetDefaultClearColor` 随主题（首帧前 + ApplyTheme +
-  project.godot 兜底）；②Light 套按源逐字段重校：底 #E8F4F5/网格 #A0C0C4/黑石 #222/白石 #F0E8E0
-  /文字 #1A2E3A/强调 #2C4A4E/危险 #8B3A3A（自创"宣纸米色"系弃用）；B9 自方绿/ghost 透明度/
-  色弱组校准值保留。**待人类 T 键真实窗口走查**（对比度/协调性主观验收）。
-- 门禁：build 0 警告 / 273 测试 / 无头自测 ALL PASS（含 m4c-quick-load）。
+- 批11 最大化 UI 异常根治（B19：ContentScaleSize 归零恢复 expand）；批10 复盘界面修复（TurnIndicator
+  统一/环随游标/ghost 降透明/m4c-replay-hud）；批9 存档菜单定稿=档案管理+偶数阶销账（SaveValidator
+  全链路校验）；批6 快捷键六层分页；批5 UI 缩放 2.5 绝对值定稿+ViewportHost 自绘（B16 v4）；
+  批4 F1 入口错位修复（KeymapContent 共用）；批3 复盘 NRE 修复（Refresh 有效性守卫+m4c-replay-entry）；
+  批2 bug1 默认上下文（CaptureDefaultContext+T 偏好模型）/存档 UX P1–P3/亮色主题 B17 对齐源。
+- 教训：确认框语义用合成 confirmed 驱动（headless 不自动确认）；主场景 UI 路径漏测=复盘 NRE 根因
+  （隔离 store 全绿≠主场景无恙）；导入原档保真使时间戳断言失效（改档 Id 断言）；headless 剪贴板
+  不可靠（ExportSlot 返回值+FillSlot(index,text)）。
 
 ## M4 相机异常定案与回退批恢复（2026-09-25）
 
