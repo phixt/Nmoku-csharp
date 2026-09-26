@@ -1,0 +1,22 @@
+// bgm_pause.strudel —— 暂停 BGM（占位骨架，正式创作在此基础上展开）
+// 源语义（audio_var.md §二 pause）：held-breath, underwater filtered with tremolo
+// 和弦进行：G Gsus G Gsus，每和弦 3.5s → setcps(1/3.5) ≈ 0.286（1 cycle = 1 和弦）
+// 播放: 全选复制本文件 → https://strudel.cc/ → Ctrl/Cmd + Enter
+
+setcps(1 / 3.5)
+
+stack(
+  // 贝斯：低幅长音（源 gain 0.08）
+  n("<g1 g1 g1 g1>")
+    .s("triangle")
+    .attack(.4).release(3)
+    .gain(.07).room(.45),
+
+  // 和弦：屏息式长垫（源 triangle gain 0.04；filterCutoffMult 0.7 = 水下闷感，
+  //       tremolo 2Hz——strudel 用 trem 模拟，正式版再调）
+  chord("<G Gsus G Gsus>")
+    .s("triangle")
+    .attack(.6).release(3.2)
+    .gain(.032).room(.45)
+    .trem(2).tremdepth(.2),
+)

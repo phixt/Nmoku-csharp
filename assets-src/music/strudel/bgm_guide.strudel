@@ -1,0 +1,26 @@
+// bgm_guide.strudel —— 引导页 BGM（占位骨架，正式创作在此基础上展开）
+// 源语义（audio_var.md §二 guide）：gentle organ swell + sustained pad
+// 和弦进行：Cadd9 Fadd9 Cadd9 G7，每和弦 1.8s → setcps(1/1.8) ≈ 0.556（1 cycle = 1 和弦）
+// 播放: 全选复制本文件 → https://strudel.cc/ → Ctrl/Cmd + Enter
+
+setcps(1 / 1.8)
+
+stack(
+  // 贝斯：三角波（源 gain 0.12，attackOverride 0.3 → 慢起音）
+  n("<c2 f2 c2 g2>")
+    .s("triangle")
+    .attack(.3).release(1.2)
+    .gain(.08).room(.28),
+
+  // 和弦：三角波管风琴涌动（源 gain 0.06）
+  chord("<Cadd9 Fadd9 Cadd9 G7>")
+    .s("triangle")
+    .attack(.3).release(1.4)
+    .gain(.04).room(.28),
+
+  // 五度+九度长音垫（源 pad 层：5th & 9th above root，gain 0.05）
+  n("<g4 c5 f4 c5 g4 c5 d5 g5>")
+    .s("triangle")
+    .attack(.5).release(1.6)
+    .gain(.035).room(.3),
+)

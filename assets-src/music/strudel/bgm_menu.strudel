@@ -1,0 +1,26 @@
+// bgm_menu.strudel —— 标题屏 BGM（占位骨架，正式创作在此基础上展开）
+// 源语义（audio_var.md §二 menu）：warm cinematic pad + shimmering arpeggios
+// 和弦进行：Cmaj7 Gadd9 Am7 Fmaj7，每和弦 2.8s → setcps(1/2.8) ≈ 0.357（1 cycle = 1 和弦）
+// 播放: 全选复制本文件 → https://strudel.cc/ → Ctrl/Cmd + Enter
+
+setcps(1 / 2.8)
+
+stack(
+  // 贝斯：根音降八度，三角波，源 gain 0.16 × baseGain 0.7
+  n("<c2 g2 a2 f2>")
+    .s("triangle")
+    .attack(.01).release(2.5)
+    .gain(.11).room(.3),
+
+  // 和弦垫：全和弦音，锯齿波柔化（源 sawtooth gain 0.065）
+  chord("<Cmaj7 Gadd9 Am7 Fmaj7>")
+    .s("sawtooth")
+    .attack(.25).release(2.6)
+    .gain(.05).room(.32),
+
+  // 琶音：add9 十六分位 shimmer（源 sine gain 0.045，arpStyle add9）
+  n("[[c4 e4 g4 b4],[g3 b3 d4 a4],[a3 c4 e4 g4],[f3 a3 c4 e4]]*2")
+    .s("sine")
+    .attack(.006).release(.35)
+    .gain(.035).room(.3),
+)
