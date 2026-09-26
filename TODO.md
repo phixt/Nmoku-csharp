@@ -58,8 +58,11 @@ Ctrl/Shift 修饰各自单独成层（颜色随层）；同键跨层的少量例
       migration-plan §10 B19。**禁止盲修**（几何自愈类补丁=遍历式打补丁）
 - [x] 取证协议落地：`TraceWindowGeometry` 常开——窗口 pos/size/mode/工作区任一变化即刻落
       `src/Nmoku.Game/.trace/window-trace.log`（状态关联）+ 回归步 m4c-window-sequence 长期看守
-- [ ] **待人类取证**：正常游玩复现遮挡后，把 `src/Nmoku.Game/.trace/window-trace.log` 交给 agent——
-      日志即机制证据，随后一次修复
+- [ ] **待人类取证（线索更新 2026-09-26：人类实测"开始游戏→返回标题"秒复现，窗口被翻成
+      Maximized (0,45)/3200×1859——与程序化最大化同形态，来回可复现可恢复）**：自动化复现未果
+      （store 直调/合成确认框/真实按键 SendKeys 均不触发），疑在真实鼠标交互或启动上下文。
+      需人类补三个事实+完整日志：①来回复现数轮后**正常退出**，交出 `src/Nmoku.Game/.trace/window-trace.log`
+      全文（勿 Ctrl+C 截断）；②启动方式：Godot 编辑器 F5 还是直接运行；③开始游戏/返回标题用鼠标还是键盘
 - [x] 顺带修复两个真实缺陷：主自测 store 曾跑真实存档目录（AutotestSaveDir 死常量，清槽步骤会毁
       真实存档）→ 隔离到 saves_autotest；m4-import / m4b-nzsave-file-roundtrip 共享目录污染 →
       自备目录+预清理
