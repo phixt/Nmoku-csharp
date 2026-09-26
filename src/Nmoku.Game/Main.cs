@@ -414,6 +414,7 @@ public partial class Main : Node
             RunAutotest();
             return;
         }
+        AdvanceFade(delta);
         HandleHeldInput(delta);
         HandleViewportChange();
         _rig.Advance(delta);
@@ -2100,6 +2101,12 @@ public partial class Main : Node
         var size = _viewport3D.GetVisibleRect().Size;
         if (_lastViewportSize != size)
         {
+            // 逻辑面大幅跳变（最大化 768×432→1280×743 等）：淡入柔化一帧重排的"突兀缩小"观感
+            // （M5 最小动效：只调 Modulate，不碰布局/缩放管线——B16 回环教训）
+            if (Mathf.Abs(size.X - _lastViewportSize.X) > 200 || Mathf.Abs(size.Y - _lastViewportSize.Y) > 120)
+            {
+                StartFadeIn();
+            }
             _lastViewportSize = size;
             _rig.Update(_boardSize, _layers, _spacing, size.X / size.Y, GameConfig.DefaultYaw);
         }
@@ -2150,6 +2157,13 @@ public partial class Main : Node
     {
         _router.ShowState(state);
         SyncBgm(state);
+        // 进对局（从标题/引导进入，非暂停/复盘往返）：3D 视口首帧渐显，掩盖纹理就绪前的黑闪
+        if (state == GameState.Playing && _lastState is GameState.Title or GameState.GuideFromTitle
+            or GameState.GuideFromGame)
+        {
+            StartFadeIn();
+        }
+        _lastState = state;
         if (state == GameState.Replay)
         {
             Refresh(); // replay-hud 此刻才挂载：补一次同步（BeginReplay 内的首刷落在挂载前）
@@ -2185,6 +2199,35 @@ public partial class Main : Node
         {
             _audio.PlayBgm(t);
         }
+    }
+
+    // ---- M5 过渡动效（最小安全方案）：内容 Modulate 0.4→1 快速淡入，掩盖逻辑面一帧重排
+    //      （最大化跳变）与 3D 视口首帧黑闪；不碰布局/缩放管线（B16 回环教训）----
+    private const float FadeDuration = 0.16f;
+    private const float FadeFromAlpha = 0.4f;
+    private float _fadeRemaining;
+    private GameState _lastState;
+
+    private void StartFadeIn()
+    {
+        _fadeRemaining = FadeDuration;
+        _gameScreen.Modulate = new Color(1, 1, 1, FadeFromAlpha);
+    }
+
+    private void AdvanceFade(double delta)
+    {
+        if (_fadeRemaining <= 0)
+        {
+            return;
+        }
+        _fadeRemaining -= (float)delta;
+        if (_fadeRemaining <= 0)
+        {
+            _gameScreen.Modulate = Colors.White;
+            return;
+        }
+        float t = 1 - (float)(_fadeRemaining / FadeDuration);
+        _gameScreen.Modulate = new Color(1, 1, 1, Mathf.Lerp(FadeFromAlpha, 1f, t));
     }
 
     private void OpenSaveMenu()
