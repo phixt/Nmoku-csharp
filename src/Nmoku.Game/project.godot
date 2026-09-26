@@ -17,25 +17,15 @@ config/features=PackedStringArray("4.6", "C#", "Forward Plus")
 
 [audio]
 
-; M4R：项目尚无音频播放（M5 才实装 BGM/SFX）。WASAPI 共享模式下默认输出设备失效/切换时，
-; 引擎音频线程会报 GetBufferSize/invalidated 并在重连时抖动系统混音（其他窗口音频撕裂）——
-; 引擎驱动层已知行为（godotengine/godot#18732 一脉），非本项目代码可修。
-; 用 Dummy 驱动让引擎暂不占用音频设备；M5 实装 AudioManager 时恢复 WASAPI 并复测窗口切换场景。
-driver/enable_input=false
 driver/driver_type="Dummy"
-
 default_bus_layout="res://default_bus_layout.tres"
 
 [display]
 
-; 1080p 基准 + canvas_items 拉伸 + aspect expand：UI 矢量缩放渲染在窗口原生分辨率，
-; 高分屏/全屏不糊（M4R 反馈"全屏发糊"：Godot 默认 648p 基准 + 无拉伸配置；3D 子视口另在
-; Main.SyncViewport3DResolution 乘最终变换缩放至原生像素）。
 window/size/viewport_width=1920
 window/size/viewport_height=1080
 window/stretch/mode="canvas_items"
 window/stretch/aspect="expand"
-window/dpi/allow_hidpi=true
 
 [dotnet]
 

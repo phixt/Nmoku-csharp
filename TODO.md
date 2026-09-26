@@ -95,7 +95,10 @@ Ctrl/Shift 修饰各自单独成层（颜色随层）；同键跨层的少量例
 - [ ] M5：AudioManager + 采样版 BGM（4 轨循环）+ SFX 全集 + M 静音（action 已挂）+ `IMusicEngine`/`SetIntensity` 接口就位。
       **开工先恢复音频驱动**：project.godot 现为 `driver_type="Dummy"`（M4R 临时缓解 WASAPI 设备失效报错与
       系统混音撕裂，见 CHANGELOG），恢复 WASAPI 后必须实测窗口切换/设备切换场景
-- [ ] M5：TextConstants → CSV 四语言 + 语言切换；导出配置、Windows 打包 zip、README 收尾
+- [ ] M5：TextConstants → CSV 四语言 + 语言切换；README 收尾
+- [ ] M5 打包（预备就绪）：`export_presets.cfg`+`scripts/package.ps1` 已入仓；**剩一次性下载 mono
+      导出模板**（编辑器 → 管理导出模板 → 下载，约 1GB）后脚本一键出包（构建→导出→冒烟→zip）。
+      产物需目标机 .NET 8 运行时（zip 附说明）；正式图标/自包含部署为可选项
 
 ## 远期挂账
 
