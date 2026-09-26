@@ -65,17 +65,33 @@
   引导屏（标题「快捷键说明」/暂停 G）与 F1 共用同一内容。
 - 门禁：build 0 警告 / 297 测试 / 无头自测 ALL PASS；多屏真实窗口截屏自检通过。
 
-## M4 验收反馈批 4 — 全局 UI ×2.5 与快捷键说明入口修复（2026-09-25）
+## M4 阶段总结（2026-09-26，验收反馈批 1–8 完结，准备 M5）
 
-- **修复「没看到快捷键页」**：根因不是页面没载入——标题「快捷键说明」/暂停 G 按钮开的是
-  **引导占位页**（M4 静态文案 GuideScreen），而新键盘页只挂在 F1 浮层上。修复：抽出共用
-  `KeymapContent`（图例+键盘模拟区+说明列表），引导屏改为显示同一内容（与源项目
-  "说明=键盘说明页"语义一致），F1 浮层与引导屏共用。F1 键路径实测真实窗口可开（截屏验证）。
-- **全游戏 UI ×2.5（人类拍板）**：`ApplyDisplayScaling` 内容缩放 = OS DPI × **UiScaleFactor(2.5)**
-  （唯一调节点），等效设计基准约 768×432，字体/控件物理尺寸全部 ×2.5；3D 视口原生像素渲染不受
-  影响（相机随纵横比自适应）。多屏真实窗口截屏自检（标题/帮助/沙盒/存档菜单/暂停）：无溢出，
-  F1 面板与引导屏改随窗口自适应（固定 760×660 在新基准下会溢出）。
-- 门禁：build 0 警告 / 297 测试 / 无头自测 ALL PASS。
+- **落地全景**：游戏壳七态（标题/对局/暂停/结算/引导/复盘/帮助）+ 三层路由栈（首中即吞、
+  KeepAlive、背板体系）；存档六槽+.nzsave 文件容器+剪贴板互通+文件对话框+winLength 外圈元数据
+  （B14）；明暗主题（T 偏好模型）+文楷+关卡系统（预设+沙盒）；快捷键体系（KeymapTable 单一
+  数据源+F1 分层分页六层页+圆圈页码+键帽注记）；UI 缩放（1920×1080 窗口+内容缩放 2.5）；
+  B16 视口四版迭代定稿（v4 ViewportHost 自绘原生像素）；2D 棋子球面受光质感。
+- **事故与教训沉淀**：B15 toast 死循环（77GB 事故真凶）；B16 v1 视口回环黑屏（v1→v4 完整机理
+  链登记 §10，引擎 get_minimum_size 不走脚本虚方法）；复盘 NRE（主场景 UI 路径自测盲区）；
+  无头全绿≠真实窗口正常（贯穿八批的主旋律）。
+- **质量基线**：build 0 警告 / 298 单测 / 无头自测 ALL PASS（含 11 个 m4c 回归步）；
+  提交全部本地未 push（规约 9），tag `m4` 待人类打。
+- **遗留**：任务栏遮挡（两条线索挂账）；tutorial/residual 关卡占位重设计；偶数阶中心标注。
+
+## M4 验收反馈批 4+5 — UI 缩放定稿与快捷键说明入口修复（2026-09-25）
+
+- **修复「没看到快捷键页」**：标题「快捷键说明」/暂停 G 开的是引导占位页（非键盘页）——抽共用
+  `KeymapContent`，引导屏与 F1 浮层同内容（与源"说明=键盘说明页"语义一致）。
+- **UI 缩放两版迭代（批 4 被批 5 否定）**：批 4 = OS DPI × 2.5 + 窗口 85% 工作区——人类实测
+  "效果很差、非常糊、窗口还是 1920×1080 合适"；批 5 定稿 = **窗口固定 1920×1080 +
+  ContentScaleFactor=2.5 绝对值**（等效设计基准 768×432，`Main.UiScaleFactor` 唯一调节点）。
+  "非常糊"根因=v2 超采样降采样回**逻辑尺寸纹理**再被放大显示——3D 纹理必须原生像素（B16 v4）。
+- **引擎事实修正**：headless 下 `ConfirmationDialog`（PopupCentered）**不会**自动确认——
+  确认框语义用 `ConfirmDialogForTests.EmitSignal("confirmed")` 合成驱动（此前交接教训 #4 有误）。
+- **B16 v4 定稿**（承接批 3 的 v3 无效实测）：弃用 SubViewportContainer，`ViewportHost` 自绘
+  视口纹理结构性解耦，视口=宿主逻辑尺寸×内容缩放=原生像素（详见 §10 B16 四版链）。
+- 门禁：build 0 警告 / 298 测试 / 无头自测 ALL PASS。
 
 ## M4 验收反馈批 3 — 复盘 NRE 修复与 F1 页改版方案（2026-09-25）
 
@@ -162,52 +178,23 @@
   保留现场语义（标题"继续对局"，覆盖先确认）；浮层冒泡（F1/Esc，Esc 关最顶）；**KeymapTable 单一
   数据源**（门控/F1/文档三处同源，冲突检测兜底漂移）。
 
-## M4 第二轮 — 明暗主题/字体/关卡/文件存档（2026-09-19，代码完结）
+## M4 第二轮 — 明暗主题/字体/关卡/文件存档（2026-09-19）
 
-- **Palette 明暗双套**：`Dark`（既有基线）/`Light`（水绿宣纸：宣纸底、墨色字、水绿强调）；`Active` 运行时
-  当前套，`WithColorblind()` 色弱组随明暗各自校准（V 与 T 正交组合）；Ghost 透明度明暗反转
-  （浅底黑子低透/白子高透）。T 键→`GameStore.ToggleTheme`→EventBus→Main.ApplyTheme：3D 环境换肤 +
-  已挂载壳屏经 `SceneRouter.Rebuild` 重建（game 基座除外，视图走 ApplyPalette 通道）。
-  **SaveData.isDarkTheme 随档恢复**（LoadSlot/EnterReplay 时应用）。
-- **霞鹜文楷全局字体**：`assets/fonts/`（OFL 许可随附），根窗口 Theme 默认字体全体控件生效。
-- **关卡系统**：Core `LevelCatalog` 三预设（classic/tutorial 占位/residual 三预置子占位，重设计仍挂账）；
-  `GameManager.Configure(LevelConfig,…)` 随档装配 **WinLength 与预置子**（预置子落盘后引擎重推导回合/
-  决策期，与 LoadFrom 同口径）；标题屏"自定义对局"→ `SandboxPanel`（预设/尺寸奇数≥5/层数/连珠 4–9/
-  规则/模式/AI 难度表单，非法组合 toast）；命令行参数并入同一装配路径。
-- **.nzsave 文件级导入导出**：存档菜单新增"导入文件"与逐槽"文件"按钮，Godot FileDialog 选路径；
-  导出为 zip 容器字节，导入优先 `NzSaveContainer.TryUnpack` 直解、回退文本嗅探；无头自测覆盖文件往返。
-- **限制（登记）**：v2.0.0 schema 无 winLength 字段（§4 不增删），自定义连珠数存档读回后回默认 5——
-  后续走 .nzsave manifest 外圈元数据扩展（migration-plan §4 允许）。
-- **待人类验收**：T 明暗切换观感（水绿宣纸 light 为首发目视版）、文楷字体、自定义对局面板、
-  文件导入导出、残局/教学占位关。**剩余 M4 尾项**：真实浏览器样本闭环 R6（需跑源项目）、§6.3-6.5
-  清单核对、真实旧档恢复、验收 tag `m4`。
+- Palette 明暗双套+WithColorblind（V 与 T 正交）+Ghost 反转；T→EventBus→换肤（SaveData.isDarkTheme
+  随档恢复）。霞鹜文楷全局字体。关卡系统：LevelCatalog 三预设+沙盒表单+命令行并入同一装配路径
+  （Configure 随档装配 WinLength 与预置子）。.nzsave 文件级导入导出+FileDialog。
+- **限制（后由 B14 解决）**：v2.0.0 schema 无 winLength 字段，自定义连珠数随档丢失→外圈元数据。
 
-## M4 第一轮 — 游戏壳全通（2026-09-19，代码完结，M4 第二轮转新对话）
+## M4 第一轮 — 游戏壳全通（2026-09-19）
 
-- **Core**：`GameStateMachine` 7 态 + §3.4 全转移表（非法组合拒绝，穷举测试）；
-  `NzSaveContainer`（.nzsave zip 容器：manifest.json + savedata.json，replay.png 预留位）+
-  `SaveArchive.TryParse` 统一嗅探（裸 JSON / Base64(JSON) / Base64(zip) / Latin-1 zip 字节四路）；
-  `Board.ToJaggedArray()` 存档导出原语；`IOverlayManager` 接口按 §1 依赖方向落 Core（纯 C# 委托）。
-- **Game**：`GameStore`（状态机宿主：转移副作用集中在动作方法，读档失败整转移取消）+
-  `FileSystemStorageAdapter`（user://saves：index.json + <id>.sav，覆盖槽位清旧 blob）+
-  `ShortcutRouter`（§4.2.2 context 门控；相机/视觉键 PLAYING+REPLAY，玩法键 PLAYING）+
-  `OverlayManager` Godot 实现（模态互斥拒绝第二调用、回调恰好一次、toast 堆叠 2.5s 不抢焦点；
-  扩展 onCancel+按钮文案——SWAP2 的"取消=继续执白"是有效决策）。
-- **壳屏六件**：TitleScreen / PauseMenu / GameOverModal / SaveMenu(6 槽+载入/复盘/导出/删除/导入) /
-  GuideScreen(静态占位文案) / ReplayBar(步进+进度条)，状态驱动可见性；Ctrl+S 快存、L 读最新、
-  剪贴板导出（Base64 v2，与源浏览器互通）/导入（统一嗅探落首个空槽）。
-- **GameManager 扩展**：`BuildSaveData`（回合/SWAP2 决策期由引擎从 history 重推导，不信任存档中间态字段；
-  focusZ 读入即弃复位层 0）/ `LoadFrom`（棋盘尺寸/规则/模式/AI 随档重配）/ `BeginReplay/SetReplayIndex`（复盘态门控落子/悔棋/AI）。
-- **关键教训**：
-  - §3.4 的 **Any→REPLAY** 是 7 个态全部可达——首轮实现只给了 Replay 自环，无头自测 `m4-save-load-replay`
-    一步暴露（Playing 进不了复盘）。转移表改动必须以文档逐行为准，穷举测试是安全网。
-  - Main.cs 重写时漏 `using Nmoku.Core.Saves`，报错表现为 tuple/lambda 的 CS1503 级联噪音，
-    真实错误被吞——**块级 lambda 抽成私有方法后错误才浮出**。
-  - ImplicitUsings 使 `FileAccess` 歧义（System.IO vs Godot），Game 侧用 `using FileAccess = Godot.FileAccess` 别名收敛。
-  - manifest.json 键序按 §3.4 示例走 camelCase（默认序列化是 PascalCase，TestFirst 抓住）。
-- **待人类验收**：真实窗口走七态（标题 Space 开始/暂停 Esc/重开确认框/Guide 两入口/结算模态）；
-  Ctrl+S→L 往返、存档菜单导出→（源浏览器版）导入互转、复盘 ←/→ 与进度条；视觉与手感反馈。
-- **M4 第二轮待办**：见 TODO「当前」节（Palette 明暗/关卡系统/字体/FileDialog/真实样本/§6.3-6.5 核对 + tag `m4`）。
+- Core：GameStateMachine 七态+§3.4 转移表穷举；NzSaveContainer（zip 容器）+SaveArchive 四路嗅探；
+  Board.ToJaggedArray；IOverlayManager 落 Core。
+- Game：GameStore（转移副作用集中，读档失败整转移取消）+FileSystemStorageAdapter+ShortcutRouter+
+  OverlayManager（模态互斥/回调恰好一次/toast 堆叠）；壳屏六件；Ctrl+S 快存/L 读最新/剪贴板导出导入；
+  GameManager BuildSaveData/LoadFrom/复盘门控。
+- **教训**：§3.4 Any→REPLAY 七态全可达（穷举测试抓漏）；缺 using 报错被 lambda 级联噪音吞
+  （块级 lambda 抽方法后浮出）；ImplicitUsings 的 FileAccess/Environment 歧义一律写全称；
+  manifest 键序 camelCase（TestFirst 抓住）。
 
 ## M3 — 2D 右面板 + 落子闭环 + 辅助线（2026-09-19，✅ 验收通过 tag `m3`）
 
