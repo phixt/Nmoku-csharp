@@ -13,6 +13,11 @@ public sealed partial class ReplayBar : Control
 
     private Label _position = null!;
     private HSlider _slider = null!;
+    private Button _prev = null!;
+    private Button _next = null!;
+
+    /// <summary>空局复盘（0 手）：步进与拖动全部禁用（批10 适配；自测读取）。</summary>
+    public bool ZeroMoveMode { get; private set; }
 
     public override void _Ready()
     {
@@ -45,20 +50,24 @@ public sealed partial class ReplayBar : Control
         title.AddThemeColorOverride("font_color", Palette.Active.TextPrimary);
         row.AddChild(title);
 
-        row.AddChild(MakeButton("上一步", () => StepRequested?.Invoke(-1)));
+        _prev = MakeButton("上一步", () => StepRequested?.Invoke(-1));
+        row.AddChild(_prev);
 
+        // 滑条 280→200：批10 修右侧出界（CenterBottom+Grow.Both 下面板最小宽不得超过 768 逻辑宽，
+        // 需给右下角行棋指示器留位）；m4c-replay-hud 以几何断言锁"不出界、不与指示器重叠"
         _slider = new HSlider
         {
             MinValue = 0,
             MaxValue = 1,
             Step = 1,
-            CustomMinimumSize = new Vector2(280, 24),
+            CustomMinimumSize = new Vector2(200, 24),
             SizeFlagsVertical = SizeFlags.ShrinkCenter,
         };
         _slider.ValueChanged += v => SeekRequested?.Invoke((int)v);
         row.AddChild(_slider);
 
-        row.AddChild(MakeButton("下一步", () => StepRequested?.Invoke(1)));
+        _next = MakeButton("下一步", () => StepRequested?.Invoke(1));
+        row.AddChild(_next);
 
         _position = new Label { Text = "0 / 0" };
         _position.AddThemeColorOverride("font_color", Palette.Active.TextPrimary);
@@ -70,6 +79,11 @@ public sealed partial class ReplayBar : Control
     /// <summary>同步游标显示（GM.StateChanged 驱动）。count=总手数，index=当前可见手数。</summary>
     public void Sync(int index, int count)
     {
+        // 空局复盘（0 手）：无步可进——滑条与步进钮全部禁用（批10 适配）
+        ZeroMoveMode = count == 0;
+        _slider.Editable = !ZeroMoveMode; // HSlider 用 Editable 反向语义
+        _prev.Disabled = ZeroMoveMode;
+        _next.Disabled = ZeroMoveMode;
         _slider.MaxValue = Math.Max(count, 1);
         _slider.SetValueNoSignal(Math.Clamp(index, 0, count));
         _position.Text = string.Format(Text.Replay.StepInfo, index, count);

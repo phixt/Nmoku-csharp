@@ -12,6 +12,19 @@
 - **架构红线**：`src/Nmoku.Core` 零 Godot 依赖（KeymapTable/GameStateMachine 均在 Core），xUnit 秒级运行。
 - **许可证**：项目源码采用 GNU GPL v3.0（GPL-3.0-only），完整协议见根目录 `LICENSE`，README 已加入授权说明。
 
+## M4 验收反馈批10 — 复盘界面修复批（2026-09-26）
+
+- **行棋指示器统一**（人类拍板）：新 TurnIndicator 右下角——虚拟棋子在上、文字在下（字号 16→14），
+  对局/复盘两态共用（复盘首次获得该指示）；B13 右上角假棋子与底部居中状态字退役（CenterBottom
+  同锚重叠根除）。复盘态优先显示游标行棋方（即便载入已结束档）；结算/SWAP2 提示为纯文字态。
+- **环随游标**：GM 新 `LastVisibleMove`（对局=末手，复盘=游标前一手，0 手=无）；2D 环与 3D 红环换源，
+  修复复盘中环冻结在整局最后一手。行棋方随游标（ApplyReplayCursor，0 手=黑先）——"ghost 恒黑"根因。
+- **复盘 ghost/辅助线**：ghost 色随游标行棋方、降透明（0.35→0.21）呈不可落子暗示；ComputeAux 放开
+  复盘拦截，辅助线随游标棋盘扫描（3D 同步受益）。棋子四层绘制抽 `StonePainter` 共用（纹理静态缓存）。
+- **ReplayBar**：滑条 280→200 修右侧出界；0 手复盘滑条/步进禁用。新回归 `m4c-replay-hud`：几何断言
+  （不出界/不与指示器重叠）+ 0 手适配 + 游标环/行棋方断言。
+- 门禁：build 0 警告 / 302 测试 / 无头自测 ALL PASS。
+
 ## M4 验收反馈批9 — 存档菜单定稿与偶数阶销账（2026-09-26）
 
 - **菜单=档案管理**（人类拍板）：不再承担保存当前对局——写局只走 S（首空槽/满则快存）/Ctrl+S/Ctrl+L，
@@ -164,25 +177,14 @@
 - **遗留观察项（人类走查时留意）**：超采样后 3D 缓冲为逻辑尺寸×缩放²，MSAA 8× 仍在；若高分机器
   帧率不足，降 MSAA 档位即可（超采样本身已提供 AA）。
 
-## M4 收尾轮 — 工程项全清（2026-09-19）
+## M4 收尾轮 — 工程项全清（2026-09-19，已压缩；细节见 git log 与 migration-plan §10）
 
-- **B14 winLength 外圈元数据双通道**（登记 migration-plan §10）：v2.0.0 内层不增删字段——
-  ① `.nzsave` manifest 可选 `winLength`（null 省键、越界视为缺失不毙档）；② 槽位 index.json 的
-  SlotMeta 可选 `winLength`（§3.1.2 超集兼容，旧 index 无键→默认 5）。`LoadFrom(data, winLength)`
-  恢复引擎/AI/关卡；快存/读档/复盘/导入导出全链路接线；无头自测连珠 7 快存→读档→连 6 不胜/连 7 胜。
-- **R6 双向闭环**：跑源项目 `npm run dev` + 浏览器 UI 真实落子 8 手 → Esc 保存 → localStorage 抓取，
-  样本入库 `Fixtures/browser_real_export_v2_standard.{json,b64.txt}`（= 源剪贴板字节）；反向把本项目
-  Base64 经源「填写」对话框导入成功（toast 已保存到存档 2）。行为级回归 `SaveFixtureTests.BrowserRealExport_*`。
-- **§6.3–6.5 契约核对**（结果登记 migration-plan §10.6）：逐条核对并补自动化证据——
-  `m4c-overlay-contract`（确认恰好一次/取消不触发 onYes/输入 trim/CloseAll 丢回调，合成信号断言）、
-  `m4c-modifier-quicksave`（合成 Ctrl+S 真触发快存、裸 S 不触发）、`Save_MultipleSlots_RoundTripIndependently`。
-  **登记偏差**：适配器 GetIndex 只返回非空槽 meta，固定 6 槽投影在 SaveManager 层（无消费方依赖字面形状）。
-- **真实旧档端到端恢复**：`m4c-real-old-restore` 读仓库内真实样本 → ImportText 完整导入路径 →
-  读档恢复 8 手 → 续弈第 9 手成五 → GameOver。自测夹具定位：**Godot 启动会把进程 CWD 切到项目目录**，
-  用 `CurrentDirectory` 与其上跳两级双候选探测（CI 从仓库根跑、本地同布局）。
-- **教训**：ImplicitUsings 的 `FileAccess`/`Environment` 歧义在 Main.cs 再次各踩一次（全限定名收敛）——
-  Godot 项目里 System 类名一律写全称。浏览器自动化经验：源项目落子=合成 mousemove+click（悬停门控）、
-  暂停菜单=合成 KeyboardEvent（cua.keypress 在 IAB 挂起）、存档真源=localStorage `gomoku_save_<uuid>`。
+- **B14/R6/契约核对/真实旧档恢复**全落地：winLength 外圈元数据双通道（.nzsave manifest + 槽位
+  index）、源项目浏览器双向导入导出闭环（真实样本入库）、m4c-overlay-contract / modifier-quicksave /
+  real-old-restore 回归、真实旧档导入端到端成五。
+- **教训**：Godot 启动会把进程 CWD 切到项目目录（夹具用 CurrentDirectory 双候选探测）；
+  ImplicitUsings 的 FileAccess/Environment 歧义一律写全称；浏览器自动化=合成 mousemove+click
+  （悬停门控）、暂停菜单=合成 KeyboardEvent、源项目存档真源=localStorage `gomoku_save_<uuid>`。
 
 ## M4R — 路由重构（2026-09-19，人类验收反馈返工）
 

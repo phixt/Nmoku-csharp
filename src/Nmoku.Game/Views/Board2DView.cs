@@ -13,7 +13,7 @@ public sealed partial class Board2DView : Control
     private const float GridPadding = 0.5f;   // R4-1 安全边距（格）
     private const float StoneRadius = 0.45f;  // 格单位
     private const float GhostOpacity = 0.35f; // 源 HOVER_PIECE_OPACITY
-    private const float TurnStoneOpacity = 0.55f; // B13 常驻行棋指示：比悬停 ghost 略高保可读
+    private const float ReplayGhostOpacity = 0.21f; // 批10：复盘 ghost 呈"不可落子"暗示（点击本被门控）
     private const float StarRadius = 0.12f;
     private const float MarkerRadius = 0.10f;
     private const float LastMoveRingRadius = 0.5f;
@@ -33,67 +33,6 @@ public sealed partial class Board2DView : Control
     private bool _mirrored = true; // R4-2：源默认镜像开
     private Vector2 _origin;       // 格 (0,0) 的屏幕中心（含镜像）
     private float _scale = 20f;    // px/格
-
-    // 高光光斑纹理（白色径向渐变到全透明——末档 alpha=0，四角不会出现方形色块）
-    private GradientTexture2D? _glowTex;
-    // 球面明暗纹理（人类反馈 2026-09-26：2D 棋子玩具感——按 3D 受光面渲染：
-    // 与高光同心的径向暗环，远缘变暗模拟球体背光侧）
-    private Texture2D? _shadeTex;
-
-    private void EnsureGlowTexture()
-    {
-        if (_glowTex != null)
-        {
-            return;
-        }
-        var gradient = new Gradient
-        {
-            Colors = [new Color(1, 1, 1, 0.9f), new Color(1, 1, 1, 0f)],
-            Offsets = [0f, 1f],
-        };
-        _glowTex = new GradientTexture2D
-        {
-            Gradient = gradient,
-            Fill = GradientTexture2D.FillEnum.Radial,
-            FillFrom = new Vector2(0.5f, 0.5f),
-            FillTo = new Vector2(1f, 0.5f),
-            Width = 64,
-            Height = 64,
-        };
-    }
-
-    private void EnsureShadeTexture()
-    {
-        if (_shadeTex != null)
-        {
-            return;
-        }
-        // 逐像素生成：方形径向渐变的圆外区域无法归零（各方向距光源距离不同，浅底下泄露为
-        // "超界半透明深色方框"，人类反馈 2026-09-26）——必须按圆内遮罩生成，圆外强制透明。
-        const int size = 256;
-        var image = Image.CreateEmpty(size, size, false, Image.Format.Rgba8);
-        var light = new Vector2(0.35f, 0.30f);           // 与高光同侧：对侧边缘进入暗环
-        float maxDist = (Vector2.One - light).Length();  // 与旧 FillTo 标度一致
-        for (int y = 0; y < size; y++)
-        {
-            for (int x = 0; x < size; x++)
-            {
-                var uv = new Vector2((x + 0.5f) / size, (y + 0.5f) / size);
-                float t = (uv - light).Length() / maxDist;
-                float alpha = t switch
-                {
-                    <= 0.62f => Mathf.Remap(t, 0f, 0.62f, 0f, 0.08f),
-                    <= 0.93f => Mathf.Remap(t, 0.62f, 0.93f, 0.08f, 0.45f),
-                    _ => Mathf.Remap(t, 0.93f, 1f, 0.45f, 0f),
-                };
-                // 圆内遮罩 + 2% 羽化（体色圆自身有 AA 边缘，硬切会出毛边）
-                float edge = (0.5f - (uv - new Vector2(0.5f, 0.5f)).Length()) / 0.02f;
-                alpha *= Mathf.Clamp(edge, 0f, 1f);
-                image.SetPixel(x, y, new Color(0f, 0f, 0f, alpha));
-            }
-        }
-        _shadeTex = ImageTexture.CreateFromImage(image);
-    }
 
     public override void _Ready()
     {
@@ -155,21 +94,20 @@ public sealed partial class Board2DView : Control
             }
         }
 
-        // 最后手标记环（R4-8：仅焦点层显示）
-        if (Game.History.Count > 0)
+        // 最后手标记环（R4-8：仅焦点层显示）。批10：随"可见最后一手"——对局=整局末手，
+        // 复盘=游标前一手（0 手无环）；修复复盘中环冻结在整局最后一手
+        if (Game.LastVisibleMove is { } last && last.Z == focus)
         {
-            var last = Game.History[^1];
-            if (last.Z == focus)
-            {
-                DrawArc(CellToScreen(last.X, last.Y), LastMoveRingRadius * _scale,
-                    0, MathF.Tau, 64, Palette.LastMoveRing, 1.5f, false);
-            }
+            DrawArc(CellToScreen(last.X, last.Y), LastMoveRingRadius * _scale,
+                0, MathF.Tau, 64, Palette.LastMoveRing, 1.5f, false);
         }
 
-        // 悬停 ghost（R4-4：界内且空格）
+        // 悬停 ghost（R4-4：界内且空格）。批10 复盘态：色随游标行棋方（GM.Current 已随游标），
+        // 降透明度呈"不可落子"暗示；辅助线照常显示（ComputeAux 已放开复盘）
         if (Game.Hover is { } h && board.Get(h) == CellState.Empty)
         {
-            DrawStone(CellToScreen(h.X, h.Y), Game.Current.ToCell(), GhostOpacity);
+            float ghostAlpha = Game.InReplay ? ReplayGhostOpacity : GhostOpacity;
+            StonePainter.DrawOnBoard(this, CellToScreen(h.X, h.Y), _scale, Game.Current.ToCell(), ghostAlpha, Palette);
         }
 
         // 辅助线（己方先画、敌方后画 → 敌方压上层，R4-5）
@@ -181,16 +119,6 @@ public sealed partial class Board2DView : Control
             var color = RoleColor(m.Role, 0.8f);
             DrawCircle(CellToScreen(m.Position.X, m.Position.Y), MarkerRadius * _scale, color,
                 filled: true, width: -1f, antialiased: true);
-        }
-
-        // B13 常驻行棋指示假棋子（右上角）：显示当前行棋方；纯 _Draw 图元，
-        // 不入棋盘数据/子数/辅助线/3D MultiMesh。SWAP2 决策期指针不动（B1），显示决策方白方。
-        if (!Game.InReplay && !Game.IsOver)
-        {
-            var turnPlayer = Game.SwapPending ? PlayerColor.White : Game.Current;
-            float stoneR = StoneRadius * _scale;
-            var pos = new Vector2(Size.X - stoneR - _scale * 0.6f, stoneR + _scale * 0.6f);
-            DrawStone(pos, turnPlayer.ToCell(), TurnStoneOpacity);
         }
     }
 
@@ -207,36 +135,8 @@ public sealed partial class Board2DView : Control
         }
     }
 
-    private void DrawStone(Vector2 pos, CellState state, float alpha)
-    {
-        // 四层绘制（人类反馈 2026-09-26：按 3D 受光面质感渲染，去玩具感）：
-        // 体色圆 → 球面明暗（对侧暗环）→ 左上高光光斑 → 硬边细描边。
-        // 体色/描边全部来自 Palette 语义字段（禁止视图内派生色值）。
-        bool isBlack = state == CellState.Black;
-        var body = isBlack ? Palette.StoneBlack2D : Palette.StoneWhite2D;
-        float radius = StoneRadius * _scale;
-        DrawCircle(pos, radius, new Color(body.R, body.G, body.B, alpha),
-            filled: true, width: -1f, antialiased: true);
-
-        EnsureShadeTexture();
-        var stoneRect = new Rect2(pos - new Vector2(radius, radius), new Vector2(radius * 2, radius * 2));
-        DrawTextureRect(_shadeTex, stoneRect, tile: false, modulate: new Color(1, 1, 1, alpha));
-
-        EnsureGlowTexture();
-        var glowStrength = (isBlack ? 0.35f : 0.55f) * alpha;
-        // 高光必须完整落在轮廓内：偏移幅 0.30√2·r ≈ 0.42r + 光斑半径 0.45r = 0.87r < r。
-        // 旧参数（0.28 格偏移 + 0.55r 光斑 = 1.43r）会穿透圆形边框（M4R 验收反馈）。
-        float glowDiameter = StoneRadius * 0.9f * _scale;
-        var glowCenter = pos + new Vector2(-0.30f, -0.30f) * StoneRadius * _scale;
-        var glowRect = new Rect2(glowCenter - new Vector2(glowDiameter / 2f, glowDiameter / 2f),
-            new Vector2(glowDiameter, glowDiameter));
-        DrawTextureRect(_glowTex, glowRect, tile: false, modulate: new Color(1, 1, 1, glowStrength));
-
-        // 描边：1.5 逻辑宽 ×内容缩放 的 AA 弧 = "又厚又糊"（人类反馈）——改 1.0 硬边、64 段
-        var outlineColor = isBlack ? Palette.StoneOutlineBlack2D : Palette.StoneOutlineWhite2D;
-        DrawArc(pos, radius, 0, MathF.Tau, 64,
-            new Color(outlineColor.R, outlineColor.G, outlineColor.B, MathF.Min(1f, alpha + 0.2f)), 1.0f, false);
-    }
+    private void DrawStone(Vector2 pos, CellState state, float alpha) =>
+        StonePainter.DrawOnBoard(this, pos, _scale, state, alpha, Palette);
 
     private Color RoleColor(AuxRole role, float alpha)
     {

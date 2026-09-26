@@ -6,7 +6,7 @@ using Nmoku.Game.Views;
 namespace Nmoku.Game.Shell;
 
 /// <summary>
-/// 对局基座路由组件：左右分屏（3D 左视图 + 2D 右面板）+ 底部状态栏。
+/// 对局基座路由组件：左右分屏（3D 左视图 + 2D 右面板）+ 右下角行棋指示器（批10，对局/复盘共用）。
 /// 自 M4R 起由 SceneRouter 挂载（KeepAlive：切回标题保留现场），Main 经属性引用接线。
 /// </summary>
 public sealed partial class GameScreen : Control
@@ -16,7 +16,7 @@ public sealed partial class GameScreen : Control
     public Camera3D Camera { get; private set; } = null!;
     public Board3DView Board3D { get; private set; } = null!;
     public Board2DView Board2D { get; private set; } = null!;
-    public Label StatusLabel { get; private set; } = null!;
+    public TurnIndicator TurnIndicator { get; private set; } = null!;
 
     private Godot.Environment _environment = null!;
 
@@ -84,13 +84,9 @@ public sealed partial class GameScreen : Control
         };
         hbox.AddChild(Board2D);
 
-        StatusLabel = new Label();
-        StatusLabel.SetAnchorsAndOffsetsPreset(LayoutPreset.CenterBottom);
-        StatusLabel.HorizontalAlignment = HorizontalAlignment.Center;
-        StatusLabel.GrowHorizontal = GrowDirection.Both;
-        StatusLabel.OffsetTop = -64;
+        TurnIndicator = new TurnIndicator();
+        AddChild(TurnIndicator);
         ApplyStatusStyle();
-        AddChild(StatusLabel);
     }
 
     /// <summary>主题切换（T）：3D 背景与环境光随套更新；棋盘/棋子由 Main.Refresh 经 ApplyPalette 通道刷新。</summary>
@@ -125,11 +121,6 @@ public sealed partial class GameScreen : Control
         }
     }
 
-    /// <summary>状态字随主题取色并加描边（M4 二轮：状态字在棋盘底色上不可读）。</summary>
-    private void ApplyStatusStyle()
-    {
-        StatusLabel.AddThemeColorOverride("font_color", Palette.Active.TextPrimary);
-        StatusLabel.AddThemeConstantOverride("outline_size", 6);
-        StatusLabel.AddThemeColorOverride("font_outline_color", Palette.Active.TextOutline);
-    }
+    /// <summary>状态字随主题取色并加描边（M4 二轮：状态字在棋盘底色上不可读）。批10 起宿主为右下角行棋指示器。</summary>
+    private void ApplyStatusStyle() => TurnIndicator.ApplyStyle();
 }

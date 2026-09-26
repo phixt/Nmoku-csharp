@@ -58,6 +58,15 @@ public sealed partial class GameManager : Node
     public int ReplayIndex { get; private set; }
     public int ReplayCount => _replayMoves?.Count ?? 0;
 
+    /// <summary>
+    /// 可见最后一手（最后手环标记语义，批10）：对局=整局最后一手；复盘=游标前一手（0 手=无）。
+    /// 修复复盘中环冻结在整局最后一手（两视图此前都读 History[^1]，而复盘 History 是全量）。
+    /// </summary>
+    public Move? LastVisibleMove =>
+        InReplay
+            ? ReplayIndex > 0 ? _replayMoves![ReplayIndex - 1] : null
+            : _history.Count > 0 ? _history[^1] : null;
+
     /// <summary>棋盘/回合/胜负任一变化（2D 重画 + 3D Rebuild 的总信号）。</summary>
     public event Action? StateChanged;
     /// <summary>焦点层变化（A/D）。</summary>
@@ -325,7 +334,7 @@ public sealed partial class GameManager : Node
         _ai?.Cancel();
         _replayMoves = [.. _history];
         ReplayIndex = 0;
-        ReplayState.ReplayMoves(_board, _replayMoves, 0);
+        ApplyReplayCursor(0);
         SetHover(null);
         StateChanged?.Invoke();
         return true;
@@ -339,8 +348,20 @@ public sealed partial class GameManager : Node
             return;
         }
         ReplayIndex = Math.Clamp(index, 0, _replayMoves.Count);
-        ReplayState.ReplayMoves(_board, _replayMoves, ReplayIndex);
+        ApplyReplayCursor(ReplayIndex);
         StateChanged?.Invoke();
+    }
+
+    /// <summary>
+    /// 游标落盘：棋盘重放 + 行棋方随游标（0 手=黑先）——ghost 颜色、辅助线角色、行棋指示器
+    /// 共用此语义；此前复盘 _current 冻结在载入档的终局方（批10 修复"ghost 恒黑"根因）。
+    /// </summary>
+    private void ApplyReplayCursor(int index)
+    {
+        ReplayState.ReplayMoves(_board, _replayMoves!, index);
+        _current = index == 0 || _replayMoves![index - 1].Player == PlayerColor.White
+            ? PlayerColor.Black
+            : PlayerColor.White;
     }
 
     public void StepReplay(int delta) => SetReplayIndex(ReplayIndex + delta);
@@ -377,10 +398,13 @@ public sealed partial class GameManager : Node
         HoverChanged?.Invoke(cell);
     }
 
-    /// <summary>辅助线数据装配（一份数据、两个渲染器）：H 关闭、悬停非空格或复盘态时返回空。</summary>
+    /// <summary>
+    /// 辅助线数据装配（一份数据、两个渲染器）：H 关闭、悬停非空格时返回空。批10 起复盘态不再拦截
+    /// ——辅助线随游标棋盘与游标行棋方扫描（人类指示"把辅助线搬过来"，不可落子由门控保证）。
+    /// </summary>
     public AuxScanResult ComputeAux(Coordinate3D? hover)
     {
-        if (!_auxEnabled || InReplay || hover is not { } h || _board.Get(h) != CellState.Empty)
+        if (!_auxEnabled || hover is not { } h || _board.Get(h) != CellState.Empty)
         {
             return AuxScanResult.Empty;
         }

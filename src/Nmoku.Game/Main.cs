@@ -43,7 +43,7 @@ public partial class Main : Node
     private FileDialog? _importFileDialog;
     private int _exportSlot;
     private int _importSlot = -1;
-    private Label _statusLabel = null!;
+    private TurnIndicator _turnIndicator = null!;
 
     private readonly int _boardSize;
     private readonly int _layers;
@@ -123,7 +123,7 @@ public partial class Main : Node
         _camera = _gameScreen.Camera;
         _board3D = _gameScreen.Board3D;
         _board2D = _gameScreen.Board2D;
-        _statusLabel = _gameScreen.StatusLabel;
+        _turnIndicator = _gameScreen.TurnIndicator;
         _board2D.Game = _gm; // 2D 面板状态源（此前遗漏导致右半屏空白）
         _board2D.HoverChanged += cell => _gm.SetHover(cell);
         _board2D.PlaceRequested += cell => _gm.TryPlace(cell.X, cell.Y, cell.Z);
@@ -813,6 +813,7 @@ public partial class Main : Node
         _autotestSteps.Enqueue(("m4c-newgame-default-context", AutotestNewGameDefaultContext));
         _autotestSteps.Enqueue(("m4c-quick-load", AutotestQuickLoad));
         _autotestSteps.Enqueue(("m4c-replay-entry", AutotestReplayEntry));
+        _autotestSteps.Enqueue(("m4c-replay-hud", AutotestReplayHud));
         _autotestSteps.Enqueue(("m4c-keymap-paging", AutotestKeymapPaging));
     }
 
@@ -1227,6 +1228,117 @@ public partial class Main : Node
                 return ok ? "ok" : $"FAIL state={_store.State} inReplay={_gm.InReplay} count={_gm.ReplayCount}";
             default:
                 _rpPhase = 0;
+                return "FAIL";
+        }
+    }
+
+    private int _rhPhase;
+
+    /// <summary>批10 复盘 HUD 回归（2026-09-26 人类实测反馈）：0 手复盘滑条/步进禁用；环与行棋方
+    /// 随游标（LastVisibleMove/Current，游标 0 无环且黑先）；ReplayBar 几何断言——不出右界、
+    /// 不与右下角行棋指示器重叠。</summary>
+    private string AutotestReplayHud()
+    {
+        switch (_rhPhase)
+        {
+            case 0:
+                if (_store.State != GameState.Title)
+                {
+                    _store.Pause();
+                    _store.ReturnToTitle();
+                    return "wait";
+                }
+                // 造双档：槽 1 = 0 手（空局复盘适配用）、槽 0 = 2 手（游标断言用），无条件重建防串场
+                _gm.Configure(9, 3, RuleSet.Gomoku, false, AIDifficulty.Medium);
+                if (!_store.StartGame())
+                {
+                    _rhPhase = 0;
+                    return "FAIL start";
+                }
+                _store.SaveToSlot(1);
+                if (!_gm.TryPlace(4, 4, 0) || !_gm.TryPlace(4, 5, 0))
+                {
+                    _rhPhase = 0;
+                    return "FAIL place";
+                }
+                _store.SaveToSlot(0);
+                _store.Pause();
+                _store.ReturnToTitle();
+                _rhPhase = 1;
+                return "wait";
+            case 1:
+                if (!_store.EnterReplay(1))
+                {
+                    _rhPhase = 0;
+                    return "FAIL enter-empty";
+                }
+                _rhPhase = 2;
+                return "wait";
+            case 2:
+                if (_store.State != GameState.Replay || _replayBar == null
+                    || !GodotObject.IsInstanceValid(_replayBar))
+                {
+                    return "wait";
+                }
+                if (!_replayBar.ZeroMoveMode || _gm.ReplayCount != 0 || _gm.LastVisibleMove != null
+                    || _gm.Current != PlayerColor.Black
+                    || _turnIndicator.TextForTests != Text.Turn.BlackTurn || !_turnIndicator.StoneVisible)
+                {
+                    _rhPhase = 0;
+                    return "FAIL zero-move";
+                }
+                _store.ExitReplay();
+                _rhPhase = 3;
+                return "wait";
+            case 3:
+                if (_store.State != GameState.Title)
+                {
+                    return "wait";
+                }
+                if (!_store.EnterReplay(0))
+                {
+                    _rhPhase = 0;
+                    return "FAIL enter-2moves";
+                }
+                _gm.StepReplay(1); // 游标 1：环=第 1 手、行棋方=白
+                _rhPhase = 4;
+                return "wait";
+            case 4:
+                if (_store.State != GameState.Replay || _gm.ReplayIndex != 1 || _replayBar == null
+                    || !GodotObject.IsInstanceValid(_replayBar))
+                {
+                    return "wait";
+                }
+                if (_gm.LastVisibleMove is not { } last || !last.Equals(_gm.History[0])
+                    || _gm.Current != PlayerColor.White
+                    || _turnIndicator.TextForTests != Text.Turn.WhiteTurn)
+                {
+                    _rhPhase = 0;
+                    return "FAIL cursor-follow";
+                }
+                // 几何断言（768 逻辑宽基准）：ReplayBar 不出界、不与指示器重叠
+                var bar = _replayBar.GetGlobalRect();
+                float viewWidth = GetViewport().GetVisibleRect().Size.X;
+                var ind = _turnIndicator.GetGlobalRect();
+                if (bar.Position.X < -0.5 || bar.End.X > viewWidth + 0.5 || bar.Intersects(ind))
+                {
+                    _rhPhase = 0;
+                    return $"FAIL geom bar=[{bar.Position.X:F0},{bar.End.X:F0}] vp={viewWidth:F0} indX={ind.Position.X:F0}";
+                }
+                _gm.SetReplayIndex(0);
+                _rhPhase = 5;
+                return "wait";
+            case 5:
+                if (_gm.ReplayIndex != 0)
+                {
+                    return "wait";
+                }
+                bool ok = _gm.LastVisibleMove == null && _gm.Current == PlayerColor.Black;
+                _store.ExitReplay();
+                _rhPhase = 0;
+                return ok ? "ok" : "FAIL cursor-0";
+            default:
+                _rhPhase = 0;
                 return "FAIL";
         }
     }
@@ -1745,7 +1857,7 @@ public partial class Main : Node
         _board3D.Rebuild(_gm.Board, _gm.FocusZ, aux);
         _board3D.SetGridFocus(_gm.FocusZ);
         _board3D.SetAuxData(aux);
-        _board3D.SetLastMove(_gm.History.Count > 0 ? _gm.History[^1].Coordinate : null);
+        _board3D.SetLastMove(_gm.LastVisibleMove?.Coordinate); // 批10：随游标的可见最后一手（0 手=无）
         _board2D.QueueRedraw();
         UpdateStatus();
         // 复盘条同步须等路由挂载：GM.StateChanged（BeginReplay/SetReplayIndex）先于 _store.SetState 触发，
@@ -1774,21 +1886,30 @@ public partial class Main : Node
 
     private void UpdateStatus()
     {
+        // 批10：行棋指示器（右下角，游戏/复盘共用）。复盘态优先——显示游标行棋方
+        // （Current 已随游标），即便载入的是已结束的档也照常显示行棋
+        if (_gm.InReplay)
+        {
+            _turnIndicator.SetTurn(_gm.Current.ToCell(), TurnText());
+            return;
+        }
         if (_gm.IsOver)
         {
-            _statusLabel.Text = _gm.IsDraw
+            _turnIndicator.SetTextOnly(_gm.IsDraw
                 ? Text.Result.Draw
-                : _gm.Winner == 1 ? Text.Result.BlackWin : Text.Result.WhiteWin;
+                : _gm.Winner == 1 ? Text.Result.BlackWin : Text.Result.WhiteWin);
+            return;
         }
-        else if (_gm.SwapPending)
+        if (_gm.SwapPending)
         {
-            _statusLabel.Text = Text.Swap.ChooseSwapOrDefault;
+            _turnIndicator.SetTextOnly(Text.Swap.ChooseSwapOrDefault);
+            return;
         }
-        else
-        {
-            _statusLabel.Text = _gm.Current == PlayerColor.Black ? Text.Turn.BlackTurn : Text.Turn.WhiteTurn;
-        }
+        _turnIndicator.SetTurn(_gm.Current.ToCell(), TurnText());
     }
+
+    private string TurnText() =>
+        _gm.Current == PlayerColor.Black ? Text.Turn.BlackTurn : Text.Turn.WhiteTurn;
 
     private bool IsOver2DPanel() =>
         _board2D.GetGlobalRect().HasPoint(GetViewport().GetMousePosition());
