@@ -6,21 +6,22 @@ using Nmoku.Game.Theme;
 namespace Nmoku.Game.Shell;
 
 /// <summary>
-/// 存档菜单（叠加层，非状态机状态；Title/Paused 均可打开）：6 槽位列表 +
-/// 载入/复盘/覆盖/导出/删除/导入（剪贴板统一嗅探）/关闭。槽位语义见 SaveManager（5=快存）。
-/// 覆盖=把当前对局写入该槽（占用先确认，源「覆盖」语义）；快存槽覆盖免确认（源 quick-save）。
+/// 存档菜单（叠加层，非状态机状态；Title/Paused 均可打开）：档案管理面板——只管已有存档的进出，
+/// 不承担保存当前对局（写局走 S/Ctrl+S，底部键位提示行补可发现性；批9 语义定稿 2026-09-26）。
+/// 剪贴板=显式中转站：行内「复制」槽→剪贴板，「填写/覆盖」剪贴板→该槽（空槽叫填写、占用叫覆盖，
+/// 占用确认在 store 层）；文件路径：头部「导入」文件→统一落槽（首空槽，全满覆盖槽 5 并确认），
+/// 空槽行「导入」文件→该槽。快存槽（第 6 槽）永不被统一导入覆盖。
 /// </summary>
 public sealed partial class SaveMenu : Control
 {
-    public event Action<int>? LoadSlotRequested;
-    public event Action<int>? ReplaySlotRequested;
-    public event Action<int>? OverwriteSlotRequested;
-    public event Action<int>? ExportSlotRequested;
-    public event Action<int>? ExportFileRequested;
+    public event Action<int>? LoadSlotRequested;       // 读取
+    public event Action<int>? ReplaySlotRequested;     // 复盘
+    public event Action<int>? FillSlotRequested;       // 填写/覆盖：剪贴板→该槽
+    public event Action<int>? ExportSlotRequested;     // 复制：槽→剪贴板
+    public event Action<int>? ExportFileRequested;     // 导出：槽→.nzsave 文件
+    public event Action<int>? ImportFileSlotRequested; // 导入（空槽行）：文件→该槽
+    public event Action? ImportFileRequested;          // 导入（头部）：文件→统一落槽
     public event Action<int>? DeleteSlotRequested;
-    public event Action? SaveQuickRequested;
-    public event Action? ImportRequested;
-    public event Action? ImportFileRequested;
     public event Action? CloseRequested;
 
     private VBoxContainer _rows = null!;
@@ -60,13 +61,21 @@ public sealed partial class SaveMenu : Control
         title.AddThemeFontSizeOverride("font_size", 24);
         title.AddThemeColorOverride("font_color", Palette.Active.TextPrimary);
         header.AddChild(title);
-        header.AddChild(MakeButton(Text.Save.Import, () => ImportRequested?.Invoke()));
-        header.AddChild(MakeButton(Text.Save.ImportFile, () => ImportFileRequested?.Invoke()));
+        header.AddChild(MakeButton(Text.Save.Import, () => ImportFileRequested?.Invoke()));
         header.AddChild(MakeButton(Text.Overlay.Cancel, () => CloseRequested?.Invoke()));
 
         _rows = new VBoxContainer();
         _rows.AddThemeConstantOverride("separation", 4);
         box.AddChild(_rows);
+
+        var hint = new Label
+        {
+            Text = Text.Save.MenuKeyHint,
+            HorizontalAlignment = HorizontalAlignment.Center,
+            SizeFlagsHorizontal = SizeFlags.Expand,
+        };
+        hint.AddThemeColorOverride("font_color", Palette.Active.TextDim);
+        box.AddChild(hint);
     }
 
     /// <summary>重建 6 行槽位（SaveUpdated 事件或打开时调用）。</summary>
@@ -114,26 +123,17 @@ public sealed partial class SaveMenu : Control
 
         if (data != null)
         {
-            row.AddChild(MakeButton(Text.Title.LoadGame, () => LoadSlotRequested?.Invoke(index)));
+            row.AddChild(MakeButton(Text.Save.Read, () => LoadSlotRequested?.Invoke(index)));
             row.AddChild(MakeButton(Text.Replay.Label, () => ReplaySlotRequested?.Invoke(index)));
-            row.AddChild(MakeButton(Text.Save.Overwrite, () =>
-            {
-                if (index == GameConfig.QuickSaveIndex)
-                {
-                    SaveQuickRequested?.Invoke(); // 源 quick-save：快存槽覆盖免确认
-                }
-                else
-                {
-                    OverwriteSlotRequested?.Invoke(index);
-                }
-            }));
-            row.AddChild(MakeButton(Text.Save.Export, () => ExportSlotRequested?.Invoke(index)));
-            row.AddChild(MakeButton(Text.Save.ExportFile, () => ExportFileRequested?.Invoke(index)));
+            row.AddChild(MakeButton(Text.Save.Overwrite, () => FillSlotRequested?.Invoke(index)));
+            row.AddChild(MakeButton(Text.Save.Copy, () => ExportSlotRequested?.Invoke(index)));
+            row.AddChild(MakeButton(Text.Save.Export, () => ExportFileRequested?.Invoke(index)));
             row.AddChild(MakeButton(Text.Save.Delete, () => DeleteSlotRequested?.Invoke(index)));
         }
-        else if (index == GameConfig.QuickSaveIndex)
+        else
         {
-            row.AddChild(MakeButton(Text.Save.SaveQuick, () => SaveQuickRequested?.Invoke()));
+            row.AddChild(MakeButton(Text.Save.Fill, () => FillSlotRequested?.Invoke(index)));
+            row.AddChild(MakeButton(Text.Save.Import, () => ImportFileSlotRequested?.Invoke(index)));
         }
         return row;
     }

@@ -10,6 +10,12 @@ public static class SaveValidator
 {
     public const string InvalidStructure = "SAVE_INVALID_STRUCTURE";
 
+    /// <summary>
+    /// 偶数阶棋盘档不合法（00-domain 尺寸奇数约束；人类拍板 2026-09-26：存档格式不与外部游戏互通 +
+    /// 沙盒/预设无偶数阶入口，全链路封闭偶数阶，中心标注方案随之作废）。
+    /// </summary>
+    public const string InvalidEvenBoardSize = "SAVE_INVALID_EVEN_BOARD_SIZE";
+
     public static string? Validate(JsonElement root)
     {
         if (root.ValueKind != JsonValueKind.Object)
@@ -26,6 +32,10 @@ public static class SaveValidator
         }
 
         int boardSize = root.GetProperty("boardSize").GetInt32();
+        if (boardSize % 2 == 0)
+        {
+            return InvalidEvenBoardSize;
+        }
         int layers = root.GetProperty("layers").GetInt32();
         var boardState = root.GetProperty("boardState");
         if (boardState.GetArrayLength() != layers)
@@ -60,6 +70,10 @@ public static class SaveValidator
             || data.BoardSize <= 0 || data.Layers <= 0)
         {
             return InvalidStructure;
+        }
+        if (data.BoardSize % 2 == 0)
+        {
+            return InvalidEvenBoardSize;
         }
         foreach (var layer in data.BoardState)
         {

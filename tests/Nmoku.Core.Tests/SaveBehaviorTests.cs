@@ -79,6 +79,22 @@ public class SaveBehaviorTests
         Assert.Equal(SaveValidator.InvalidStructure, SaveValidator.Validate(doc.RootElement));
     }
 
+    // ---- 偶数阶存档不合法（批9 定案 2026-09-26：全链路封闭偶数阶）----
+
+    [Fact]
+    public void Validate_EvenBoardSize_ReturnsEvenError()
+    {
+        var data = NewSave(boardSize: 10);
+        Assert.Equal(SaveValidator.InvalidEvenBoardSize, SaveValidator.Validate(data));
+    }
+
+    [Fact]
+    public void Validate_JsonElementEvenBoardSize_ReturnsEvenError()
+    {
+        using var doc = System.Text.Json.JsonDocument.Parse(SaveData.Serialize(NewSave(boardSize: 10)));
+        Assert.Equal(SaveValidator.InvalidEvenBoardSize, SaveValidator.Validate(doc.RootElement));
+    }
+
     // ---- migrateData（v1 → v2） ----
 
     [Fact]

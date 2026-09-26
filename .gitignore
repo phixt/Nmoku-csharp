@@ -13,3 +13,8 @@ obj/
 # 导出产物
 export/
 *.tmp
+
+.trace
+
+# ZCode 工具工作状态（不入库）
+.zcode/

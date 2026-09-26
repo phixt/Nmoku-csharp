@@ -237,6 +237,8 @@ public sealed partial class GameStore : Node
     }
 
     // ---- 存档动作 ----
+    // 写局只走键盘：QuickSave（Ctrl+S，快存槽）与 SaveToFirstEmpty（S 键，首空槽/满则快存槽）。
+    // 存档菜单是档案管理面板，不再承担保存当前对局（批9 语义定稿 2026-09-26）。
 
     public void QuickSave()
     {
@@ -266,9 +268,7 @@ public sealed partial class GameStore : Node
         return LoadSlot(GameConfig.QuickSaveIndex);
     }
 
-    /// <summary>
-    /// 保存进度（源 saveGame 语义，S 键）：落入首个空槽，全满则覆盖快存槽；不弹确认。
-    /// </summary>
+    /// <summary>保存进度（源 saveGame 语义，S 键）：落入首个空槽，全满则覆盖快存槽；不弹确认。</summary>
     public void SaveToFirstEmpty()
     {
         int target = -1;
@@ -284,24 +284,14 @@ public sealed partial class GameStore : Node
         {
             target = GameConfig.QuickSaveIndex;
         }
-        SaveToSlot(target, confirmIfOccupied: false);
+        SaveToSlot(target);
     }
 
-    /// <summary>保存当前对局到指定槽位；槽位已占用时先确认（源「覆盖」语义），快存槽免确认。</summary>
-    public void SaveToSlot(int index, bool confirmIfOccupied = true)
+    /// <summary>保存当前对局到指定槽位（S 键落槽路径与自测造档用；占用覆盖不确认，源 saveGame 语义）。</summary>
+    public void SaveToSlot(int index)
     {
-        void DoSave()
-        {
-            Saves.SaveAsync(index, GM.BuildSaveData(IsDarkTheme), GM.WinLength).GetAwaiter().GetResult();
-            Overlay?.ShowToast(string.Format(Text.Save.SavedToSlot, index + 1));
-        }
-        if (!confirmIfOccupied || Saves.IsSlotEmpty(index))
-        {
-            DoSave();
-            return;
-        }
-        Overlay.ShowConfirmDialog(Text.Save.OverwriteTitle,
-            string.Format(Text.Save.OverwriteConfirm, index + 1), onYes: DoSave);
+        Saves.SaveAsync(index, GM.BuildSaveData(IsDarkTheme), GM.WinLength).GetAwaiter().GetResult();
+        Overlay?.ShowToast(string.Format(Text.Save.SavedToSlot, index + 1));
     }
 
     public void DeleteSlot(int index)
@@ -311,7 +301,7 @@ public sealed partial class GameStore : Node
             onYes: () => Saves.DeleteAsync(index).GetAwaiter().GetResult());
     }
 
-    /// <summary>导出槽位为 Base64(JSON) 到剪贴板（与源浏览器版互通的格式）。</summary>
+    /// <summary>复制槽位为 Base64(JSON) 到剪贴板（菜单「复制」；与源浏览器版互通的格式）。</summary>
     public string ExportSlot(int index)
     {
         var data = Saves.Load(index);
@@ -322,13 +312,56 @@ public sealed partial class GameStore : Node
         }
         string b64 = SaveData.SerializeToBase64(data);
         DisplayServer.ClipboardSet(b64);
-        Overlay?.ShowToast(Text.Save.Exported);
+        Overlay?.ShowToast(Text.Save.Copied);
         return b64;
     }
 
-    /// <summary>从剪贴板导入（统一嗅探：裸 JSON / Base64(JSON) / .nzsave 容器）。落入第一个空槽。</summary>
-    public void ImportFromClipboard() => ImportText(DisplayServer.ClipboardGet());
+    /// <summary>
+    /// 剪贴板 → 指定槽位（菜单空槽「填写」/占用「覆盖」）。与「复制」构成剪贴板搬运闭环：
+    /// 导出到剪贴板后可写回任意指定槽位（批9 语义定稿）。
+    /// </summary>
+    public void FillSlotFromClipboard(int index) => FillSlot(index, DisplayServer.ClipboardGet());
 
+    /// <summary>文本 → 指定槽位（填写/覆盖的解析主体；剪贴板与自测等文本源共用）。解析失败 toast。</summary>
+    public void FillSlot(int index, string input)
+    {
+        var parsed = SaveArchive.TryParsePackage(input);
+        if (parsed == null)
+        {
+            Overlay?.ShowToast(Text.Save.ImportFailed, isError: true);
+            return;
+        }
+        WriteImportToSlot(index, parsed!, confirmIfOccupied: true);
+    }
+
+    /// <summary>从 .nzsave 文件导入到指定槽位（空槽行「导入」）。</summary>
+    public void ImportFileToSlot(string path, int index)
+    {
+        var parsed = ParseSaveFile(path);
+        if (parsed == null)
+        {
+            Overlay?.ShowToast(Text.Save.ImportFileFailed, isError: true);
+            return;
+        }
+        WriteImportToSlot(index, parsed!, confirmIfOccupied: true);
+    }
+
+    /// <summary>
+    /// 统一文件导入（头部「导入」）：落入第一个空槽；全满则覆盖最后一个非快存槽（槽 5）并确认
+    /// ——快存槽永不被动覆盖（语义定稿 2026-09-26）。
+    /// </summary>
+    public void ImportFile(string path)
+    {
+        var parsed = ParseSaveFile(path);
+        if (parsed == null)
+        {
+            Overlay?.ShowToast(Text.Save.ImportFileFailed, isError: true);
+            return;
+        }
+        ImportData(parsed!);
+    }
+
+    /// <summary>文本导入（Base64/JSON 嗅探；旧档恢复与自测路径）。落位同统一导入。</summary>
     public void ImportText(string input)
     {
         var parsed = SaveArchive.TryParsePackage(input);
@@ -337,27 +370,55 @@ public sealed partial class GameStore : Node
             Overlay?.ShowToast(Text.Save.ImportFailed, isError: true);
             return;
         }
-        ImportData(parsed.Data, parsed.WinLength);
+        ImportData(parsed!);
     }
 
-    /// <summary>从 .nzsave 文件导入（优先 zip 容器直解，回退文本嗅探）。落入第一个空槽。</summary>
-    public void ImportFile(string path)
+    private NzSavePackage? ParseSaveFile(string path)
     {
         using var file = FileAccess.Open(path, FileAccess.ModeFlags.Read);
         if (file == null)
         {
-            Overlay?.ShowToast(Text.Save.ImportFailed, isError: true);
-            return;
+            return null;
         }
         byte[] raw = file.GetBuffer((long)file.GetLength());
-        var parsed = NzSaveContainer.TryUnpackPackage(raw)
-                     ?? SaveArchive.TryParsePackage(System.Text.Encoding.UTF8.GetString(raw));
-        if (parsed == null)
+        return NzSaveContainer.TryUnpackPackage(raw)
+               ?? SaveArchive.TryParsePackage(System.Text.Encoding.UTF8.GetString(raw));
+    }
+
+    /// <summary>统一导入落位：第一个空槽；全满则覆盖最后一个非快存槽（槽 5）并确认（快存槽保护）。</summary>
+    private void ImportData(NzSavePackage package)
+    {
+        int target = -1;
+        for (int i = 0; i < GameConfig.SaveSlotCount; i++)
         {
-            Overlay?.ShowToast(Text.Save.ImportFailed, isError: true);
+            if (Saves.IsSlotEmpty(i))
+            {
+                target = i;
+                break;
+            }
+        }
+        if (target < 0)
+        {
+            target = GameConfig.SaveSlotCount - 2; // 最后一个非快存槽位
+        }
+        WriteImportToSlot(target, package, confirmIfOccupied: true);
+    }
+
+    /// <summary>导入写入指定槽位：空槽直写；占用先确认（headless 语义由 m4c-overlay-contract 覆盖）。</summary>
+    private void WriteImportToSlot(int index, NzSavePackage package, bool confirmIfOccupied)
+    {
+        void DoWrite()
+        {
+            Saves.SaveAsync(index, package.Data, package.WinLength).GetAwaiter().GetResult();
+            Overlay?.ShowToast(string.Format(Text.Save.ImportedToSlot, index + 1));
+        }
+        if (!confirmIfOccupied || Saves.IsSlotEmpty(index))
+        {
+            DoWrite();
             return;
         }
-        ImportData(parsed.Data, parsed.WinLength);
+        Overlay.ShowConfirmDialog(Text.Save.OverwriteTitle,
+            string.Format(Text.Save.OverwriteConfirm, index + 1), onYes: DoWrite);
     }
 
     /// <summary>导出槽位为 .nzsave 文件（manifest+savedata zip 容器，manifest 随带外圈 winLength）。</summary>
@@ -379,22 +440,6 @@ public sealed partial class GameStore : Node
         }
         file.StoreBuffer(zip);
         Overlay?.ShowToast(Text.Save.ExportedToFile);
-    }
-
-    /// <summary>导入落位共用路径：第一个空槽；无空槽 toast。winLength 随槽位外圈元数据保存（B14）。</summary>
-    private void ImportData(SaveData parsed, int? winLength)
-    {
-        for (int i = 0; i < GameConfig.SaveSlotCount; i++)
-        {
-            if (!Saves.IsSlotEmpty(i))
-            {
-                continue;
-            }
-            Saves.SaveAsync(i, parsed, winLength).GetAwaiter().GetResult();
-            Overlay?.ShowToast(string.Format(Text.Save.ImportedToSlot, i + 1));
-            return;
-        }
-        Overlay?.ShowToast(Text.Save.ImportNoEmptySlot, isError: true);
     }
 
     private void SetState(GameState state)

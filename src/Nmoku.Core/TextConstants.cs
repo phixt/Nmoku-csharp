@@ -35,29 +35,30 @@ public static class Text
         public const string ManageTitle = "存档管理";
         public const string DeleteTitle = "删除存档";
         public const string SlotLabel = "槽位 {0}";
-        public const string QuickSlotLabel = "槽位 {0}（快存 · Ctrl+S 写 / Ctrl+L 读）";
+        public const string QuickSlotLabel = "槽位 {0}（快存）";
         public const string SlotEmpty = "空";
         public const string SlotInfo = "{0}×{1}×{2} · {3} 手 · {4}";
         public const string SlotFinished = "已结束";
         public const string SlotPlaying = "进行中";
-        public const string ImportedToSlot = "已导入到槽位 {0}";
+        public const string Read = "读取";
+        public const string Fill = "填写";
+        public const string Overwrite = "覆盖";
+        public const string OverwriteTitle = "覆盖存档";
+        public const string OverwriteConfirm = "确认用剪贴板中的存档覆盖槽位 {0}？";
+        public const string Copy = "复制";
+        public const string Copied = "已复制到剪贴板";
+        public const string Import = "导入";
         public const string ImportFailed = "剪贴板中无有效存档";
-        public const string ImportNoEmptySlot = "没有空槽位可导入";
-        public const string Exported = "已导出到剪贴板";
+        public const string ImportFileFailed = "文件中无有效存档";
+        public const string ImportedToSlot = "已导入到槽位 {0}";
+        public const string Export = "导出";
         public const string ExportedToFile = "已存为存档文件";
         public const string ExportFailed = "存档文件写入失败";
-        public const string Import = "导入";
-        public const string ImportFile = "导入文件";
-        public const string ExportFile = "文件";
-        public const string Export = "导出";
         public const string Delete = "删除";
         public const string DeleteConfirm = "确定删除槽位 {0} 的存档？";
         public const string LoadSlotFailed = "该存档无法读取";
         public const string SavedToSlot = "已保存到存档 {0}";
-        public const string Overwrite = "覆盖";
-        public const string OverwriteTitle = "覆盖存档";
-        public const string OverwriteConfirm = "确认用当前对局覆盖槽位 {0}？";
-        public const string SaveQuick = "存为快存";
+        public const string MenuKeyHint = "保存当前对局：Ctrl+S 写快存 · S 存入首个空槽 · Ctrl+L 读快存";
     }
 
     public static class Title

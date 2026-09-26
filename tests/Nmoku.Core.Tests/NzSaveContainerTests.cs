@@ -10,9 +10,13 @@ public class NzSaveContainerTests
     private static SaveData Sample() => new()
     {
         Id = "aabbccdd-0000-0000-0000-000000000001",
+        Version = "2.0.0",
         Timestamp = 1758240000000,
         BoardSize = 5,
         Layers = 2,
+        // 结构合法（TryUnpackPackage/TryParsePackage 自批9 起接入 SaveValidator）：5×5×2 全零盘
+        BoardState = Enumerable.Range(0, 2)
+            .Select(_ => Enumerable.Range(0, 5).Select(_ => new int[5]).ToArray()).ToArray(),
         Rules = "gomoku",
         GameMode = "pvp",
         CurrentPlayer = 2,
@@ -195,6 +199,29 @@ public class NzSaveContainerTests
         Assert.NotNull(parsed);
         Assert.Equal("2.0.0", parsed!.Version);
         Assert.Single(parsed.Moves);
+    }
+
+    // ---- 偶数阶存档不合法（批9 定案 2026-09-26：全链路封闭偶数阶）----
+
+    private static SaveData EvenSample()
+    {
+        var data = Sample();
+        data.BoardSize = 6;
+        data.BoardState = Enumerable.Range(0, 2)
+            .Select(_ => Enumerable.Range(0, 6).Select(_ => new int[6]).ToArray()).ToArray();
+        return data;
+    }
+
+    [Fact]
+    public void TryParsePackage_EvenBoardSize_ReturnsNull()
+    {
+        Assert.Null(SaveArchive.TryParsePackage(SaveData.Serialize(EvenSample())));
+    }
+
+    [Fact]
+    public void TryUnpackPackage_EvenBoardSize_ReturnsNull()
+    {
+        Assert.Null(NzSaveContainer.TryUnpackPackage(NzSaveContainer.Pack(EvenSample(), 1)));
     }
 
     private static string ReadEntry(System.IO.Compression.ZipArchive zip, string name)

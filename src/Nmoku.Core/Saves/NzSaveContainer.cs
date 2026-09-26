@@ -41,8 +41,9 @@ public static class NzSaveContainer
     }
 
     /// <summary>
-    /// 解包 zip 容器（含 manifest 外圈元数据）；缺 savedata.json、缺 manifest、损坏一律返回 null。
-    /// manifest 只做形状检查（容器版本演进时在此分流）；winLength 越界视为缺失（外圈脏数据不毙档）。
+    /// 解包 zip 容器（含 manifest 外圈元数据）；缺 savedata.json、缺 manifest、损坏、内层档结构非法
+    /// （含偶数阶）一律返回 null。manifest 只做形状检查（容器版本演进时在此分流）；
+    /// winLength 越界视为缺失（外圈脏数据不毙档）。
     /// </summary>
     public static NzSavePackage? TryUnpackPackage(byte[] raw)
     {
@@ -75,7 +76,9 @@ public static class NzSaveContainer
                     : null;
             }
             var data = SaveData.Deserialize(ReadEntry(dataEntry));
-            return data == null ? null : new NzSavePackage(data, winLength);
+            return data == null || SaveValidator.Validate(data) != null
+                ? null
+                : new NzSavePackage(data, winLength);
         }
         catch (InvalidDataException)
         {
@@ -151,7 +154,11 @@ public static class SaveArchive
             return null;
         }
         var data = SaveMigrator.Normalize(sniffed.Value.Json);
-        return data == null ? null : new NzSavePackage(data, sniffed.Value.WinLength);
+        // 结构校验（含偶数阶拒绝）：导入路径此前只迁移不校验，非法档会穿透进槽位缓存；
+        // 磁盘槽位载入路径（SaveManager.LoadFromStorageAsync）本就校验
+        return data == null || SaveValidator.Validate(data) != null
+            ? null
+            : new NzSavePackage(data, sniffed.Value.WinLength);
     }
 
     /// <summary>嗅探出内层 savedata JSON 文本（不解档、不迁移），供调用方走既有迁移/校验管道。</summary>

@@ -42,6 +42,7 @@ public partial class Main : Node
     private FileDialog? _exportFileDialog;
     private FileDialog? _importFileDialog;
     private int _exportSlot;
+    private int _importSlot = -1;
     private Label _statusLabel = null!;
 
     private readonly int _boardSize;
@@ -300,13 +301,12 @@ public partial class Main : Node
                 var screen = new SaveMenu();
                 screen.LoadSlotRequested += i => { CloseSaveMenu(); _store.LoadSlot(i); };
                 screen.ReplaySlotRequested += i => { CloseSaveMenu(); _store.EnterReplay(i); };
-                screen.OverwriteSlotRequested += i => _store.SaveToSlot(i);
-                screen.SaveQuickRequested += () => _store.SaveToSlot(GameConfig.QuickSaveIndex, confirmIfOccupied: false);
-                screen.ExportSlotRequested += i => _store.ExportSlot(i);
-                screen.ExportFileRequested += OpenExportFileDialog;
+                screen.FillSlotRequested += i => _store.FillSlotFromClipboard(i);
+                screen.ExportSlotRequested += i => _store.ExportSlot(i); // 复制：槽→剪贴板
+                screen.ExportFileRequested += OpenExportFileDialog;      // 导出：槽→.nzsave 文件
+                screen.ImportFileSlotRequested += slot => OpenImportFileDialog(slot); // 空槽行：文件→该槽
+                screen.ImportFileRequested += () => OpenImportFileDialog(null);       // 头部：文件→统一落槽
                 screen.DeleteSlotRequested += i => _store.DeleteSlot(i);
-                screen.ImportRequested += () => _store.ImportFromClipboard();
-                screen.ImportFileRequested += OpenImportFileDialog;
                 screen.CloseRequested += CloseSaveMenu;
                 _saveMenu = screen;
                 return screen;
@@ -850,9 +850,17 @@ public partial class Main : Node
 
     private int _saveAlignPhase;
     private int _saveAlignClearIdx;
-    private long _slotTsBefore;
+    private string _saveAlignB64 = "";
+    private string _saveAlignB64Alt = "";
+    private string _saveAlignIdBefore = "";
+    private string _saveAlignAltId = "";
+    private string _saveAlignCopyId = "";
+    private string _saveAlignQuickId = "";
 
-    /// <summary>源项目存档对齐回归：S 键落首空槽 ×2、覆盖带确认框（信号合成确认）、快存槽免确认由单测覆盖。</summary>
+    /// <summary>批9 存档语义定稿回归（2026-09-26）：S 键落首空槽；复制→填写（空槽免确认）→覆盖
+    /// （占用先确认，合成 confirmed）；文件导入指定槽与统一落槽（首空槽）；全满时统一导入覆盖槽 5
+    /// 且快存槽受保护。剪贴板本体 headless 不可靠，走 ExportSlot 返回值 + FillSlot(index, text)。
+    /// 导入原档保真（id/timestamp 随档），覆盖发生与否用档 Id 断言（BuildSaveData 每次新 id）。</summary>
     private string AutotestSaveAlignment()
     {
         switch (_saveAlignPhase)
@@ -888,23 +896,77 @@ public partial class Main : Node
                     _saveAlignPhase = 0;
                     return "FAIL second empty";
                 }
-                var current0 = _store.Saves.Load(0);
-                if (current0 == null)
+                // 复制（槽→剪贴板格式文本）→ 填写（空槽 2，免确认直写）
+                _saveAlignB64 = _store.ExportSlot(0);
+                _store.FillSlot(2, _saveAlignB64);
+                _saveAlignB64Alt = _store.ExportSlot(1);
+                _saveAlignAltId = _store.Saves.Load(1)!.Id;
+                _saveAlignIdBefore = _store.Saves.Load(0)!.Id; // 即剪贴板那份档（b64_0）的 Id
+                _saveAlignPhase = 3;
+                return "wait";
+            case 3:
+                var filled = _store.Saves.Load(2);
+                if (filled == null || filled.Moves.Count != 2 || filled.Id != _saveAlignIdBefore)
                 {
                     _saveAlignPhase = 0;
-                    return "FAIL slot0 empty"; // 不可达假设显式化：防 NRE 每帧重试放大成事故
+                    return "FAIL fill empty slot";
                 }
-                // 覆盖写入断言走免确认分支——headless 下 PopupCentered 弹窗会瞬间自动确认
-                // （引擎怪癖，登记 CHANGELOG），确认框语义由 m4c-overlay-contract + 人类真实窗口走查覆盖
-                _slotTsBefore = current0.Timestamp;
-                _store.SaveToSlot(0, confirmIfOccupied: false);
-                var saved = _store.Saves.Load(0);
-                bool overwritten = saved != null && saved.Timestamp > _slotTsBefore;
-                _store.Pause();
+                // 覆盖（占用槽 0 ← 槽 1 的档）：确认框语义合成驱动（headless 弹窗不自动确认）
+                _store.FillSlot(0, _saveAlignB64Alt);
+                _overlay.ConfirmDialogForTests.EmitSignal("confirmed");
+                _saveAlignPhase = 4;
+                return "wait";
+            case 4:
+                var afterOverwrite = _store.Saves.Load(0);
+                bool overwriteOk = afterOverwrite != null && afterOverwrite.Id == _saveAlignAltId;
+                // 文件路径：槽 0 → .nzsave → 空槽行导入到槽 3
+                _store.ExportSlotToFile(0, "user://m4c-roundtrip.nzsave");
+                _store.ImportFileToSlot("user://m4c-roundtrip.nzsave", 3);
+                _saveAlignPhase = 5;
+                return overwriteOk ? "wait" : "FAIL overwrite occupied";
+            case 5:
+                var fileSlot = _store.Saves.Load(3);
+                if (fileSlot == null || fileSlot.Moves.Count != 2)
+                {
+                    _saveAlignPhase = 0;
+                    return "FAIL file-to-slot";
+                }
+                _store.ImportFile("user://m4c-roundtrip.nzsave"); // 统一导入 → 首空槽 = 槽位 5（下标 4）
+                _saveAlignPhase = 6;
+                return "wait";
+            case 6:
+                var unified = _store.Saves.Load(4);
+                if (unified == null || unified.Moves.Count != 2)
+                {
+                    _saveAlignPhase = 0;
+                    return "FAIL unified first empty";
+                }
+                // 全满铺setup：下标 4 与快存槽各换一版新档（新 Id）→ 统一导入（槽 0 的档，Id=槽 2 现档）
+                // 须覆盖最后一个非快存槽（下标 4），快存槽（下标 5）受保护
+                _saveAlignCopyId = _store.Saves.Load(2)!.Id; // 剪贴板里那份档的 Id
+                _store.Saves.SaveAsync(4, _gm.BuildSaveData(_store.IsDarkTheme)).GetAwaiter().GetResult();
+                _store.Saves.SaveAsync(GameConfig.QuickSaveIndex, _gm.BuildSaveData(_store.IsDarkTheme))
+                    .GetAwaiter().GetResult();
+                var quickBefore = _store.Saves.Load(GameConfig.QuickSaveIndex);
+                if (quickBefore == null)
+                {
+                    _saveAlignPhase = 0;
+                    return "FAIL full setup";
+                }
+                _saveAlignQuickId = quickBefore.Id;
+                _store.ImportText(_saveAlignB64);
+                _overlay.ConfirmDialogForTests.EmitSignal("confirmed");
+                _saveAlignPhase = 7;
+                return "wait";
+            case 7:
+                var after4 = _store.Saves.Load(4);
+                var quickAfter = _store.Saves.Load(GameConfig.QuickSaveIndex);
+                bool protectedOk = after4 != null && after4.Id == _saveAlignCopyId
+                    && quickAfter != null && quickAfter.Id == _saveAlignQuickId;
                 _store.ReturnToTitle();
                 _saveAlignPhase = 0;
                 _saveAlignClearIdx = 0;
-                return overwritten ? "ok" : "FAIL overwrite";
+                return protectedOk ? "ok" : "FAIL quick-slot protection";
             default:
                 _saveAlignPhase = 0;
                 return "FAIL";
@@ -1143,7 +1205,7 @@ public partial class Main : Node
                         _rpPhase = 0;
                         return "FAIL setup";
                     }
-                    _store.SaveToSlot(0, confirmIfOccupied: false);
+                    _store.SaveToSlot(0);
                     _store.Pause();
                     _store.ReturnToTitle();
                     return "wait";
@@ -1625,10 +1687,21 @@ public partial class Main : Node
         _exportFileDialog.PopupCentered();
     }
 
-    private void OpenImportFileDialog()
+    private void OpenImportFileDialog(int? slot)
     {
+        _importSlot = slot ?? -1; // -1 = 头部统一导入（首空槽/满则覆盖槽 5）；≥0 = 空槽行导入到该槽
         _importFileDialog ??= MakeFileDialog(FileDialog.FileModeEnum.OpenFile,
-            path => _store.ImportFile(path));
+            path =>
+            {
+                if (_importSlot < 0)
+                {
+                    _store.ImportFile(path);
+                }
+                else
+                {
+                    _store.ImportFileToSlot(path, _importSlot);
+                }
+            });
         _importFileDialog.PopupCentered();
     }
 
