@@ -3,16 +3,16 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Nmoku 预开始页 — 初步设计原型</title>
-<!-- 初步设计演示：交互/动效/口径确认用，未动游戏代码。最终在 Godot 以 Control/Shader 复刻。 -->
+<title>Nmoku 预开始页 — 初步设计原型 R2</title>
+<!-- 初步设计演示 R2：按源项目 gomoku-613B-E2D 原图标语言重做（线框近立方体/红棱/大子彩心/辅助线/蓝球）。
+     未动游戏代码；最终在 Godot 复刻。 -->
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/lxgw-wenkai-lite-webfont@1.7.0/style.css">
 <style>
   :root {
-    /* 亮色系（Palette.Light + 图标青灰层色适配） */
     --bg1: #f0f7f7; --bg2: #dfecec;
     --ink: #1a2e3a; --dim: #5a7a7e;
     --accent: #2c4a4e;
-    --teal1: #8fb4b8; --teal2: #6e969c; --teal3: #4f7880;
+    --red: #a52a2a; --green: #2e8b57; --blue: #2f86e8;
     --audio: 0; --px: 0; --py: 0;
   }
   * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -24,13 +24,12 @@
     background: radial-gradient(120% 120% at 50% 30%, var(--bg1) 0%, var(--bg2) 100%);
   }
 
-  /* ---- 视差/音乐响应背景层 ---- */
+  /* ---- 背景：菱形晶格（斜正方形）+ 音响光斑 + 悬停波澜 ---- */
   .bg-grid {
-    position: fixed; inset: -40px; pointer-events: none; opacity: .5;
+    position: fixed; inset: -60px; pointer-events: none; opacity: .45;
     background-image:
-      repeating-linear-gradient(60deg,  rgba(79,120,128,.10) 0 1px, transparent 1px 84px),
-      repeating-linear-gradient(120deg, rgba(79,120,128,.10) 0 1px, transparent 1px 84px),
-      repeating-linear-gradient(0deg,   rgba(79,120,128,.07) 0 1px, transparent 1px 84px);
+      repeating-linear-gradient(45deg,  rgba(79,120,128,.14) 0 1px, transparent 1px 72px),
+      repeating-linear-gradient(-45deg, rgba(79,120,128,.14) 0 1px, transparent 1px 72px);
     transform: translate(calc(var(--px) * 6px), calc(var(--py) * 6px));
   }
   .bg-bloom {
@@ -38,6 +37,15 @@
     transform: translate(-50%, -50%); pointer-events: none;
     background: radial-gradient(circle, rgba(110,150,156,.28) 0%, rgba(110,150,156,0) 62%);
     opacity: calc(.25 + var(--audio) * .75);
+  }
+  .ripple {
+    position: fixed; width: 130px; height: 130px; border-radius: 50%;
+    border: 1.5px solid rgba(44,74,78,.35); pointer-events: none; z-index: 1;
+    transform: translate(-50%, -50%) scale(.25); opacity: .55;
+    animation: ripple .9s ease-out forwards;
+  }
+  @keyframes ripple {
+    to { transform: translate(-50%, -50%) scale(1.5); opacity: 0; }
   }
 
   .scene { position: fixed; inset: 0; }
@@ -51,16 +59,20 @@
   }
   body.phase2 .p1-wrap { opacity: 0; pointer-events: none; }
 
-  .n-par { transform: translate(calc(var(--px) * 14px), calc(var(--py) * 10px)); }
-  .n-fly { transition: transform .75s cubic-bezier(.25,.8,.25,1), opacity .3s ease .55s; cursor: pointer; }
+  .n-par { perspective: 1000px; transform: translate(calc(var(--px) * 14px), calc(var(--py) * 10px)); }
+  .n-fly { cursor: pointer; }
+  .n-fly.flying { animation: flyFlip 1.05s cubic-bezier(.45,.1,.3,1) forwards; }
+  @keyframes flyFlip {
+    0%   { transform: translate(0,0) rotate(0deg) scale(1); }
+    36%  { transform: translate(var(--fly-x), var(--fly-y)) rotate(45deg) scale(.6); }
+    100% { transform: translate(var(--fly-x), var(--fly-y)) rotate(45deg) rotateY(180deg) scale(.6); }
+  }
   .n-pulse {
     display: block;
     filter: drop-shadow(0 0 calc(4px + var(--audio) * 24px) rgba(79,120,128,.55));
     transform: scale(calc(1 + var(--audio) * .03));
-    transition: filter .12s linear;
   }
   .n-hover:hover .n-pulse { filter: drop-shadow(0 0 18px rgba(44,74,78,.55)); }
-  .n-fly.flying { transform: translate(var(--fly-x, -26vw), var(--fly-y, -6vh)) rotate(-540deg) scale(.42); }
 
   .wordmark { transform: translate(calc(var(--px) * 7px), calc(var(--py) * 5px)); transition: opacity .45s ease, transform .45s ease; }
   body.phase2 .wordmark { opacity: 0; }
@@ -75,69 +87,44 @@
 
   /* ================= Phase 2 主菜单 ================= */
   .board-zone {
-    position: absolute; left: 5%; top: 0; width: 42%; height: 100%;
+    position: absolute; left: 4%; top: 0; width: 46%; height: 100%;
     display: flex; align-items: center; justify-content: center;
-    opacity: 0; transform: scale(.92); transition: opacity .5s ease .55s, transform .5s ease .55s;
+    opacity: 0; transform: scale(.96); transition: opacity .45s ease .62s, transform .45s ease .62s;
     pointer-events: none;
   }
   body.phase2 .board-zone { opacity: 1; transform: scale(1); pointer-events: auto; }
-
-  .board3d { width: 250px; height: 250px; perspective: 950px; }
-  .b3-spin { width: 100%; height: 100%; transform-style: preserve-3d; animation: spin 9s linear infinite; }
-  @keyframes spin { from { transform: rotateY(0); } to { transform: rotateY(360deg); } }
-  .b3-layer {
-    position: absolute; inset: 15px; border-radius: 6px;
-    border: 2px solid; backface-visibility: visible;
-    background-color: rgba(255,255,255,.38);
-    background-image:
-      repeating-linear-gradient(to right, rgba(79,120,128,.45) 0 1.5px, transparent 1.5px 20%),
-      repeating-linear-gradient(to bottom, rgba(79,120,128,.45) 0 1.5px, transparent 1.5px 20%);
-  }
-  .b3-layer.l0 { transform: rotateX(62deg) translateZ(-44px); border-color: var(--teal1); }
-  .b3-layer.l1 { transform: rotateX(62deg) translateZ(0);     border-color: var(--teal2); }
-  .b3-layer.l2 { transform: rotateX(62deg) translateZ(44px);  border-color: var(--teal3); }
-  .b3-stone {
-    position: absolute; width: 18px; height: 18px; border-radius: 50%;
-    transform: translate(-50%, -50%);
-  }
-  .b3-stone.b { background: radial-gradient(circle at 36% 32%, #6a6f78, #222226 60%); border: 1px solid #00000055; }
-  .b3-stone.w { background: radial-gradient(circle at 36% 32%, #ffffff, #e6e0d8 60%); border: 1px solid #00000033; }
-  .b3-winline {
-    position: absolute; left: 6%; right: 6%; top: 50%; height: 4px;
-    transform: translateY(-50%); border-radius: 2px;
-    background: linear-gradient(90deg, var(--teal3), var(--accent));
-    box-shadow: 0 0 10px rgba(44,74,78,.5);
-  }
+  #boardCv { cursor: grab; }
+  #boardCv.dragging { cursor: grabbing; }
 
   .btn-col {
-    position: absolute; right: 7%; top: 50%; transform: translateY(-50%);
-    display: flex; flex-direction: column; gap: 10px; width: 232px;
+    position: absolute; right: 6%; top: 50%; transform: translateY(-50%);
+    display: flex; flex-direction: column; gap: 12px;
+    width: var(--btnw, 360px); height: 45vh; justify-content: space-between;
     opacity: 0; transform: translateY(-50%) translateX(46px);
     transition: opacity .45s ease .7s, transform .45s ease .7s;
     pointer-events: none;
   }
   body.phase2 .btn-col { opacity: 1; transform: translateY(-50%) translateX(0); pointer-events: auto; }
   .gbtn {
-    height: 38px; border-radius: 6px; cursor: pointer;
+    flex: 1; border-radius: 8px; cursor: pointer;
     display: flex; align-items: center; justify-content: center;
-    font-size: 18px; color: var(--ink); letter-spacing: 4px;
+    font-size: 20px; color: var(--ink); letter-spacing: 6px;
     background: rgba(255,255,255,.72); border: 1px solid rgba(44,74,78,.20);
-    transition: background .15s ease, border-color .15s ease, transform .15s ease;
+    transition: background .15s ease, border-color .15s ease, transform .15s ease, box-shadow .15s ease;
   }
-  .gbtn:hover { background: rgba(255,255,255,.95); border-color: var(--accent); transform: translateX(-4px); }
+  .gbtn:hover {
+    background: rgba(255,255,255,.98); border-color: var(--accent);
+    transform: translateX(-6px); box-shadow: -4px 4px 14px rgba(26,46,58,.18);
+  }
   .gbtn.primary { background: rgba(44,74,78,.12); border-color: rgba(44,74,78,.4); }
 
   .title-small {
-    position: absolute; display: flex; align-items: center; gap: 12px;
-    opacity: 0; transition: opacity .45s ease .5s; pointer-events: none;
+    position: absolute; left: 42px; top: 24px; display: flex; align-items: center; gap: 12px;
+    opacity: 0; transition: opacity .45s ease .55s; pointer-events: none;
   }
   body.phase2 .title-small { opacity: 1; }
-  .title-small .ts-n { width: 30px; height: 36px; }
   .title-small .ts-t { font-size: 26px; letter-spacing: 4px; }
   .title-small .ts-l { font-family: 'Times New Roman', serif; font-size: 12px; letter-spacing: 5px; color: var(--accent); margin-top: 3px; }
-  body.pos-tl .title-small { left: 42px; top: 26px; }
-  body.pos-tc .title-small { left: 50%; top: 22px; transform: translateX(-50%); }
-  body.pos-ub .title-small { left: 26%; top: calc(50% + 158px); transform: translateX(-50%); }
 
   /* ---- 音量图标（右下，半透明四态）---- */
   .vol {
@@ -157,7 +144,7 @@
   /* ---- 设计口径面板 ---- */
   .design-panel {
     position: fixed; left: 14px; bottom: 12px; z-index: 50;
-    max-width: 430px; font-size: 12px; line-height: 1.65; color: var(--dim);
+    max-width: 470px; font-size: 12px; line-height: 1.65; color: var(--dim);
     background: rgba(255,255,255,.55); border: 1px solid rgba(44,74,78,.15);
     border-radius: 10px; backdrop-filter: blur(4px);
   }
@@ -165,18 +152,11 @@
     cursor: pointer; padding: 7px 12px; color: var(--accent);
     font-size: 12.5px; letter-spacing: 1px; list-style-position: inside;
   }
-  .design-panel .dp-body { padding: 2px 14px 12px; }
+  .design-panel .dp-body { padding: 2px 14px 12px; max-height: 46vh; overflow-y: auto; }
   .design-panel b { color: var(--ink); }
   .design-panel .icon-row { display: flex; align-items: center; gap: 10px; margin: 8px 0; }
-  .design-panel .icon-row img, .design-panel .icon-row svg { width: 64px; height: 64px; border-radius: 14px; box-shadow: 0 2px 8px rgba(26,46,58,.18); }
-  .design-panel .arrow { font-size: 18px; color: var(--teal3); }
-  .pospick { display: flex; gap: 6px; margin: 6px 0 4px; align-items: center; flex-wrap: wrap; }
-  .pospick label {
-    cursor: pointer; padding: 2px 9px; border-radius: 20px;
-    border: 1px solid rgba(44,74,78,.3); color: var(--ink); font-size: 12px;
-  }
-  .pospick input { display: none; }
-  .pospick label:has(input:checked) { background: var(--accent); color: #fff; }
+  .design-panel .icon-row canvas { border-radius: 50%; box-shadow: 0 2px 8px rgba(26,46,58,.18); }
+  .design-panel .arrow { font-size: 18px; color: var(--teal3, #4f7880); }
   .backbtn {
     margin-top: 8px; padding: 3px 12px; font-size: 12px; cursor: pointer;
     border-radius: 6px; border: 1px solid rgba(44,74,78,.3);
@@ -185,34 +165,43 @@
   .backbtn:hover { border-color: var(--accent); }
 </style>
 </head>
-<body class="pos-tl vol-2">
+<body class="vol-2">
 
 <div class="bg-grid"></div>
 <div class="bg-bloom"></div>
 
 <div class="scene">
 
-  <!-- ============ Phase 1 预开始：大 N + 矢量标题 ============ -->
+  <!-- ============ Phase 1 预开始：大 N（源图标语言：线框+红棱+大子彩心+蓝球） ============ -->
   <div class="p1-wrap">
     <div class="n-par">
       <div class="n-fly n-hover" id="nArt" title="点击进入">
-        <svg class="n-pulse" viewBox="0 0 200 240" width="216" height="260" aria-label="Nmoku N">
-          <!-- 左竖：三层板叠（青灰三段，源自图标层色） -->
-          <rect x="22" y="18"  width="44" height="60" rx="10" fill="var(--teal1)"/>
-          <rect x="22" y="90"  width="44" height="60" rx="10" fill="var(--teal2)"/>
-          <rect x="22" y="162" width="44" height="60" rx="10" fill="var(--teal3)"/>
-          <!-- 右竖：同构 -->
-          <rect x="134" y="18"  width="44" height="60" rx="10" fill="var(--teal1)"/>
-          <rect x="134" y="90"  width="44" height="60" rx="10" fill="var(--teal2)"/>
-          <rect x="134" y="162" width="44" height="60" rx="10" fill="var(--teal3)"/>
-          <!-- 对角：跨层胜利线（accent 主笔画） -->
-          <line x1="52" y1="30" x2="148" y2="210" stroke="var(--accent)" stroke-width="26" stroke-linecap="round"/>
-          <!-- 五连：黑白相间五子沿对角线 -->
-          <circle cx="66"  cy="57"  r="13" fill="#222226" stroke="#00000055" stroke-width="2"/>
-          <circle cx="86"  cy="96"  r="13" fill="#eee8e0" stroke="#00000040" stroke-width="2"/>
-          <circle cx="106" cy="135" r="13" fill="#222226" stroke="#00000055" stroke-width="2"/>
-          <circle cx="126" cy="174" r="13" fill="#eee8e0" stroke="#00000040" stroke-width="2"/>
-          <circle cx="143" cy="206" r="13" fill="#222226" stroke="#00000055" stroke-width="2"/>
+        <svg class="n-pulse" viewBox="0 0 230 250" width="240" height="260" aria-label="Nmoku N">
+          <!-- 左右竖：线框层叠柱（近立方体比例，浅线内格 + 红外棱） -->
+          <g stroke="#9db4b8" stroke-width="2.5" fill="rgba(255,255,255,.5)">
+            <rect x="26" y="20" width="52" height="210" rx="8"/>
+            <line x1="26" y1="90"  x2="78"  y2="90"/>
+            <line x1="26" y1="160" x2="78"  y2="160"/>
+            <rect x="152" y="20" width="52" height="210" rx="8"/>
+            <line x1="152" y1="90"  x2="204" y2="90"/>
+            <line x1="152" y1="160" x2="204" y2="160"/>
+          </g>
+          <g stroke="var(--red)" stroke-width="5" stroke-linecap="round">
+            <line x1="26" y1="20" x2="26" y2="230"/>
+            <line x1="204" y1="20" x2="204" y2="230"/>
+          </g>
+          <!-- 对角：辅助线机制的红线，中央蓝球（星芒），两端大子（黑绿心/白红心，跨层错位） -->
+          <line x1="52" y1="34" x2="178" y2="216" stroke="var(--red)" stroke-width="9" stroke-linecap="round"/>
+          <line x1="52" y1="34" x2="115" y2="125" stroke="var(--green)" stroke-width="3"/>
+          <circle cx="115" cy="125" r="24" fill="var(--blue)"/>
+          <g stroke="#bcd9ff" stroke-width="3" stroke-linecap="round">
+            <line x1="115" y1="103" x2="115" y2="93"/><line x1="115" y1="147" x2="115" y2="157"/>
+            <line x1="93"  y1="125" x2="83"  y2="125"/><line x1="137" y1="125" x2="147" y2="125"/>
+          </g>
+          <circle cx="52" cy="34" r="30" fill="#1c1c20" stroke="#000" stroke-width="2"/>
+          <circle cx="52" cy="34" r="11" fill="#2e9e4f"/>
+          <circle cx="178" cy="216" r="30" fill="#f4f0ea" stroke="#00000055" stroke-width="2"/>
+          <circle cx="178" cy="216" r="11" fill="#d63a2f"/>
         </svg>
       </div>
     </div>
@@ -220,45 +209,23 @@
       <div class="wm-title">立体五子棋</div>
       <div class="wm-latin">NMOKU</div>
       <div class="wm-sub">13×13×6 三维连珠 · 立体 N 子棋</div>
-      <div class="wm-hint">点击 N 或标题进入 · 移动鼠标有视差 · 右下角点击开启演示音</div>
+      <div class="wm-hint">点击 N 或标题进入 · 拖动小棋盘可旋转 · 右下角点击开启演示音</div>
     </div>
   </div>
 
-  <!-- ============ Phase 2 主菜单：小棋盘（左） + 按钮（右） ≈ 方案 D 镜像 ============ -->
+  <!-- ============ Phase 2：线框小棋盘（canvas，拖拽旋转/悬停蓝球+辅助线） + 按钮（右） ============ -->
   <div class="board-zone">
-    <div class="board3d">
-      <div class="b3-spin">
-        <div class="b3-layer l0"></div>
-        <div class="b3-layer l1">
-          <div class="b3-winline"></div>
-          <div class="b3-stone b" style="left:14%; top:50%;"></div>
-          <div class="b3-stone w" style="left:32%; top:50%;"></div>
-          <div class="b3-stone b" style="left:50%; top:50%;"></div>
-          <div class="b3-stone w" style="left:68%; top:50%;"></div>
-          <div class="b3-stone b" style="left:86%; top:50%;"></div>
-        </div>
-        <div class="b3-layer l2"></div>
-      </div>
-    </div>
+    <canvas id="boardCv" width="1180" height="1000" style="width:590px;height:500px;"></canvas>
   </div>
 
   <div class="title-small" id="titleSmall">
-    <svg class="ts-n" viewBox="0 0 200 240">
-      <rect x="22" y="18"  width="44" height="60" rx="10" fill="var(--teal1)"/>
-      <rect x="22" y="90"  width="44" height="60" rx="10" fill="var(--teal2)"/>
-      <rect x="22" y="162" width="44" height="60" rx="10" fill="var(--teal3)"/>
-      <rect x="134" y="18"  width="44" height="60" rx="10" fill="var(--teal1)"/>
-      <rect x="134" y="90"  width="44" height="60" rx="10" fill="var(--teal2)"/>
-      <rect x="134" y="162" width="44" height="60" rx="10" fill="var(--teal3)"/>
-      <line x1="52" y1="30" x2="148" y2="210" stroke="var(--accent)" stroke-width="26" stroke-linecap="round"/>
-    </svg>
     <div>
       <div class="ts-t">立体五子棋</div>
       <div class="ts-l">NMOKU</div>
     </div>
   </div>
 
-  <div class="btn-col">
+  <div class="btn-col" id="btnCol">
     <div class="gbtn primary">开始游戏</div>
     <div class="gbtn">继续对局</div>
     <div class="gbtn">自定义对局</div>
@@ -270,7 +237,7 @@
 
 </div>
 
-<!-- ============ 音量图标：半透明四态（静音 / 1 / 2 / 3 格） ============ -->
+<!-- ============ 音量图标：半透明四态 ============ -->
 <div class="vol" id="volIcon" title="音量：点击循环 静音/1/2/3（正式版 M 键 + 设置页同步）；首次点击开启演示音">
   <svg viewBox="0 0 32 32" fill="none">
     <path d="M5 12h5l7-6v20l-7-6H5z" fill="currentColor"/>
@@ -287,42 +254,26 @@
 
 <!-- ============ 设计口径面板 ============ -->
 <details class="design-panel" open>
-  <summary>设计口径 / 操作说明（初步设计，未动工）</summary>
+  <summary>设计口径 / 操作说明（R2，未动工）</summary>
   <div class="dp-body">
     <div class="icon-row">
-      <img src="../assets-src/icon/icon-master.png" alt="现图标（暗色）"
-           onerror="this.style.display='none'">
+      <img src="../assets-src/icon/icon-source-ref.png" alt="源项目原图标（暗）"
+           onerror="this.onerror=null;this.src='../assets-src/icon/icon-master.png';" style="width:64px;height:64px;border-radius:50%;">
       <span class="arrow">→</span>
-      <svg viewBox="0 0 512 512" aria-label="亮色图标概念">
-        <defs><linearGradient id="lg" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0" stop-color="#f2f7f7"/><stop offset="1" stop-color="#d9e8e9"/>
-        </linearGradient></defs>
-        <rect width="512" height="512" rx="100" fill="url(#lg)"/>
-        <g stroke="#9dbcc0" stroke-width="6" fill="none" opacity=".9">
-          <g transform="translate(0,150)"><path d="M136 128 256 64l120 64-120 64z"/><path d="M136 128v72l120 64v-72"/><path d="M376 128v72l-120 64v-72"/></g>
-          <g transform="translate(0,50)" opacity=".8"><path d="M136 128 256 64l120 64-120 64z"/><path d="M136 128v72l120 64v-72"/><path d="M376 128v72l-120 64v-72"/></g>
-        </g>
-        <g>
-          <circle cx="196" cy="256" r="22" fill="#222226"/><circle cx="256" cy="256" r="22" fill="#eee8e0" stroke="#00000030"/>
-          <circle cx="316" cy="256" r="22" fill="#222226"/><circle cx="256" cy="150" r="22" fill="#222226"/>
-          <circle cx="256" cy="362" r="22" fill="#eee8e0" stroke="#00000030"/>
-        </g>
-      </svg>
+      <canvas id="iconCv" width="128" height="128" style="width:64px;height:64px;"></canvas>
       <div>
-        <b>图标</b>：同几何亮色化（浅底 + 青灰层线），与 N 同族；<br>
-        正式落地 = 重跑 <b>make-icon.py</b> 亮色参数（实施期）
+        <b>图标口径修正</b>：参考对象=源项目 gomoku-613B-E2D 原图标——近立方体线框、红外棱、
+        大子彩心（黑绿心/白红心）、红/绿辅助线连至中央蓝球（星芒）。亮色化=同语言浅底。
+        正式落地=重跑 make-icon.py 按此参考重绘（实施期）
       </div>
     </div>
-    <div><b>N 的来历</b>：gomoku 之 N（4–9 连珠要素）；两竖 = 棋盘层叠，对角线 = 跨层胜利线——过渡后这条线落成小棋盘上的五连。</div>
-    <div><b>字体对位</b>：宋体 ↔ Times New Roman（多语言西文）；日语等默认 LXGW；本页暂全 LXGW 占位。</div>
-    <div><b>动效</b>：视差 ≤14px 双层反向；悬停 glow；点击过渡 750ms（滑左+旋转 540°+缩小→小棋盘接棒匀速自旋 9s/圈）。</div>
-    <div><b>音乐响应</b>：演示音 = WebAudio 合成琶音 + 响度分析 → N 光晕呼吸/背景光斑；正式版接 BGM 总线响度。</div>
-    <div><b>音量图标</b>：右下半透明四态，点击循环 静音/1/2/3（正式版 M 键 + 设置页同步）。</div>
-    <div class="pospick">进入后标题缩小位置（三选一）：
-      <label><input type="radio" name="pos" value="pos-tl" checked>左上角</label>
-      <label><input type="radio" name="pos" value="pos-tc">顶居中</label>
-      <label><input type="radio" name="pos" value="pos-ub">棋盘下方</label>
-    </div>
+    <div><b>N 重设计</b>：两竖=线框层叠柱（红外棱），对角=红色辅助线，中央=蓝球星芒，两端=大子彩心跨层错位——全部元素取自原图标。</div>
+    <div><b>过渡动效</b>：平面内旋转 45° → 垂直纸面方向翻 180°，翻转经过侧立面的瞬间小棋盘接棒——"转过来刚好成棋盘"，去掉原无意义的多圈旋转。</div>
+    <div><b>小棋盘（演示）</b>：canvas 简版线框（红棱+浅格+近立方体比例），可拖拽旋转；悬停=蓝球星芒吸附最近格 + 红/绿辅助线连至两颗展示子；<b>本轮不可落子</b>。最终玩具版可落子，但棋盘规模取"无法成五"（如 4×4×3）。</div>
+    <div><b>按钮</b>：宽度对齐标题宽、列总高占 45%；悬停特效（左移+描边+阴影）本项目目前未实现，落地时随预开始页一并补（游戏内现有按钮同样适用）。</div>
+    <div><b>背景</b>：菱形晶格（斜正方形，弃三角形）；悬停波澜=节流扩散圆环，transform-only 低开销。</div>
+    <div><b>字体对位</b>：宋体 ↔ Times New Roman（多语言西文）；日语等默认 LXGW；本页暂全 LXGW 占位。<b>标题缩小位置定案：左上角</b>。</div>
+    <div><b>音乐响应</b>：演示音=WebAudio 合成琶音 + 响度分析 → N 光晕/背景光斑；正式版接 BGM 总线响度。音量图标四态点击循环。</div>
     <button class="backbtn" id="backBtn">↺ 返回预开始页</button>
   </div>
 </details>
@@ -332,11 +283,20 @@
 const $ = s => document.querySelector(s);
 const body = document.body;
 
-/* ---- 视差：鼠标 → 双层反向位移 ---- */
-let tx = 0, ty = 0, cx = 0, cy = 0;
+/* ---- 视差 + 悬停波澜（节流，transform-only） ---- */
+let tx = 0, ty = 0, cx = 0, cy = 0, lastRipple = 0;
 window.addEventListener('pointermove', e => {
   tx = (e.clientX / innerWidth) * 2 - 1;
   ty = (e.clientY / innerHeight) * 2 - 1;
+  const now = performance.now();
+  if (now - lastRipple > 280) {
+    lastRipple = now;
+    const r = document.createElement('div');
+    r.className = 'ripple';
+    r.style.left = e.clientX + 'px'; r.style.top = e.clientY + 'px';
+    document.body.appendChild(r);
+    r.addEventListener('animationend', () => r.remove());
+  }
 });
 (function lerp() {
   cx += (tx - cx) * 0.08; cy += (ty - cy) * 0.08;
@@ -345,72 +305,220 @@ window.addEventListener('pointermove', e => {
   requestAnimationFrame(lerp);
 })();
 
-/* ---- Phase 过渡：点击 N/标题 → N 滑左旋转成小棋盘 ---- */
+/* ---- 按钮尺寸：宽=标题宽，列高 45vh（CSS 已定），JS 对齐标题实测宽 ---- */
+function syncBtnWidth() {
+  const w = $('#wordmark').getBoundingClientRect().width;
+  document.documentElement.style.setProperty('--btnw', w.toFixed(0) + 'px');
+}
+window.addEventListener('resize', syncBtnWidth);
+
+/* ---- 源图标投影（照抄 make-icon.py / 原图标语言，加偏航角） ----
+   坐标口径：右手系，最里面（最远角）为 (0,0,0)，z 向上（0=底层）——与源项目一致 */
+const NCELL = 5, LAYERS = 3, SPACING = 1.25, COS30 = Math.cos(Math.PI/6), SIN30 = 0.5;
+function makeView(cv, scale, yaw0) {
+  return { cv, g: cv.getContext('2d'), scale, yaw: yaw0,
+           cx: cv.width/2, cy: cv.height/2 + 20,
+           w: cv.width, h: cv.height };
+}
+function proj(v, x, y, z) {
+  const px = x - NCELL/2, py = y - NCELL/2;
+  const c = Math.cos(v.yaw), s = Math.sin(v.yaw);
+  const rx = px*c - py*s, ry = px*s + py*c;
+  return [ v.cx + (rx-ry)*COS30*v.scale,
+           v.cy + (rx+ry)*SIN30*v.scale - z*SPACING*v.scale ];
+}
+/* 展示子位（原图标真实坐标：黑(2,0,1) 白(2,1,0)，辅助线连至蓝球(1,1,1)；另添数子丰富画面） */
+const STONES = [
+  { x: 2.5, y: 0.5, z: 1, kind: 'b', line: true },   // 原图标黑子（绿心）
+  { x: 2.5, y: 1.5, z: 0, kind: 'w', line: true },   // 原图标白子（红心）
+  { x: 0.5, y: 3.5, z: 2, kind: 'b' },
+  { x: 4.5, y: 3.5, z: 2, kind: 'w' },
+  { x: 0.5, y: 1.5, z: 0, kind: 'w' },
+  { x: 4.5, y: 0.5, z: 0, kind: 'b' },
+  { x: 3.5, y: 4.5, z: 1, kind: 'b' },
+];
+const BALL_REST = { x: 1.5, y: 1.5, z: 1 };   // 原图标蓝球位
+
+function drawBoard(v, hover, dragging, label = true) {
+  const g = v.g, S = v.scale;
+  g.clearRect(0, 0, v.w, v.h);
+
+  // 1) 各层内格（浅色）
+  g.lineWidth = 2;
+  for (let z = 0; z < LAYERS; z++) {
+    g.strokeStyle = z === 1 ? 'rgba(90,122,126,.75)' : 'rgba(157,180,184,.55)';
+    g.beginPath();
+    for (let i = 0; i <= NCELL; i++) {
+      let a = proj(v, i, 0, z), b = proj(v, i, NCELL, z);
+      g.moveTo(a[0], a[1]); g.lineTo(b[0], b[1]);
+      a = proj(v, 0, i, z); b = proj(v, NCELL, i, z);
+      g.moveTo(a[0], a[1]); g.lineTo(b[0], b[1]);
+    }
+    g.stroke();
+  }
+  // 2) 立方体外棱（红）：顶/底层周界 + 四立柱
+  g.strokeStyle = 'rgba(165,42,42,.9)'; g.lineWidth = 4.5; g.lineCap = 'round';
+  g.beginPath();
+  const rect = (z) => {
+    const c = [proj(v,0,0,z), proj(v,NCELL,0,z), proj(v,NCELL,NCELL,z), proj(v,0,NCELL,z)];
+    g.moveTo(c[0][0], c[0][1]);
+    for (let i = 1; i < 4; i++) g.lineTo(c[i][0], c[i][1]);
+    g.closePath();
+  };
+  rect(0); rect(LAYERS-1);
+  for (const [x,y] of [[0,0],[NCELL,0],[NCELL,NCELL],[0,NCELL]]) {
+    const a = proj(v,x,y,0), b = proj(v,x,y,LAYERS-1);
+    g.moveTo(a[0],a[1]); g.lineTo(b[0],b[1]);
+  }
+  g.stroke();
+
+  // 3) 辅助线（红/绿：原图标两子 → 蓝球）
+  const ball = hover || BALL_REST;
+  const pb = proj(v, ball.x, ball.y, ball.z);
+  g.lineWidth = 3;
+  for (const st of STONES) {
+    if (!st.line) continue;
+    const ps = proj(v, st.x, st.y, st.z);
+    g.strokeStyle = st.kind === 'b' ? 'rgba(46,155,79,.85)' : 'rgba(214,58,47,.85)';
+    g.beginPath(); g.moveTo(ps[0], ps[1]); g.lineTo(pb[0], pb[1]); g.stroke();
+  }
+
+  // 4) 大子（球面感：径向渐变 + 彩心）
+  for (const st of STONES) {
+    const p = proj(v, st.x, st.y, st.z), r = S * 0.72;
+    const grad = g.createRadialGradient(p[0]-r*.35, p[1]-r*.4, r*.1, p[0], p[1], r);
+    if (st.kind === 'b') { grad.addColorStop(0, '#5a5a64'); grad.addColorStop(.55, '#222226'); grad.addColorStop(1, '#101014'); }
+    else { grad.addColorStop(0, '#ffffff'); grad.addColorStop(.55, '#efe9e1'); grad.addColorStop(1, '#cfc8bd'); }
+    g.fillStyle = grad;
+    g.beginPath(); g.arc(p[0], p[1], r, 0, 7); g.fill();
+    g.strokeStyle = 'rgba(0,0,0,.35)'; g.lineWidth = 2; g.stroke();
+    g.fillStyle = st.kind === 'b' ? '#2e9e4f' : '#d63a2f';
+    g.beginPath(); g.arc(p[0], p[1], r*.34, 0, 7); g.fill();
+  }
+
+  // 5) 蓝球（星芒）
+  const br = S * 0.5;
+  g.strokeStyle = 'rgba(120,180,255,.9)'; g.lineWidth = 3; g.lineCap = 'round';
+  g.beginPath();
+  for (const [dx,dy] of [[1,0],[-1,0],[0,1],[0,-1]]) {
+    g.moveTo(pb[0]+dx*br*1.15, pb[1]+dy*br*1.15);
+    g.lineTo(pb[0]+dx*br*1.7,  pb[1]+dy*br*1.7);
+  }
+  g.stroke();
+  const bg = g.createRadialGradient(pb[0]-br*.3, pb[1]-br*.35, br*.1, pb[0], pb[1], br);
+  bg.addColorStop(0, '#7ab5ff'); bg.addColorStop(.6, '#2f86e8'); bg.addColorStop(1, '#1b5cb0');
+  g.fillStyle = bg;
+  g.beginPath(); g.arc(pb[0], pb[1], br, 0, 7); g.fill();
+
+  // 6) 状态角标（徽章复用时省略）
+  if (label) {
+    g.fillStyle = 'rgba(90,122,126,.8)'; g.font = '26px LXGW WenKai Lite, serif';
+    g.fillText(dragging ? '拖拽旋转中…' : '悬停吸附格位 · 拖拽旋转', 20, v.h - 20);
+  }
+}
+
+/* ---- 悬停拾取：最近格（含层） ---- */
+function pickCell(v, mx, my) {
+  let best = null, bd = 60 * 60;
+  for (let z = 0; z < LAYERS; z++)
+    for (let i = 0; i < NCELL; i++)
+      for (let j = 0; j < NCELL; j++) {
+        const p = proj(v, i + .5, j + .5, z);
+        const d = (p[0]-mx)*(p[0]-mx) + (p[1]-my)*(p[1]-my);
+        if (d < bd) { bd = d; best = { x: i+.5, y: j+.5, z }; }
+      }
+  return best;
+}
+
+const boardCv = $('#boardCv');
+const view = makeView(boardCv, 100, -0.62);
+let dragging = false, lastX = 0, hoverCell = null, restPhase = Math.random()*6;
+
+boardCv.addEventListener('pointerdown', e => { dragging = true; lastX = e.clientX; boardCv.classList.add('dragging'); boardCv.setPointerCapture(e.pointerId); });
+boardCv.addEventListener('pointerup',   e => { dragging = false; boardCv.classList.remove('dragging'); });
+boardCv.addEventListener('pointermove', e => {
+  const r = boardCv.getBoundingClientRect();
+  const mx = (e.clientX - r.left) * (boardCv.width / r.width);
+  const my = (e.clientY - r.top)  * (boardCv.height / r.height);
+  if (dragging) { view.yaw += (e.clientX - lastX) * 0.012; lastX = e.clientX; hoverCell = null; }
+  else hoverCell = pickCell(view, mx, my);
+});
+boardCv.addEventListener('pointerleave', () => { hoverCell = null; });
+
+(function boardLoop() {
+  if (body.classList.contains('phase2')) {
+    if (!dragging && !hoverCell) { restPhase += 0.004; view.yaw = -0.62 + Math.sin(restPhase)*0.55; }
+    drawBoard(view, hoverCell, dragging);
+  }
+  requestAnimationFrame(boardLoop);
+})();
+
+/* ---- 面板里的小图标：同一渲染器静态画一帧（亮色圆底） ---- */
+function drawIconBadge() {
+  const cv = $('#iconCv'), g = cv.getContext('2d');
+  const v = makeView(cv, 11.5, -0.62);
+  g.save();
+  g.beginPath(); g.arc(cv.width/2, cv.height/2, cv.width/2 - 2, 0, 7); g.clip();
+  const grad = g.createLinearGradient(0, 0, 0, cv.height);
+  grad.addColorStop(0, '#f2f7f7'); grad.addColorStop(1, '#d9e8e9');
+  g.fillStyle = grad; g.fillRect(0, 0, cv.width, cv.height);
+  v.cx = cv.width/2; v.cy = cv.height/2 + 6;
+  drawBoard(v, null, false, false);
+  g.restore();
+}
+
+/* ---- Phase 过渡：45° 平面内 → 180° 翻转 → 棋盘接棒 ---- */
 function toPhase2() {
-  initAudio(); // 用户手势内启动演示音
+  initAudio();
   const n = $('#nArt');
-  const zone = $('.board3d').getBoundingClientRect();
+  const zone = boardCv.getBoundingClientRect();
   const nr = n.getBoundingClientRect();
-  const dx = (zone.left + zone.width / 2) - (nr.left + nr.width / 2);
-  const dy = (zone.top + zone.height / 2) - (nr.top + nr.height / 2);
+  const dx = (zone.left + zone.width/2)  - (nr.left + nr.width/2);
+  const dy = (zone.top + zone.height/2)  - (nr.top + nr.height/2);
   n.style.setProperty('--fly-x', dx + 'px');
   n.style.setProperty('--fly-y', dy + 'px');
   n.classList.add('flying');
-  setTimeout(() => body.classList.add('phase2'), 560); // N 落位前棋盘已淡入接棒
+  setTimeout(() => body.classList.add('phase2'), 700); // 翻转近侧立时棋盘淡入接棒
 }
 $('#nArt').addEventListener('click', toPhase2);
 $('#wordmark').addEventListener('click', toPhase2);
 $('#backBtn').addEventListener('click', () => {
   body.classList.remove('phase2');
   const n = $('#nArt');
-  n.style.transition = 'none'; n.classList.remove('flying');
-  requestAnimationFrame(() => requestAnimationFrame(() => n.style.transition = ''));
+  n.style.animation = 'none'; n.classList.remove('flying');
+  requestAnimationFrame(() => requestAnimationFrame(() => n.style.animation = ''));
 });
 
-/* ---- 标题缩小位置三选一 ---- */
-for (const r of document.querySelectorAll('input[name=pos]')) {
-  r.addEventListener('change', () => {
-    body.classList.remove('pos-tl', 'pos-tc', 'pos-ub');
-    body.classList.add(r.value);
-  });
-}
-
-/* ---- 音量四态 + 演示音（WebAudio 合成琶音 + 响度分析） ---- */
+/* ---- 音量四态 + 演示音 ---- */
 const VOL_GAIN = [0, 0.35, 0.65, 1.0];
-let vol = 2, actx = null, analyser = null, master = null, pluckTimer = null, step = 0;
-const SCALE = [261.63, 293.66, 329.63, 392.0, 440.0, 523.25, 587.33]; // C 大调五声扩展
+let vol = 2, actx = null, analyser = null, master = null, step = 0;
+const SCALE = [261.63, 293.66, 329.63, 392.0, 440.0, 523.25, 587.33];
 
-function setVolClass() { body.classList.remove('vol-0', 'vol-1', 'vol-2', 'vol-3'); body.classList.add('vol-' + vol); }
 function applyGain() { if (master) master.gain.value = VOL_GAIN[vol] * 0.5; }
-
 function initAudio() {
-  if (actx) return;
+  if (actx) { if (actx.state === 'suspended') actx.resume(); return; }
   actx = new (window.AudioContext || window.webkitAudioContext)();
   master = actx.createGain();
   analyser = actx.createAnalyser();
   analyser.fftSize = 256;
   master.connect(analyser); analyser.connect(actx.destination);
   applyGain();
-  const pluck = (freq, dur, peak) => {
-    const t = actx.currentTime;
-    const o = actx.createOscillator(), g = actx.createGain();
-    o.type = 'triangle'; o.frequency.value = freq;
-    g.gain.setValueAtTime(0.0001, t);
-    g.gain.exponentialRampToValueAtTime(peak, t + 0.02);
-    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
-    o.connect(g); g.connect(master); o.start(t); o.stop(t + dur + 0.05);
-  };
-  pluckTimer = setInterval(() => {
+  setInterval(() => {
     if (VOL_GAIN[vol] === 0) return;
+    const t = actx.currentTime;
     const walk = Math.round(Math.sin(step * 0.7) * 2 + (step % 3) - 1);
+    const pluck = (freq, dur, peak) => {
+      const o = actx.createOscillator(), g = actx.createGain();
+      o.type = 'triangle'; o.frequency.value = freq;
+      g.gain.setValueAtTime(0.0001, t);
+      g.gain.exponentialRampToValueAtTime(peak, t + 0.02);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+      o.connect(g); g.connect(master); o.start(t); o.stop(t + dur + 0.05);
+    };
     pluck(SCALE[3 + walk], 1.4, 0.24);
-    if (step % 4 === 0) pluck(SCALE[0] / 2, 2.6, 0.18); // 低音衬底
+    if (step % 4 === 0) pluck(SCALE[0] / 2, 2.6, 0.18);
     step++;
   }, 480);
-  audioLoop();
-}
-
-function audioLoop() {
   const buf = new Uint8Array(analyser.frequencyBinCount);
   (function tick() {
     analyser.getByteFrequencyData(buf);
@@ -424,10 +532,15 @@ function audioLoop() {
 
 $('#volIcon').addEventListener('click', () => {
   initAudio();
-  if (actx.state === 'suspended') actx.resume();
   vol = (vol + 1) % 4;
-  setVolClass(); applyGain();
+  body.classList.remove('vol-0', 'vol-1', 'vol-2', 'vol-3');
+  body.classList.add('vol-' + vol);
+  applyGain();
 });
+
+if (document.fonts && document.fonts.ready) document.fonts.ready.then(syncBtnWidth);
+syncBtnWidth();
+drawIconBadge();
 </script>
 </body>
 </html>
