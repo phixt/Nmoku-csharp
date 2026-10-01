@@ -18,6 +18,7 @@
     --bad: #e05c5c;
   }
   * { box-sizing: border-box; margin: 0; padding: 0; }
+  [hidden] { display: none !important; }
   html, body { height: 100%; }
   body {
     display: flex; flex-direction: column;
@@ -185,6 +186,35 @@
     flex: none; padding: 6px 14px; border-top: 1px solid var(--line);
     color: var(--dim); font-size: 11.5px; line-height: 1.6;
   }
+
+  /* ---- 排版方案线框（960×540 基准面，空盒示意）---- */
+  .wire-wrap { flex: 1; overflow: auto; padding: 18px 20px 30px; }
+  .wire-cards { display: flex; flex-wrap: wrap; gap: 20px; justify-content: center; }
+  .wire-card { width: 444px; }
+  .wire-name { font-size: 13px; margin-bottom: 5px; }
+  .wire-name b { color: var(--accent); margin-right: 6px; }
+  .wire-note { font-size: 11.5px; color: var(--dim); margin-top: 6px; line-height: 1.55; }
+  .wire-clip { width: 442px; height: 249px; overflow: hidden; border: 1px solid var(--line); }
+  .wire-frame {
+    width: 960px; height: 540px; position: relative;
+    background: var(--bg); transform: scale(0.4625); transform-origin: 0 0;
+  }
+  .wbox {
+    position: absolute; border: 1.5px solid rgba(255,255,255,.22);
+    background: rgba(255,255,255,.05); border-radius: 8px;
+  }
+  .wbox.title { border-color: var(--accent); background: rgba(77,140,255,.12); }
+  .wbox.primary { border-color: var(--accent); background: rgba(77,140,255,.30); }
+  .wbox.sub { background: rgba(255,255,255,.04); }
+  .wbox.deco { border-style: dashed; background: transparent; border-color: rgba(158,168,179,.4); }
+  .wtag {
+    position: absolute; top: 4px; left: 8px; font-size: 20px; line-height: 1.2;
+    color: rgba(255,255,255,.32); white-space: nowrap; pointer-events: none;
+  }
+  .wbox.deco .wtag {
+    inset: 0; display: flex; align-items: center; justify-content: center;
+    color: rgba(158,168,179,.6); font-size: 24px;
+  }
 </style>
 </head>
 <body>
@@ -237,6 +267,7 @@
     <select id="page">
       <option value="title" selected>标题屏</option>
       <option value="game">对局屏（分屏布局）</option>
+      <option value="layout">排版方案（线框 A–E）</option>
     </select>
   </div>
   <label class="check"><input type="checkbox" id="grid" checked> 标尺网格（20/100 逻辑 px）</label>
@@ -244,6 +275,10 @@
   <label class="check"><input type="checkbox" id="one2one"> 1:1 物理尺寸（判定真实大小用，浏览器缩放请设 100%）</label>
 
   <h3>标题屏参数（当前实现值为默认）</h3>
+  <div class="row">
+    <button id="presetImpl">实现当前值</button>
+    <button id="presetProp">人类提案 10-01</button>
+  </div>
   <div class="row"><label>标题字号</label><input type="range" id="fTitle" min="28" max="72" step="1" value="42"><span class="val" id="v-fTitle"></span></div>
   <div class="row"><label>说明字号</label><input type="range" id="fSub" min="10" max="24" step="1" value="13"><span class="val" id="v-fSub"></span></div>
   <div class="row"><label>按钮字号</label><input type="range" id="fBtn" min="12" max="20" step="1" value="15"><span class="val" id="v-fBtn"></span></div>
@@ -269,7 +304,7 @@
 </aside>
 
 <main>
-  <div class="stage">
+  <div class="stage" id="stageWin">
     <div class="titlebar" id="titlebar"><span class="dot"></span><span class="dot"></span><span class="dot"></span><span id="titlebarText">Nmoku</span></div>
     <div class="win" id="win">
       <div class="surface" id="surface">
@@ -301,6 +336,10 @@
     </div>
     <div class="statusline" id="statusline"></div>
   </div>
+
+  <div class="wire-wrap" id="stageWire" hidden>
+    <div class="wire-cards" id="wireCards"></div>
+  </div>
 </main>
 </div>
 
@@ -318,6 +357,8 @@ const FONTS = {
   yahei: { label: '微软雅黑（系统）',          stack: "'Microsoft YaHei',sans-serif" },
   songti:{ label: '宋体（系统）',              stack: "'SimSun','Songti SC',serif" },
   heiti: { label: '黑体（系统）',              stack: "'SimHei',sans-serif" },
+  tnr:   { label: 'Times New Roman+宋体',      stack: "'Times New Roman','SimSun',serif" },
+  georgia:{ label: 'Georgia+宋体',             stack: "'Georgia','SimSun',serif" },
   sans:  { label: '无衬线（系统默认）',        stack: "system-ui,sans-serif" },
 };
 const DEFAULTS = {
@@ -329,6 +370,18 @@ const DEFAULTS = {
 const LS_KEY = 'nmoku-ui-baseline-preview';
 let S = { ...DEFAULTS };
 try { Object.assign(S, JSON.parse(localStorage.getItem(LS_KEY) || '{}')); } catch (e) {}
+
+// 人类提案参数（2026-10-01 快照，宋体按钮 + 64 号 LXGW 标题）
+const PROPOSAL = {"base":"new","mult":"1","winW":960,"winH":540,"page":"title","grid":true,"bounds":true,"one2one":false,"showResume":true,"fTitle":64,"fSub":12,"fBtn":18,"btnW":230,"btnH":38,"gap":7,"spTop":8,"spBot":2,"fontTitle":"lxgw","fontSub":"lxgw","fontBtn":"songti"};
+
+function syncInputs() {
+  $('mult').value = S.mult; $('page').value = S.page;
+  $('winW').value = S.winW; $('winH').value = S.winH;
+  for (const el of document.querySelectorAll('input[name=base]')) el.checked = el.value === S.base;
+  ['grid','bounds','one2one','showResume'].forEach(id => $(id).checked = !!S[id]);
+  ['fTitle','fSub','fBtn','btnW','btnH','gap','spTop','spBot'].forEach(id => { $(id).value = S[id]; $('v-' + id).textContent = S[id]; });
+  ['fontTitle','fontSub','fontBtn'].forEach(id => $(id).value = S[id]);
+}
 
 // ---- 字体下拉 ----
 for (const sel of document.querySelectorAll('.fontsel')) {
@@ -359,6 +412,8 @@ for (const b of $('presets').querySelectorAll('button')) b.addEventListener('cli
   S.winW = +b.dataset.w; S.winH = +b.dataset.h; $('winW').value = S.winW; $('winH').value = S.winH; render();
 });
 $('resetBtn').addEventListener('click', () => { S = { ...DEFAULTS }; localStorage.removeItem(LS_KEY); location.reload(); });
+$('presetImpl').addEventListener('click', () => { S = { ...S, ...DEFAULTS, grid: S.grid, bounds: S.bounds, one2one: S.one2one, page: 'title' }; syncInputs(); render(); });
+$('presetProp').addEventListener('click', () => { S = { ...S, ...PROPOSAL }; syncInputs(); render(); });
 
 // ---- 渲染 ----
 let zoom = 1, csf = 1;
@@ -393,6 +448,8 @@ function render() {
   $('titlebar').style.visibility = zoom < 0.3 ? 'hidden' : 'visible';
 
   // 页面切换
+  $('stageWin').hidden = S.page === 'layout';
+  $('stageWire').hidden = S.page !== 'layout';
   $('pageTitle').hidden = S.page !== 'title';
   $('pageGame').hidden = S.page !== 'game';
   $('gridLayer').classList.toggle('on', S.grid);
@@ -465,8 +522,80 @@ function updateReadout(lw, lh) {
   $('readout').innerHTML = html;
 }
 
+// ---- 排版方案线框（960×540 基准面，空盒示意；不含存档栏，读档走路由屏）----
+const btnCol = (x, y0, n, w, gapY = 7) => Array.from({ length: n }, (_, i) =>
+  ({ x, y: y0 + i * (38 + gapY), w, h: 38, k: 'btn', t: i === 0 ? '按钮 ×7' : '' }));
+const btnRow = (x, y0, n, w, gapX, tag) => Array.from({ length: n }, (_, i) =>
+  ({ x: x + i * (w + gapX), y: y0, w, h: 38, k: 'btn', t: i === 0 ? tag : '' }));
+
+const LAYOUTS = [
+  { id: 'A', name: '单列居中（现状对照）',
+    note: '与现行实现同构。左右宽幅基本闲置，标题越大纵向越紧（64 号提案实测余量 +94）。',
+    boxes: [
+      { x: 270, y: 45, w: 420, h: 92, k: 'title', t: '标题 64' },
+      { x: 330, y: 145, w: 300, h: 18, k: 'sub', t: '说明 12' },
+      ...btnCol(365, 180, 7, 230),
+    ] },
+  { id: 'B', name: '左视觉 · 右操作',
+    note: '左半留给视觉区（"立体"的体现位，暂以装饰留白待定），右侧 7 按钮纵向居中；宽幅利用最直接，后续加视觉素材不动操作区。',
+    boxes: [
+      { x: 40, y: 40, w: 520, h: 460, k: 'deco', t: '视觉 / 装饰区（立体体现待定）' },
+      { x: 70, y: 120, w: 420, h: 92, k: 'title', t: '标题' },
+      { x: 70, y: 228, w: 340, h: 18, k: 'sub', t: '说明' },
+      ...btnCol(610, 116, 7, 230),
+    ] },
+  { id: 'C', name: '主按钮 + 双列网格',
+    note: '开始游戏提为主动作（放大强调），其余 6 项 2×3 网格；纵向最松、分组语义清楚，适合"按钮即功能表"的直给风格。',
+    boxes: [
+      { x: 270, y: 60, w: 420, h: 92, k: 'title', t: '标题' },
+      { x: 330, y: 164, w: 300, h: 18, k: 'sub', t: '说明' },
+      { x: 330, y: 225, w: 300, h: 44, k: 'primary', t: '开始游戏（主）' },
+      { x: 245, y: 296, w: 230, h: 38, k: 'btn', t: '次按钮 ×6' }, { x: 485, y: 296, w: 230, h: 38, k: 'btn' },
+      { x: 245, y: 344, w: 230, h: 38, k: 'btn' }, { x: 485, y: 344, w: 230, h: 38, k: 'btn' },
+      { x: 245, y: 392, w: 230, h: 38, k: 'btn' }, { x: 485, y: 392, w: 230, h: 38, k: 'btn' },
+    ] },
+  { id: 'D', name: '标题左上 · 按钮左下',
+    note: '现代游戏菜单常见骨架：左上标识+说明，左下纵列操作，右侧整块留给视觉；视线动线从上到下，与 B 的区别是按钮不与视觉区争右半。',
+    boxes: [
+      { x: 560, y: 40, w: 360, h: 460, k: 'deco', t: '视觉 / 装饰区' },
+      { x: 60, y: 50, w: 460, h: 92, k: 'title', t: '标题' },
+      { x: 60, y: 154, w: 360, h: 18, k: 'sub', t: '说明' },
+      ...btnCol(60, 190, 7, 230),
+    ] },
+  { id: 'E', name: '居中标题 · 底部横排',
+    note: '标题横幅居中偏上，开始游戏主动作 + 6 项底部横排；横排最省纵向，但 6 项并排 890 已近满宽，加项无余量。',
+    boxes: [
+      { x: 60, y: 36, w: 840, h: 230, k: 'deco', t: '视觉 / 装饰背景' },
+      { x: 270, y: 80, w: 420, h: 92, k: 'title', t: '标题' },
+      { x: 330, y: 184, w: 300, h: 18, k: 'sub', t: '说明' },
+      { x: 330, y: 300, w: 300, h: 44, k: 'primary', t: '开始游戏（主）' },
+      ...btnRow(35, 370, 6, 140, 10, '次按钮 ×6'),
+    ] },
+];
+
+function buildWireframes() {
+  const wrap = $('wireCards');
+  for (const L of LAYOUTS) {
+    const card = document.createElement('div'); card.className = 'wire-card';
+    const name = document.createElement('div'); name.className = 'wire-name';
+    name.innerHTML = '<b>方案 ' + L.id + '</b>' + L.name; card.appendChild(name);
+    const clip = document.createElement('div'); clip.className = 'wire-clip'; card.appendChild(clip);
+    const frame = document.createElement('div'); frame.className = 'wire-frame'; clip.appendChild(frame);
+    for (const b of L.boxes) {
+      const d = document.createElement('div'); d.className = 'wbox ' + b.k;
+      d.style.left = b.x + 'px'; d.style.top = b.y + 'px';
+      d.style.width = b.w + 'px'; d.style.height = b.h + 'px';
+      if (b.t) { const s = document.createElement('span'); s.className = 'wtag'; s.textContent = b.t; d.appendChild(s); }
+      frame.appendChild(d);
+    }
+    const note = document.createElement('div'); note.className = 'wire-note'; note.textContent = L.note;
+    card.appendChild(note); wrap.appendChild(card);
+  }
+}
+
 window.addEventListener('resize', render);
 if (document.fonts && document.fonts.ready) document.fonts.ready.then(render);
+buildWireframes();
 render();
 setTimeout(render, 300); // webfont 晚到时兜底重测
 </script>
