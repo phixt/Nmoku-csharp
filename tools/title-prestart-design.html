@@ -3,9 +3,9 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Nmoku 预开始页 — 初步设计原型 R2</title>
-<!-- 初步设计演示 R2：按源项目 gomoku-613B-E2D 原图标语言重做（线框近立方体/红棱/大子彩心/辅助线/蓝球）。
-     未动游戏代码；最终在 Godot 复刻。 -->
+<title>Nmoku 预开始页 — 初步设计原型 R3</title>
+<!-- 初步设计演示 R3：棋盘几何按源项目口径（层=竖立平面、纵深堆叠、三层拉深近正方体）；
+     辅助线按实际机制（悬停格 13 方向逐格扫描、首子即停、黑绿/白红）。未动游戏代码。 -->
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/lxgw-wenkai-lite-webfont@1.7.0/style.css">
 <style>
   :root {
@@ -24,7 +24,7 @@
     background: radial-gradient(120% 120% at 50% 30%, var(--bg1) 0%, var(--bg2) 100%);
   }
 
-  /* ---- 背景：菱形晶格（斜正方形）+ 音响光斑 + 悬停波澜 ---- */
+  /* ---- 背景：菱形晶格 + 音响光斑 + 悬停波澜 ---- */
   .bg-grid {
     position: fixed; inset: -60px; pointer-events: none; opacity: .45;
     background-image:
@@ -87,7 +87,7 @@
 
   /* ================= Phase 2 主菜单 ================= */
   .board-zone {
-    position: absolute; left: 4%; top: 0; width: 46%; height: 100%;
+    position: absolute; left: 3%; top: 0; width: 50%; height: 100%;
     display: flex; align-items: center; justify-content: center;
     opacity: 0; transform: scale(.96); transition: opacity .45s ease .62s, transform .45s ease .62s;
     pointer-events: none;
@@ -156,7 +156,6 @@
   .design-panel b { color: var(--ink); }
   .design-panel .icon-row { display: flex; align-items: center; gap: 10px; margin: 8px 0; }
   .design-panel .icon-row canvas { border-radius: 50%; box-shadow: 0 2px 8px rgba(26,46,58,.18); }
-  .design-panel .arrow { font-size: 18px; color: var(--teal3, #4f7880); }
   .backbtn {
     margin-top: 8px; padding: 3px 12px; font-size: 12px; cursor: pointer;
     border-radius: 6px; border: 1px solid rgba(44,74,78,.3);
@@ -172,12 +171,11 @@
 
 <div class="scene">
 
-  <!-- ============ Phase 1 预开始：大 N（源图标语言：线框+红棱+大子彩心+蓝球） ============ -->
+  <!-- ============ Phase 1 预开始：大 N（源图标语言） ============ -->
   <div class="p1-wrap">
     <div class="n-par">
       <div class="n-fly n-hover" id="nArt" title="点击进入">
         <svg class="n-pulse" viewBox="0 0 230 250" width="240" height="260" aria-label="Nmoku N">
-          <!-- 左右竖：线框层叠柱（近立方体比例，浅线内格 + 红外棱） -->
           <g stroke="#9db4b8" stroke-width="2.5" fill="rgba(255,255,255,.5)">
             <rect x="26" y="20" width="52" height="210" rx="8"/>
             <line x1="26" y1="90"  x2="78"  y2="90"/>
@@ -190,7 +188,6 @@
             <line x1="26" y1="20" x2="26" y2="230"/>
             <line x1="204" y1="20" x2="204" y2="230"/>
           </g>
-          <!-- 对角：辅助线机制的红线，中央蓝球（星芒），两端大子（黑绿心/白红心，跨层错位） -->
           <line x1="52" y1="34" x2="178" y2="216" stroke="var(--red)" stroke-width="9" stroke-linecap="round"/>
           <line x1="52" y1="34" x2="115" y2="125" stroke="var(--green)" stroke-width="3"/>
           <circle cx="115" cy="125" r="24" fill="var(--blue)"/>
@@ -213,9 +210,9 @@
     </div>
   </div>
 
-  <!-- ============ Phase 2：线框小棋盘（canvas，拖拽旋转/悬停蓝球+辅助线） + 按钮（右） ============ -->
+  <!-- ============ Phase 2：竖立层线框小棋盘（拖拽旋转/悬停蓝球+13方向辅助线） + 按钮 ============ -->
   <div class="board-zone">
-    <canvas id="boardCv" width="1180" height="1000" style="width:590px;height:500px;"></canvas>
+    <canvas id="boardCv" width="1240" height="1040" style="width:620px;height:520px;"></canvas>
   </div>
 
   <div class="title-small" id="titleSmall">
@@ -254,26 +251,33 @@
 
 <!-- ============ 设计口径面板 ============ -->
 <details class="design-panel" open>
-  <summary>设计口径 / 操作说明（R2，未动工）</summary>
+  <summary>设计口径 / 操作说明（R3，未动工）</summary>
   <div class="dp-body">
     <div class="icon-row">
       <img src="../assets-src/icon/icon-source-ref.png" alt="源项目原图标（暗）"
            onerror="this.onerror=null;this.src='../assets-src/icon/icon-master.png';" style="width:64px;height:64px;border-radius:50%;">
-      <span class="arrow">→</span>
+      <span style="font-size:18px;color:#4f7880;">→</span>
       <canvas id="iconCv" width="128" height="128" style="width:64px;height:64px;"></canvas>
       <div>
-        <b>图标口径修正</b>：参考对象=源项目 gomoku-613B-E2D 原图标——近立方体线框、红外棱、
-        大子彩心（黑绿心/白红心）、红/绿辅助线连至中央蓝球（星芒）。亮色化=同语言浅底。
-        正式落地=重跑 make-icon.py 按此参考重绘（实施期）
+        <b>图标口径</b>：参考对象=源项目 gomoku-613B-E2D 原图标——近立方体线框、大子彩心、
+        红/绿辅助线连至中央蓝球。亮色化=同语言浅底。正式落地=重跑 make-icon.py 按此重绘（实施期）
       </div>
     </div>
-    <div><b>N 重设计</b>：两竖=线框层叠柱（红外棱），对角=红色辅助线，中央=蓝球星芒，两端=大子彩心跨层错位——全部元素取自原图标。</div>
-    <div><b>过渡动效</b>：平面内旋转 45° → 垂直纸面方向翻 180°，翻转经过侧立面的瞬间小棋盘接棒——"转过来刚好成棋盘"，去掉原无意义的多圈旋转。</div>
-    <div><b>小棋盘（演示）</b>：canvas 简版线框（红棱+浅格+近立方体比例），可拖拽旋转；悬停=蓝球星芒吸附最近格 + 红/绿辅助线连至两颗展示子；<b>本轮不可落子</b>。最终玩具版可落子，但棋盘规模取"无法成五"（如 4×4×3）。</div>
-    <div><b>按钮</b>：宽度对齐标题宽、列总高占 45%；悬停特效（左移+描边+阴影）本项目目前未实现，落地时随预开始页一并补（游戏内现有按钮同样适用）。</div>
-    <div><b>背景</b>：菱形晶格（斜正方形，弃三角形）；悬停波澜=节流扩散圆环，transform-only 低开销。</div>
-    <div><b>字体对位</b>：宋体 ↔ Times New Roman（多语言西文）；日语等默认 LXGW；本页暂全 LXGW 占位。<b>标题缩小位置定案：左上角</b>。</div>
-    <div><b>音乐响应</b>：演示音=WebAudio 合成琶音 + 响度分析 → N 光晕/背景光斑；正式版接 BGM 总线响度。音量图标四态点击循环。</div>
+    <div><b>N 重设计</b>：两竖=线框层叠柱，对角=红色辅助线，中央=蓝球星芒，两端=大子彩心——全部元素取自原图标。</div>
+    <div><b>棋盘几何（R3 修正）</b>：<b>层=竖立平面</b>（行=竖直、层=纵深，同源项目 B8 口径），三层纵深堆叠并
+      拉深至<b>接近正方体</b>；层间<b>不画连接线</b>、<b>不强调首尾面</b>（统一浅色网格）。坐标：右手系，
+      最里面为 (0,0,0)，y 向上。</div>
+    <div><b>辅助线（R3 按实际机制）</b>：悬停蓝球所在格出发，<b>13 方向逐格扫描（面内 8 + 竖向 1 + 跨层斜 4）</b>，
+      <b>首子即停</b>：遇黑子画<b>绿线</b>、白子画<b>红线</b>，终点子带标记环；单方向渲染上限 4 格
+      （B5/B9 口径）。原图标即悬停 (1,1,1) 时扫到黑 (2,0,1)=绿、白 (2,1,0)=红的瞬间。</div>
+    <div><b>展示子（原图标真实坐标）</b>：黑(2,0,1)/白(2,1,0)/蓝球(1,1,1)，另添数子供辅助线演示。</div>
+    <div><b>旋转（R3 手感）</b>：默认匀速自转（加快）；拖拽直接控制偏航，松手带<b>惯性衰减</b>，不与自转打架。</div>
+    <div><b>蓝球</b>：纯不透明；星芒标记预落子位。本轮不可落子；最终玩具版可落子但规模取"无法成五"（如 4×4×3）。</div>
+    <div><b>过渡动效</b>：平面内旋转 45° → 垂直纸面方向翻 180°，翻转过侧立面瞬间小棋盘接棒。</div>
+    <div><b>按钮</b>：宽=标题宽、列高 45%；悬停特效本项目尚未实现，落地时随预开始页一并补（TODO 已挂）。</div>
+    <div><b>字体对位</b>：宋体 ↔ Times New Roman（多语言西文）；日语等默认 LXGW；本页暂全 LXGW。
+      <b>标题缩小位置定案：左上角</b>。</div>
+    <div><b>音乐响应</b>：演示音=WebAudio 合成琶音 + 响度分析 → N 光晕/背景光斑；正式版接 BGM 总线响度。</div>
     <button class="backbtn" id="backBtn">↺ 返回预开始页</button>
   </div>
 </details>
@@ -283,7 +287,7 @@
 const $ = s => document.querySelector(s);
 const body = document.body;
 
-/* ---- 视差 + 悬停波澜（节流，transform-only） ---- */
+/* ---- 视差 + 悬停波澜 ---- */
 let tx = 0, ty = 0, cx = 0, cy = 0, lastRipple = 0;
 window.addEventListener('pointermove', e => {
   tx = (e.clientX / innerWidth) * 2 - 1;
@@ -305,180 +309,207 @@ window.addEventListener('pointermove', e => {
   requestAnimationFrame(lerp);
 })();
 
-/* ---- 按钮尺寸：宽=标题宽，列高 45vh（CSS 已定），JS 对齐标题实测宽 ---- */
+/* ---- 按钮尺寸：宽=标题宽 ---- */
 function syncBtnWidth() {
   const w = $('#wordmark').getBoundingClientRect().width;
   document.documentElement.style.setProperty('--btnw', w.toFixed(0) + 'px');
 }
 window.addEventListener('resize', syncBtnWidth);
 
-/* ---- 源图标投影（照抄 make-icon.py / 原图标语言，加偏航角） ----
-   坐标口径：右手系，最里面（最远角）为 (0,0,0)，z 向上（0=底层）——与源项目一致 */
-const NCELL = 5, LAYERS = 3, SPACING = 1.25, COS30 = Math.cos(Math.PI/6), SIN30 = 0.5;
+/* ================= 棋盘渲染（源项目口径） =================
+   坐标：右手系，最里面（最远离观察者）为 (0,0,0)；x=列(右)，y=行(向上)，z=层(纵深，0=最里面)。
+   几何：每层=竖立平面（x-y 面），层沿纵深堆叠；层间距拉深使 5×5×3 占据近正方体。
+   投影：绕竖直轴偏航旋转后，等距投影（同源图标族）。 */
+const NCELL = 5, LAYERS = 3;
+const COS30 = Math.cos(Math.PI / 6), SIN30 = 0.5, VSCALE = 0.95, DEPTH = 2.5;
+
 function makeView(cv, scale, yaw0) {
   return { cv, g: cv.getContext('2d'), scale, yaw: yaw0,
-           cx: cv.width/2, cy: cv.height/2 + 20,
-           w: cv.width, h: cv.height };
+           cx: cv.width / 2, cy: cv.height / 2 + 30, w: cv.width, h: cv.height };
 }
 function proj(v, x, y, z) {
-  const px = x - NCELL/2, py = y - NCELL/2;
+  const px = x - NCELL / 2, py = y - NCELL / 2, pd = z * DEPTH - DEPTH;
   const c = Math.cos(v.yaw), s = Math.sin(v.yaw);
-  const rx = px*c - py*s, ry = px*s + py*c;
-  return [ v.cx + (rx-ry)*COS30*v.scale,
-           v.cy + (rx+ry)*SIN30*v.scale - z*SPACING*v.scale ];
+  const rx = px * c - pd * s, rz = px * s + pd * c;
+  return [ v.cx + (rx - rz) * COS30 * v.scale,
+           v.cy + (rx + rz) * SIN30 * v.scale - py * VSCALE * v.scale ];
 }
-/* 展示子位（原图标真实坐标：黑(2,0,1) 白(2,1,0)，辅助线连至蓝球(1,1,1)；另添数子丰富画面） */
+
+/* 展示子（原图标真实坐标 + 添子）：黑(2,0,1) 白(2,1,0) 蓝球(1,1,1) */
 const STONES = [
-  { x: 2.5, y: 0.5, z: 1, kind: 'b', line: true },   // 原图标黑子（绿心）
-  { x: 2.5, y: 1.5, z: 0, kind: 'w', line: true },   // 原图标白子（红心）
-  { x: 0.5, y: 3.5, z: 2, kind: 'b' },
-  { x: 4.5, y: 3.5, z: 2, kind: 'w' },
-  { x: 0.5, y: 1.5, z: 0, kind: 'w' },
-  { x: 4.5, y: 0.5, z: 0, kind: 'b' },
-  { x: 3.5, y: 4.5, z: 1, kind: 'b' },
+  { x: 2, y: 0, z: 1, kind: 'b' },
+  { x: 2, y: 1, z: 0, kind: 'w' },
+  { x: 0, y: 4, z: 2, kind: 'w' },
+  { x: 4, y: 4, z: 2, kind: 'b' },
+  { x: 0, y: 1, z: 2, kind: 'b' },
+  { x: 4, y: 2, z: 1, kind: 'w' },
+  { x: 1, y: 4, z: 0, kind: 'b' },
 ];
-const BALL_REST = { x: 1.5, y: 1.5, z: 1 };   // 原图标蓝球位
+const OCC = new Map(STONES.map(s => [s.x + ',' + s.y + ',' + s.z, s]));
+const BALL_REST = { x: 1, y: 1, z: 1 };
+
+/* 13 方向（面内 8 + 竖向 1 + 跨层斜 4），双向 */
+const DIRS = [];
+for (const [dx, dy, dz] of [[1,0,0],[0,1,0],[0,0,1],[1,1,0],[1,-1,0],[1,0,1],[1,0,-1],
+                            [0,1,1],[0,1,-1],[1,1,1],[1,1,-1],[1,-1,1],[1,-1,-1]]) {
+  DIRS.push([dx, dy, dz], [-dx, -dy, -dz]);
+}
 
 function drawBoard(v, hover, dragging, label = true) {
   const g = v.g, S = v.scale;
   g.clearRect(0, 0, v.w, v.h);
 
-  // 1) 各层内格（浅色）
+  // 1) 各层竖立平面网格（统一浅色：无连接线、不强调首尾）
   g.lineWidth = 2;
+  g.strokeStyle = 'rgba(90,122,126,.5)';
+  g.beginPath();
   for (let z = 0; z < LAYERS; z++) {
-    g.strokeStyle = z === 1 ? 'rgba(90,122,126,.75)' : 'rgba(157,180,184,.55)';
-    g.beginPath();
     for (let i = 0; i <= NCELL; i++) {
-      let a = proj(v, i, 0, z), b = proj(v, i, NCELL, z);
+      let a = proj(v, i, 0, z), b = proj(v, i, NCELL, z);   // 列线（竖直）
       g.moveTo(a[0], a[1]); g.lineTo(b[0], b[1]);
-      a = proj(v, 0, i, z); b = proj(v, NCELL, i, z);
+      a = proj(v, 0, i, z); b = proj(v, NCELL, i, z);       // 行线
       g.moveTo(a[0], a[1]); g.lineTo(b[0], b[1]);
     }
-    g.stroke();
-  }
-  // 2) 立方体外棱（红）：顶/底层周界 + 四立柱
-  g.strokeStyle = 'rgba(165,42,42,.9)'; g.lineWidth = 4.5; g.lineCap = 'round';
-  g.beginPath();
-  const rect = (z) => {
-    const c = [proj(v,0,0,z), proj(v,NCELL,0,z), proj(v,NCELL,NCELL,z), proj(v,0,NCELL,z)];
-    g.moveTo(c[0][0], c[0][1]);
-    for (let i = 1; i < 4; i++) g.lineTo(c[i][0], c[i][1]);
-    g.closePath();
-  };
-  rect(0); rect(LAYERS-1);
-  for (const [x,y] of [[0,0],[NCELL,0],[NCELL,NCELL],[0,NCELL]]) {
-    const a = proj(v,x,y,0), b = proj(v,x,y,LAYERS-1);
-    g.moveTo(a[0],a[1]); g.lineTo(b[0],b[1]);
   }
   g.stroke();
 
-  // 3) 辅助线（红/绿：原图标两子 → 蓝球）
+  // 2) 辅助线（实际机制）：悬停格 13 方向逐格扫描、首子即停；黑=绿、白=红，终点带标记环
   const ball = hover || BALL_REST;
-  const pb = proj(v, ball.x, ball.y, ball.z);
-  g.lineWidth = 3;
-  for (const st of STONES) {
-    if (!st.line) continue;
-    const ps = proj(v, st.x, st.y, st.z);
-    g.strokeStyle = st.kind === 'b' ? 'rgba(46,155,79,.85)' : 'rgba(214,58,47,.85)';
-    g.beginPath(); g.moveTo(ps[0], ps[1]); g.lineTo(pb[0], pb[1]); g.stroke();
+  const bc = { x: ball.x + .5, y: ball.y + .5, z: ball.z };
+  g.lineWidth = 3.5; g.lineCap = 'round';
+  for (const [dx, dy, dz] of DIRS) {
+    let hit = null;
+    for (let k = 1; k <= 4; k++) {           // 渲染端 4 格上限（B5）
+      const px = ball.x + dx * k, py = ball.y + dy * k, pz = ball.z + dz * k;
+      if (px < 0 || px >= NCELL || py < 0 || py >= NCELL || pz < 0 || pz >= LAYERS) break;
+      const st = OCC.get(px + ',' + py + ',' + pz);
+      if (st) { hit = { st, px, py, pz }; break; }   // 首子即停（B9）
+    }
+    if (!hit) continue;
+    const p1 = proj(v, bc.x, bc.y, bc.z);
+    const p2 = proj(v, hit.px + .5, hit.py + .5, hit.pz);
+    g.strokeStyle = hit.st.kind === 'b' ? 'rgba(46,155,79,.9)' : 'rgba(214,58,47,.9)';
+    g.beginPath(); g.moveTo(p1[0], p1[1]); g.lineTo(p2[0], p2[1]); g.stroke();
+    g.beginPath(); g.arc(p2[0], p2[1], S * 0.16, 0, 7); g.stroke();   // 终点标记环
   }
 
-  // 4) 大子（球面感：径向渐变 + 彩心）
-  for (const st of STONES) {
-    const p = proj(v, st.x, st.y, st.z), r = S * 0.72;
-    const grad = g.createRadialGradient(p[0]-r*.35, p[1]-r*.4, r*.1, p[0], p[1], r);
+  // 3) 大子（按纵深由远及近绘制；球面感 + 彩心）
+  const withDepth = STONES.map(st => {
+    const c = Math.cos(v.yaw), s = Math.sin(v.yaw);
+    const depth = (st.x + .5 - NCELL / 2) * s + (st.z * DEPTH - DEPTH) * c;
+    return { st, depth };
+  }).sort((a, b) => a.depth - b.depth);
+  for (const { st } of withDepth) {
+    const p = proj(v, st.x + .5, st.y + .5, st.z), r = S * 0.72;
+    const grad = g.createRadialGradient(p[0] - r * .35, p[1] - r * .4, r * .1, p[0], p[1], r);
     if (st.kind === 'b') { grad.addColorStop(0, '#5a5a64'); grad.addColorStop(.55, '#222226'); grad.addColorStop(1, '#101014'); }
     else { grad.addColorStop(0, '#ffffff'); grad.addColorStop(.55, '#efe9e1'); grad.addColorStop(1, '#cfc8bd'); }
     g.fillStyle = grad;
     g.beginPath(); g.arc(p[0], p[1], r, 0, 7); g.fill();
     g.strokeStyle = 'rgba(0,0,0,.35)'; g.lineWidth = 2; g.stroke();
     g.fillStyle = st.kind === 'b' ? '#2e9e4f' : '#d63a2f';
-    g.beginPath(); g.arc(p[0], p[1], r*.34, 0, 7); g.fill();
+    g.beginPath(); g.arc(p[0], p[1], r * .34, 0, 7); g.fill();
   }
 
-  // 5) 蓝球（星芒）
-  const br = S * 0.5;
-  g.strokeStyle = 'rgba(120,180,255,.9)'; g.lineWidth = 3; g.lineCap = 'round';
+  // 4) 蓝球（纯不透明，星芒）
+  const pb = proj(v, bc.x, bc.y, bc.z), br = S * 0.5;
+  g.strokeStyle = '#2f86e8'; g.lineWidth = 3.5; g.lineCap = 'round';
   g.beginPath();
-  for (const [dx,dy] of [[1,0],[-1,0],[0,1],[0,-1]]) {
-    g.moveTo(pb[0]+dx*br*1.15, pb[1]+dy*br*1.15);
-    g.lineTo(pb[0]+dx*br*1.7,  pb[1]+dy*br*1.7);
+  for (const [dx, dy] of [[1,0],[-1,0],[0,1],[0,-1]]) {
+    g.moveTo(pb[0] + dx * br * 1.2, pb[1] + dy * br * 1.2);
+    g.lineTo(pb[0] + dx * br * 1.75, pb[1] + dy * br * 1.75);
   }
   g.stroke();
-  const bg = g.createRadialGradient(pb[0]-br*.3, pb[1]-br*.35, br*.1, pb[0], pb[1], br);
-  bg.addColorStop(0, '#7ab5ff'); bg.addColorStop(.6, '#2f86e8'); bg.addColorStop(1, '#1b5cb0');
-  g.fillStyle = bg;
+  g.fillStyle = '#2f86e8';
   g.beginPath(); g.arc(pb[0], pb[1], br, 0, 7); g.fill();
+  g.strokeStyle = 'rgba(255,255,255,.55)'; g.lineWidth = 2;
+  g.beginPath(); g.arc(pb[0] - br * .25, pb[1] - br * .3, br * .45, 0, 7); g.stroke();
 
-  // 6) 状态角标（徽章复用时省略）
+  // 5) 状态角标
   if (label) {
     g.fillStyle = 'rgba(90,122,126,.8)'; g.font = '26px LXGW WenKai Lite, serif';
     g.fillText(dragging ? '拖拽旋转中…' : '悬停吸附格位 · 拖拽旋转', 20, v.h - 20);
   }
 }
 
-/* ---- 悬停拾取：最近格（含层） ---- */
+/* 悬停拾取：最近格（含层） */
 function pickCell(v, mx, my) {
   let best = null, bd = 60 * 60;
   for (let z = 0; z < LAYERS; z++)
-    for (let i = 0; i < NCELL; i++)
-      for (let j = 0; j < NCELL; j++) {
-        const p = proj(v, i + .5, j + .5, z);
+    for (let x = 0; x < NCELL; x++)
+      for (let y = 0; y < NCELL; y++) {
+        const p = proj(v, x + .5, y + .5, z);
         const d = (p[0]-mx)*(p[0]-mx) + (p[1]-my)*(p[1]-my);
-        if (d < bd) { bd = d; best = { x: i+.5, y: j+.5, z }; }
+        if (d < bd) { bd = d; best = { x, y, z }; }
       }
   return best;
 }
 
 const boardCv = $('#boardCv');
-const view = makeView(boardCv, 100, -0.62);
-let dragging = false, lastX = 0, hoverCell = null, restPhase = Math.random()*6;
+const view = makeView(boardCv, 80, 0.3);
+let dragging = false, lastX = 0, yawVel = 0, hoverCell = null;
+let mouse = null;
+const AUTO = 0.011;   // 默认自转（约 9.5 秒/圈）
 
-boardCv.addEventListener('pointerdown', e => { dragging = true; lastX = e.clientX; boardCv.classList.add('dragging'); boardCv.setPointerCapture(e.pointerId); });
-boardCv.addEventListener('pointerup',   e => { dragging = false; boardCv.classList.remove('dragging'); });
+boardCv.addEventListener('pointerdown', e => {
+  dragging = true; lastX = e.clientX; yawVel = 0;
+  boardCv.classList.add('dragging');
+  boardCv.setPointerCapture(e.pointerId);
+});
+boardCv.addEventListener('pointerup', e => {
+  dragging = false;
+  boardCv.classList.remove('dragging');
+});
 boardCv.addEventListener('pointermove', e => {
   const r = boardCv.getBoundingClientRect();
-  const mx = (e.clientX - r.left) * (boardCv.width / r.width);
-  const my = (e.clientY - r.top)  * (boardCv.height / r.height);
-  if (dragging) { view.yaw += (e.clientX - lastX) * 0.012; lastX = e.clientX; hoverCell = null; }
-  else hoverCell = pickCell(view, mx, my);
+  mouse = { x: (e.clientX - r.left) * (boardCv.width / r.width),
+            y: (e.clientY - r.top)  * (boardCv.height / r.height) };
+  if (dragging) {
+    const dx = e.clientX - lastX; lastX = e.clientX;
+    view.yaw += dx * 0.012;
+    yawVel = dx * 0.012;            // 记录松手惯性
+  }
 });
-boardCv.addEventListener('pointerleave', () => { hoverCell = null; });
+boardCv.addEventListener('pointerleave', () => { mouse = null; hoverCell = null; });
 
 (function boardLoop() {
   if (body.classList.contains('phase2')) {
-    if (!dragging && !hoverCell) { restPhase += 0.004; view.yaw = -0.62 + Math.sin(restPhase)*0.55; }
+    if (!dragging) {
+      yawVel *= 0.94;                                   // 惯性衰减
+      view.yaw += yawVel + AUTO;                        // 自转 + 惯性
+      if (mouse) hoverCell = pickCell(view, mouse.x, mouse.y);
+    }
     drawBoard(view, hoverCell, dragging);
   }
   requestAnimationFrame(boardLoop);
 })();
 
-/* ---- 面板里的小图标：同一渲染器静态画一帧（亮色圆底） ---- */
+/* 面板小图标：同一渲染器静态一帧（亮色圆底） */
 function drawIconBadge() {
   const cv = $('#iconCv'), g = cv.getContext('2d');
-  const v = makeView(cv, 11.5, -0.62);
+  const v = makeView(cv, 11, 0.3);
   g.save();
-  g.beginPath(); g.arc(cv.width/2, cv.height/2, cv.width/2 - 2, 0, 7); g.clip();
+  g.beginPath(); g.arc(cv.width / 2, cv.height / 2, cv.width / 2 - 2, 0, 7); g.clip();
   const grad = g.createLinearGradient(0, 0, 0, cv.height);
   grad.addColorStop(0, '#f2f7f7'); grad.addColorStop(1, '#d9e8e9');
   g.fillStyle = grad; g.fillRect(0, 0, cv.width, cv.height);
-  v.cx = cv.width/2; v.cy = cv.height/2 + 6;
+  v.cx = cv.width / 2; v.cy = cv.height / 2 + 4;
   drawBoard(v, null, false, false);
   g.restore();
 }
 
-/* ---- Phase 过渡：45° 平面内 → 180° 翻转 → 棋盘接棒 ---- */
+/* ---- Phase 过渡 ---- */
 function toPhase2() {
   initAudio();
   const n = $('#nArt');
   const zone = boardCv.getBoundingClientRect();
   const nr = n.getBoundingClientRect();
-  const dx = (zone.left + zone.width/2)  - (nr.left + nr.width/2);
-  const dy = (zone.top + zone.height/2)  - (nr.top + nr.height/2);
+  const dx = (zone.left + zone.width / 2) - (nr.left + nr.width / 2);
+  const dy = (zone.top + zone.height / 2) - (nr.top + nr.height / 2);
   n.style.setProperty('--fly-x', dx + 'px');
   n.style.setProperty('--fly-y', dy + 'px');
   n.classList.add('flying');
-  setTimeout(() => body.classList.add('phase2'), 700); // 翻转近侧立时棋盘淡入接棒
+  setTimeout(() => body.classList.add('phase2'), 700);
 }
 $('#nArt').addEventListener('click', toPhase2);
 $('#wordmark').addEventListener('click', toPhase2);
