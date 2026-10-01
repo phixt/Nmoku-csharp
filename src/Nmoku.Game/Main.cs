@@ -2439,14 +2439,16 @@ public partial class Main : Node
     }
 
     /// <summary>语言偏好启动恢复（M5 验收反馈批补缺口：设置页写入 cfg 后此前无人读，重启即丢失）。
-    /// cfg 存横线形（zh-CN），SetLocale 标准化为下划线形——翻译查找两端均按标准形，无匹配问题。</summary>
+    /// 无偏好时默认 zh-CN（人类指示 2026-10-01，不随 OS locale 漂移）。cfg 存横线形（zh-CN），
+    /// SetLocale 标准化为下划线形——翻译查找两端均按标准形，无匹配问题。</summary>
     private void RestoreLanguage()
     {
-        string lang = SettingsStore.Get("general", "lang", "").AsString();
-        if (!string.IsNullOrEmpty(lang))
+        string lang = SettingsStore.Get("general", "lang", "zh-CN").AsString();
+        if (string.IsNullOrWhiteSpace(lang))
         {
-            TranslationServer.SetLocale(lang);
+            lang = "zh-CN";
         }
+        TranslationServer.SetLocale(lang);
     }
 
     /// <summary>窗口模式变化（含系统标题栏操作）写回偏好，保证 cfg 与实际状态一致。</summary>

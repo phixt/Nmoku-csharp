@@ -57,7 +57,7 @@
   `GetLocale()` 的下划线形（zh_CN）**永不等** → 初值/重建后恒空选、弹窗无◉标记，观感即"没切换/
   改不回"；(b) **启动从不读 cfg lang**（设置页只写不读），重启丢偏好——本机真实 cfg 即留有
   ja-JP 残留可证。修：匹配经 `StandardizeLocale`；`Main._Ready` 增 `RestoreLanguage`（先于首个
-  壳屏构建）。
+  壳屏构建）——**无偏好时默认 zh-CN**（人类指示 2026-10-01，不随 OS locale 漂移）。
 - **④模式下拉初值**：改读**实际窗口状态**（cfg 仅 headless 回归退回用），cfg 与实际由
   SizeChanged 同步点收敛；启动恢复期（RestoreWindowMode→ApplyRestoredMode 之间）以
   `_modeRestorePending` 拦截 SyncWindowModeToPrefs 过渡态写回，防待恢复偏好被毁。
