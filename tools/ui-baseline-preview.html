@@ -1,0 +1,474 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Nmoku UI 基准预览 — 960×540 缩放体系</title>
+<!-- 游戏当前字体：霞鹜文楷 Lite（与 src/Nmoku.Game/assets/fonts 同源），unicode-range 按需分包 -->
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/lxgw-wenkai-lite-webfont@1.7.0/style.css">
+<style>
+  :root {
+    --bg: #1a1c21;          /* Palette.Dark.Background */
+    --text: #ebedf2;        /* Palette.Dark.TextPrimary */
+    --dim: #9ea8b3;         /* Palette.Dark.TextDim */
+    --accent: #4d8cff;      /* Palette.Dark.Accent */
+    --panel: #23262d;
+    --line: #3a3f49;
+    --ok: #4caf7d;
+    --bad: #e05c5c;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; }
+  body {
+    display: flex; flex-direction: column;
+    background: #121317; color: var(--text);
+    font-family: 'LXGW WenKai Lite', 'Microsoft YaHei', sans-serif;
+    font-size: 13px; overflow: hidden;
+  }
+
+  header {
+    padding: 8px 14px; border-bottom: 1px solid var(--line);
+    display: flex; align-items: baseline; gap: 14px; flex: none;
+  }
+  header b { font-size: 15px; }
+  header .formula { color: var(--dim); }
+  header .formula code { color: var(--accent); font-family: Consolas, monospace; }
+
+  .wrap { flex: 1; display: flex; min-height: 0; }
+
+  /* ============ 左侧控制面板 ============ */
+  aside {
+    width: 300px; flex: none; overflow-y: auto;
+    border-right: 1px solid var(--line); padding: 10px 12px 24px;
+    background: #17181d;
+  }
+  aside h3 {
+    font-size: 12px; color: var(--accent); margin: 14px 0 6px;
+    text-transform: none; letter-spacing: 1px;
+    border-bottom: 1px dashed var(--line); padding-bottom: 3px;
+  }
+  aside h3:first-child { margin-top: 2px; }
+  .row { display: flex; align-items: center; gap: 6px; margin: 5px 0; flex-wrap: wrap; }
+  .row label { flex: none; width: 92px; color: var(--dim); }
+  .row .val { flex: none; width: 34px; text-align: right; font-family: Consolas, monospace; color: var(--text); }
+  input[type=range] { flex: 1; min-width: 80px; accent-color: var(--accent); }
+  input[type=number] {
+    width: 74px; background: var(--panel); color: var(--text);
+    border: 1px solid var(--line); border-radius: 4px; padding: 3px 6px;
+    font-family: Consolas, monospace;
+  }
+  select {
+    flex: 1; background: var(--panel); color: var(--text);
+    border: 1px solid var(--line); border-radius: 4px; padding: 3px 5px; font-size: 12px;
+  }
+  select:disabled { opacity: .4; }
+  button {
+    background: var(--panel); color: var(--text); border: 1px solid var(--line);
+    border-radius: 4px; padding: 3px 9px; cursor: pointer; font-size: 12px;
+    font-family: inherit;
+  }
+  button:hover { border-color: var(--accent); }
+  button.on { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .presets { display: flex; flex-wrap: wrap; gap: 4px; margin: 4px 0; }
+  .radio { display: inline-flex; align-items: center; gap: 4px; cursor: pointer; margin-right: 10px; white-space: nowrap; }
+  #winW, #winH { width: 64px; }
+  .check { display: flex; align-items: center; gap: 6px; margin: 5px 0; cursor: pointer; color: var(--dim); }
+
+  /* 读数 */
+  .readout {
+    background: var(--panel); border: 1px solid var(--line); border-radius: 6px;
+    padding: 7px 9px; margin: 6px 0; font-family: Consolas, monospace; font-size: 12px;
+    line-height: 1.7;
+  }
+  .readout .k { color: var(--dim); }
+  .readout .fit-ok { color: var(--ok); }
+  .readout .fit-bad { color: var(--bad); font-weight: bold; }
+  #paramSnapshot {
+    width: 100%; height: 84px; background: var(--panel); color: var(--dim);
+    border: 1px solid var(--line); border-radius: 4px;
+    font-family: Consolas, monospace; font-size: 11px; padding: 5px; resize: vertical;
+  }
+
+  /* ============ 右侧舞台 ============ */
+  main { flex: 1; overflow: auto; display: flex; flex-direction: column; }
+  .stage {
+    flex: 1; display: flex; flex-direction: column;
+    align-items: center; justify-content: center; padding: 18px; min-height: 0;
+  }
+  .titlebar {
+    height: 26px; flex: none; display: flex; align-items: center; gap: 8px;
+    background: #2b2e36; border: 1px solid var(--line); border-bottom: none;
+    border-radius: 6px 6px 0 0; padding: 0 10px; color: var(--dim); font-size: 12px;
+  }
+  .titlebar .dot { width: 9px; height: 9px; border-radius: 50%; background: #4a4f5a; }
+  .win {
+    position: relative; overflow: hidden; flex: none;
+    border: 1px solid var(--line); background: var(--bg);
+  }
+  .surface {
+    position: absolute; top: 0; left: 0; transform-origin: 0 0;
+    background: var(--bg); overflow: hidden;
+  }
+  .statusline {
+    flex: none; margin-top: 6px; color: var(--dim); font-family: Consolas, monospace;
+    font-size: 12px; text-align: center;
+  }
+
+  /* 标尺网格（逻辑坐标系） */
+  .grid { position: absolute; inset: 0; pointer-events: none; display: none; }
+  .grid.on { display: block; }
+  .grid .minor {
+    position: absolute; inset: 0;
+    background-image:
+      repeating-linear-gradient(to right, rgba(255,255,255,.045) 0 1px, transparent 1px 20px),
+      repeating-linear-gradient(to bottom, rgba(255,255,255,.045) 0 1px, transparent 1px 20px);
+  }
+  .grid .major {
+    position: absolute; inset: 0;
+    background-image:
+      repeating-linear-gradient(to right, rgba(77,140,255,.16) 0 1px, transparent 1px 100px),
+      repeating-linear-gradient(to bottom, rgba(77,140,255,.16) 0 1px, transparent 1px 100px);
+  }
+  .grid .tick {
+    position: absolute; font: 10px Consolas, monospace; color: rgba(77,140,255,.75);
+    background: rgba(26,28,33,.75); padding: 0 2px; pointer-events: none;
+  }
+
+  /* ---- 标题屏 mock（复刻 TitleScreen.cs 结构）---- */
+  .page { position: absolute; inset: 0; }
+  .page[hidden] { display: none; }
+  .page-title { display: flex; align-items: center; justify-content: center; }
+  .vbox { display: flex; flex-direction: column; align-items: center; }
+  .vbox.outline { outline: 1px dashed rgba(77,140,255,.55); outline-offset: 2px; }
+  .lbl { line-height: normal; white-space: nowrap; }
+  .sp { flex: none; }
+  .gbtn {
+    flex: none; display: flex; align-items: center; justify-content: center;
+    background: rgba(255,255,255,.07);
+    border: 1px solid rgba(255,255,255,.13);
+    border-radius: 4px; line-height: 1; white-space: nowrap;
+  }
+  .gbtn:hover { background: rgba(255,255,255,.12); }
+
+  /* ---- 对局屏 mock（复刻 GameScreen.cs 结构）---- */
+  .page-game { display: flex; }
+  .vp3d {
+    flex: 62; background:
+      linear-gradient(rgba(77,140,255,.05) 1px, transparent 1px) 0 0 / 100% 25%,
+      linear-gradient(90deg, rgba(77,140,255,.05) 1px, transparent 1px) 0 0 / 25% 100%,
+      #14161a;
+    display: flex; align-items: center; justify-content: center;
+    border-right: 1px solid var(--line);
+  }
+  .vp2d {
+    flex: 38; background:
+      repeating-linear-gradient(to right, rgba(255,255,255,.05) 0 1px, transparent 1px calc(100%/13)),
+      repeating-linear-gradient(to bottom, rgba(255,255,255,.05) 0 1px, transparent 1px calc(100%/13)),
+      var(--bg);
+    display: flex; align-items: flex-start; justify-content: flex-start;
+  }
+  .vp-tag { color: var(--dim); font-size: 13px; }
+  .turnind {
+    position: absolute; right: 0; bottom: 0;
+    display: flex; flex-direction: column; align-items: center; gap: 2px;
+  }
+  .turnind .stone {
+    width: 24px; height: 24px; border-radius: 50%;
+    background: radial-gradient(circle at 38% 34%, #6a6f78 0%, #23262d 55%, #0c0d10 100%);
+    border: 1px solid rgba(0,0,0,.6);
+  }
+  .turnind .ttext {
+    font-size: 14px; line-height: normal; white-space: nowrap;
+    text-shadow: 0 0 3px #000, 0 0 3px #000;
+  }
+  footer {
+    flex: none; padding: 6px 14px; border-top: 1px solid var(--line);
+    color: var(--dim); font-size: 11.5px; line-height: 1.6;
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <b>Nmoku UI 基准预览</b>
+  <span class="formula">
+    新体系 <code>csf = (窗口高 / 540) × UI倍率</code>，基准逻辑面 <code>960×540</code>；
+    现行 <code>csf = 2.5 固定</code>，逻辑面 <code>768×432</code>
+  </span>
+</header>
+
+<div class="wrap">
+<aside>
+
+  <h3>缩放体系</h3>
+  <div class="row">
+    <label class="radio"><input type="radio" name="base" value="new" checked> 新基准 540</label>
+    <label class="radio"><input type="radio" name="base" value="old"> 现行 2.5</label>
+  </div>
+  <div class="row">
+    <label for="mult">UI 倍率</label>
+    <select id="mult">
+      <option value="0.5">0.5x</option><option value="0.75">0.75x</option>
+      <option value="1" selected>1x</option><option value="1.25">1.25x</option>
+      <option value="1.5">1.5x</option><option value="2">2x</option>
+    </select>
+  </div>
+
+  <h3>窗口尺寸（物理 px，拖拽保留可任意）</h3>
+  <div class="row">
+    <label>宽 × 高</label>
+    <input type="number" id="winW" value="1920" min="200" max="7680" step="10">
+    <span>×</span>
+    <input type="number" id="winH" value="1080" min="200" max="4320" step="10">
+  </div>
+  <div class="presets" id="presets">
+    <button data-w="960"  data-h="540">960×540</button>
+    <button data-w="1280" data-h="720">1280×720</button>
+    <button data-w="1366" data-h="768">1366×768</button>
+    <button data-w="1600" data-h="900">1600×900</button>
+    <button data-w="1920" data-h="1080">1920×1080</button>
+    <button data-w="2560" data-h="1440">2560×1440</button>
+    <button data-w="3840" data-h="2160">4K</button>
+  </div>
+
+  <h3>视图</h3>
+  <div class="row">
+    <label>页面</label>
+    <select id="page">
+      <option value="title" selected>标题屏</option>
+      <option value="game">对局屏（分屏布局）</option>
+    </select>
+  </div>
+  <label class="check"><input type="checkbox" id="grid" checked> 标尺网格（20/100 逻辑 px）</label>
+  <label class="check"><input type="checkbox" id="bounds" checked> 内容边界与坐标读数</label>
+  <label class="check"><input type="checkbox" id="one2one"> 1:1 物理尺寸（判定真实大小用，浏览器缩放请设 100%）</label>
+
+  <h3>标题屏参数（当前实现值为默认）</h3>
+  <div class="row"><label>标题字号</label><input type="range" id="fTitle" min="28" max="72" step="1" value="42"><span class="val" id="v-fTitle"></span></div>
+  <div class="row"><label>说明字号</label><input type="range" id="fSub" min="10" max="24" step="1" value="13"><span class="val" id="v-fSub"></span></div>
+  <div class="row"><label>按钮字号</label><input type="range" id="fBtn" min="12" max="20" step="1" value="15"><span class="val" id="v-fBtn"></span></div>
+  <div class="row"><label>按钮宽</label><input type="range" id="btnW" min="160" max="320" step="2" value="220"><span class="val" id="v-btnW"></span></div>
+  <div class="row"><label>按钮高</label><input type="range" id="btnH" min="28" max="56" step="1" value="34"><span class="val" id="v-btnH"></span></div>
+  <div class="row"><label>行间距</label><input type="range" id="gap" min="4" max="24" step="1" value="8"><span class="val" id="v-gap"></span></div>
+  <div class="row"><label>上留白</label><input type="range" id="spTop" min="0" max="40" step="1" value="10"><span class="val" id="v-spTop"></span></div>
+  <div class="row"><label>下留白</label><input type="range" id="spBot" min="0" max="40" step="1" value="6"><span class="val" id="v-spBot"></span></div>
+  <label class="check"><input type="checkbox" id="showResume" checked> 显示「继续对局」（最坏 7 按钮布局）</label>
+
+  <h3>字体分组（试配用）</h3>
+  <div class="row"><label>标题字体</label><select class="fontsel" id="fontTitle"></select></div>
+  <div class="row"><label>说明字体</label><select class="fontsel" id="fontSub"></select></div>
+  <div class="row"><label>按钮字体</label><select class="fontsel" id="fontBtn"></select></div>
+
+  <h3>读数</h3>
+  <div class="readout" id="readout"></div>
+
+  <h3>参数快照（反馈标准时粘贴此段）</h3>
+  <textarea id="paramSnapshot" readonly></textarea>
+  <div class="row"><button id="resetBtn">恢复实现默认</button></div>
+
+</aside>
+
+<main>
+  <div class="stage">
+    <div class="titlebar" id="titlebar"><span class="dot"></span><span class="dot"></span><span class="dot"></span><span id="titlebarText">Nmoku</span></div>
+    <div class="win" id="win">
+      <div class="surface" id="surface">
+
+        <div class="page page-title" id="pageTitle">
+          <div class="vbox" id="vbox">
+            <div class="lbl" id="elTitle">立体五子棋</div>
+            <div class="lbl" id="elSub" style="color: var(--dim);">13×13×6 三维连珠 · Nmoku</div>
+            <div class="sp" id="elSpTop"></div>
+            <div class="gbtn">开始游戏</div>
+            <div class="gbtn" id="elResume">继续对局</div>
+            <div class="gbtn">自定义对局</div>
+            <div class="gbtn">读档</div>
+            <div class="gbtn">快捷键说明</div>
+            <div class="gbtn">设置</div>
+            <div class="sp" id="elSpBot"></div>
+            <div class="gbtn">退出</div>
+          </div>
+        </div>
+
+        <div class="page page-game" id="pageGame" hidden>
+          <div class="vp3d"><span class="vp-tag">3D 左视口 · 62%</span></div>
+          <div class="vp2d"><span class="vp-tag">2D 右面板 · 38%</span></div>
+          <div class="turnind"><div class="stone"></div><div class="ttext">轮到黑方</div></div>
+        </div>
+
+        <div class="grid" id="gridLayer"><div class="minor"></div><div class="major"></div><div id="ticks"></div></div>
+      </div>
+    </div>
+    <div class="statusline" id="statusline"></div>
+  </div>
+</main>
+</div>
+
+<footer>
+  数值为浏览器近似（Godot Label 行高按字体 metrics 计，差异 ±几 px，引擎精确值以 m5-title-fit 容量锁为准）。
+  标题屏内容盒 = CenterContainer 居中，坐标读数给出内容顶 y 与余量；余量为负即溢出（上下两端同时裁切）。
+</footer>
+
+<script>
+'use strict';
+const $ = id => document.getElementById(id);
+const FONTS = {
+  lxgw:  { label: '霞鹜文楷 Lite（游戏当前）', stack: "'LXGW WenKai Lite','KaiTi',serif" },
+  kaiti: { label: '楷体（系统）',              stack: "'KaiTi','STKaiti',serif" },
+  yahei: { label: '微软雅黑（系统）',          stack: "'Microsoft YaHei',sans-serif" },
+  songti:{ label: '宋体（系统）',              stack: "'SimSun','Songti SC',serif" },
+  heiti: { label: '黑体（系统）',              stack: "'SimHei',sans-serif" },
+  sans:  { label: '无衬线（系统默认）',        stack: "system-ui,sans-serif" },
+};
+const DEFAULTS = {
+  base: 'new', mult: '1', winW: 1920, winH: 1080, page: 'title',
+  grid: true, bounds: true, one2one: false, showResume: true,
+  fTitle: 42, fSub: 13, fBtn: 15, btnW: 220, btnH: 34, gap: 8, spTop: 10, spBot: 6,
+  fontTitle: 'lxgw', fontSub: 'lxgw', fontBtn: 'lxgw',
+};
+const LS_KEY = 'nmoku-ui-baseline-preview';
+let S = { ...DEFAULTS };
+try { Object.assign(S, JSON.parse(localStorage.getItem(LS_KEY) || '{}')); } catch (e) {}
+
+// ---- 字体下拉 ----
+for (const sel of document.querySelectorAll('.fontsel')) {
+  for (const [k, f] of Object.entries(FONTS)) {
+    const o = document.createElement('option'); o.value = k; o.textContent = f.label; sel.appendChild(o);
+  }
+}
+
+// ---- 控件绑定 ----
+function bindCheck(id) { $(id).checked = S[id]; $(id).addEventListener('change', () => { S[id] = $(id).checked; render(); }); }
+function bindRange(id) { const el = $(id); el.value = S[id]; $('v-' + id).textContent = S[id]; el.addEventListener('input', () => { S[id] = +el.value; $('v-' + id).textContent = el.value; render(); }); }
+['grid','bounds','one2one','showResume'].forEach(bindCheck);
+['fTitle','fSub','fBtn','btnW','btnH','gap','spTop','spBot'].forEach(bindRange);
+for (const [id, k] of [['fontTitle','fontTitle'],['fontSub','fontSub'],['fontBtn','fontBtn']]) {
+  $(id).value = S[k]; $(id).addEventListener('change', () => { S[k] = $(id).value; render(); });
+}
+$('mult').value = S.mult; $('mult').addEventListener('change', () => { S.mult = $('mult').value; render(); });
+$('page').value = S.page; $('page').addEventListener('change', () => { S.page = $('page').value; render(); });
+for (const el of document.querySelectorAll('input[name=base]')) {
+  el.checked = el.value === S.base;
+  el.addEventListener('change', () => { if (el.checked) { S.base = el.value; render(); } });
+}
+$('winW').value = S.winW; $('winH').value = S.winH;
+for (const id of ['winW','winH']) $(id).addEventListener('input', () => {
+  S[id] = Math.max(200, Math.min(7680, +$(id).value || 200)); render();
+});
+for (const b of $('presets').querySelectorAll('button')) b.addEventListener('click', () => {
+  S.winW = +b.dataset.w; S.winH = +b.dataset.h; $('winW').value = S.winW; $('winH').value = S.winH; render();
+});
+$('resetBtn').addEventListener('click', () => { S = { ...DEFAULTS }; localStorage.removeItem(LS_KEY); location.reload(); });
+
+// ---- 渲染 ----
+let zoom = 1, csf = 1;
+
+function compute() {
+  csf = S.base === 'new' ? (S.winH / 540) * (+S.mult) : 2.5;
+  const lw = S.winW / csf, lh = S.winH / csf;
+  const stage = document.querySelector('.stage');
+  if (S.one2one) { zoom = 1; }
+  else {
+    const availW = stage.clientWidth - 60, availH = stage.clientHeight - 96;
+    zoom = Math.min(availW / S.winW, availH / S.winH, 1);
+    zoom = Math.max(zoom, 0.08);
+  }
+  return { lw, lh };
+}
+
+function render() {
+  const { lw, lh } = compute();
+
+  // 窗口与逻辑面
+  $('win').style.width = (S.winW * zoom) + 'px';
+  $('win').style.height = (S.winH * zoom) + 'px';
+  const surf = $('surface');
+  surf.style.width = lw + 'px';
+  surf.style.height = lh + 'px';
+  surf.style.transform = 'scale(' + (csf * zoom) + ')';
+
+  // 假标题栏
+  $('titlebar').style.width = (S.winW * zoom) + 'px';
+  $('titlebarText').textContent = 'Nmoku — ' + S.winW + '×' + S.winH + ' 物理 · csf ' + csf.toFixed(3);
+  $('titlebar').style.visibility = zoom < 0.3 ? 'hidden' : 'visible';
+
+  // 页面切换
+  $('pageTitle').hidden = S.page !== 'title';
+  $('pageGame').hidden = S.page !== 'game';
+  $('gridLayer').classList.toggle('on', S.grid);
+  $('vbox').classList.toggle('outline', S.bounds && S.page === 'title');
+
+  // 标题屏参数
+  const bt = FONTS[S.fontTitle].stack, bs = FONTS[S.fontSub].stack, bb = FONTS[S.fontBtn].stack;
+  const t = $('elTitle'); t.style.font = ''; t.style.fontFamily = bt; t.style.fontSize = S.fTitle + 'px'; t.style.color = 'var(--text)';
+  const sub = $('elSub'); sub.style.fontFamily = bs; sub.style.fontSize = S.fSub + 'px';
+  $('elSpTop').style.height = S.spTop + 'px';
+  $('elSpBot').style.height = S.spBot + 'px';
+  $('elResume').style.display = S.showResume ? '' : 'none';
+  for (const b of document.querySelectorAll('#vbox .gbtn')) {
+    b.style.width = S.btnW + 'px'; b.style.height = S.btnH + 'px';
+    b.style.fontSize = S.fBtn + 'px'; b.style.fontFamily = bb; b.style.color = 'var(--text)';
+    b.style.marginTop = ''; // 行间距由 gap 统一
+  }
+  $('vbox').style.gap = S.gap + 'px';
+
+  // 对局屏 mock 字体（按钮字体组=常规文字组）
+  for (const el of document.querySelectorAll('#pageGame .vp-tag')) { el.style.fontFamily = bb; }
+  const tt = document.querySelector('.turnind .ttext'); tt.style.fontFamily = bb;
+
+  // 标尺刻度
+  if (S.grid) buildTicks(lw, lh);
+
+  // 读数
+  updateReadout(lw, lh);
+
+  // 参数快照
+  $('paramSnapshot').value = JSON.stringify(S);
+  localStorage.setItem(LS_KEY, JSON.stringify(S));
+}
+
+function buildTicks(lw, lh) {
+  const host = $('ticks'); host.innerHTML = '';
+  const stepX = lw > 1400 ? 200 : 100, stepY = lh > 1400 ? 200 : 100;
+  for (let x = 0; x <= lw; x += stepX) {
+    const d = document.createElement('div'); d.className = 'tick';
+    d.style.left = (x + 2) + 'px'; d.style.top = '1px'; d.textContent = x; host.appendChild(d);
+  }
+  for (let y = stepY; y <= lh; y += stepY) {
+    const d = document.createElement('div'); d.className = 'tick';
+    d.style.top = (y + 1) + 'px'; d.style.left = '1px'; d.textContent = y; host.appendChild(d);
+  }
+}
+
+function updateReadout(lw, lh) {
+  const status = ['窗口 ' + S.winW + '×' + S.winH + ' 物理', 'csf ' + csf.toFixed(3),
+    '逻辑面 ' + lw.toFixed(0) + '×' + lh.toFixed(0), '预览缩放 ' + (zoom * 100).toFixed(0) + '%'];
+  if (S.one2one) status.push('<b>1:1</b>');
+  $('statusline').innerHTML = status.join(' · ');
+
+  let html = '<div><span class="k">csf 公式</span> ' +
+    (S.base === 'new' ? '(' + S.winH + ' / 540) × ' + S.mult + ' = ' + csf.toFixed(3) : '2.5 固定（现行）') +
+    '</div>';
+  html += '<div><span class="k">逻辑面</span> ' + lw.toFixed(0) + ' × ' + lh.toFixed(0) + '</div>';
+  html += '<div><span class="k">按钮物理高</span> ' + (S.btnH * csf).toFixed(0) + ' px　<span class="k">标题物理字号</span> ' +
+    (S.fTitle * csf).toFixed(0) + ' px</div>';
+  if (S.page === 'title') {
+    const r = $('vbox').getBoundingClientRect(), sr = $('surface').getBoundingClientRect();
+    const k = csf * zoom;
+    const hL = r.height / k, topY = (r.top - sr.top) / k, margin = lh - hL;
+    const cls = margin >= 0 ? 'fit-ok' : 'fit-bad';
+    html += '<div><span class="k">标题内容盒</span> 高 ' + hL.toFixed(0) + ' / 可用 ' + lh.toFixed(0) +
+      '　<span class="' + cls + '">余量 ' + (margin >= 0 ? '+' : '') + margin.toFixed(0) + '</span></div>';
+    html += '<div><span class="k">内容顶 y</span> ' + topY.toFixed(0) + '　<span class="k">内容底 y</span> ' + (topY + hL).toFixed(0) +
+      '　<span class="k">按钮数</span> ' + (S.showResume ? 7 : 6) + '</div>';
+  }
+  $('readout').innerHTML = html;
+}
+
+window.addEventListener('resize', render);
+if (document.fonts && document.fonts.ready) document.fonts.ready.then(render);
+render();
+setTimeout(render, 300); // webfont 晚到时兜底重测
+</script>
+</body>
+</html>
