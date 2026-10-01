@@ -45,6 +45,31 @@
   漂移），M5 补接线。
 - 门禁：build 0 警告 / 304 测试 / 无头自测 ALL PASS / 发布包真窗口冒烟。
 
+## M5 验收反馈批 2 — 设置页四 bug 根治（2026-10-01）
+
+- **①音量滑条"滑不动/方向反"**：HSlider 用 `SizeFlags.Expand`（只分配空间不填充，M3 分屏
+  视口同款坑）塌缩到抓手宽度——值→位置映射在 width≈抓手宽时退化。改 `ExpandFill` 铺满行
+  （窗口模式/语言两个 OptionButton 同款同改）。
+- **②静音不联动**：M 键翻转无通知通道。`AudioManager` 增 `MuteChanged` 事件（ToggleMute 唯一
+  出口），设置页订阅刷新按钮文本、`_ExitTree` 退订（语言热刷新会重建本屏，防悬挂回调）。
+- **③语言"选项文字不改变/改不回"**：两叠加根因，热刷新机制本身无恙（headless 探针证明
+  TranslationServer 层 dash 形 locale 与切回 zh 全对）——(a) 下拉选中匹配用横线形（zh-CN）对比
+  `GetLocale()` 的下划线形（zh_CN）**永不等** → 初值/重建后恒空选、弹窗无◉标记，观感即"没切换/
+  改不回"；(b) **启动从不读 cfg lang**（设置页只写不读），重启丢偏好——本机真实 cfg 即留有
+  ja-JP 残留可证。修：匹配经 `StandardizeLocale`；`Main._Ready` 增 `RestoreLanguage`（先于首个
+  壳屏构建）。
+- **④模式下拉初值**：改读**实际窗口状态**（cfg 仅 headless 回归退回用），cfg 与实际由
+  SizeChanged 同步点收敛；启动恢复期（RestoreWindowMode→ApplyRestoredMode 之间）以
+  `_modeRestorePending` 拦截 SyncWindowModeToPrefs 过渡态写回，防待恢复偏好被毁。
+- **顺带修自测潜在 bug（被新回归步骤暴露）**：`AutotestAudioSettings` 首帧 `return "ok"` 即被
+  自测框架出队，"第二帧关浮层"清理是**死代码**——设置浮层泄漏开放到此后全部步骤（此前无步骤
+  再碰浮层故未暴露；m5-settings-bugs 要求全新挂载才踩中）。改返回 "wait" 让清理入队。
+  **教训：自测框架对非 wait 结果立即出队，多帧步骤首帧必须返回 wait。**
+- 门禁：build 0 警告 / 304 测试 / 无头自测 ALL PASS（新增 `m5-settings-bugs` 回归锁：滑条
+  ExpandFill+布局后实际宽度、M 键动作路径按钮文本联动、语言 en→zh 全链路 UI 路径含"改不回"、
+  模式初值）/ computer use 真实窗口复验（滑条拖动方向跟手、静音联动、启动恢复日语→zh→en→zh
+  往返、窗口化→最大化→重开初值=实际→切回窗口化）。
+
 ## M5 验收反馈批 1 — 标题屏溢出根治（2026-09-26）
 
 - **根因（computer use 三模式实测取证）**：标题屏内容自然高 ~470 逻辑像素 > 窗口化逻辑面高 432

@@ -30,6 +30,9 @@ public sealed partial class AudioManager : Node
     public float BgmVolume { get; private set; } = DefaultBgmVolume;
     public bool Muted { get; private set; }
 
+    /// <summary>静音翻转后触发（M 键/设置页两路统一出口）：设置页按钮文本联动刷新。</summary>
+    public event Action? MuteChanged;
+
     public override void _Ready()
     {
         Instance = this;
@@ -88,6 +91,7 @@ public sealed partial class AudioManager : Node
         Muted = !Muted;
         ApplyVolumes();
         SaveSettings();
+        MuteChanged?.Invoke();
     }
 
     private void ApplyVolumes()

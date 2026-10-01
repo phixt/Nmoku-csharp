@@ -28,6 +28,7 @@ public sealed partial class SettingsScreen : Control
     private static readonly string[] ModeKeys = ["windowed", "maximized", "fullscreen"];
 
     private Button _muteButton = null!;
+    private AudioManager? _subscribedAudio;
 
     public override void _Ready()
     {
@@ -81,6 +82,23 @@ public sealed partial class SettingsScreen : Control
 
         box.AddChild(MakeWindowModeRow());
         box.AddChild(MakeLanguageRow());
+
+        // 静音联动（M 键两路统一）：AudioManager 翻转即刷新按钮文本；语言热刷新会整体重建本屏，
+        // 旧实例 _ExitTree 退订防悬挂回调
+        _subscribedAudio = AudioManager.Instance;
+        if (_subscribedAudio != null)
+        {
+            _subscribedAudio.MuteChanged += RefreshMuteText;
+        }
+    }
+
+    public override void _ExitTree()
+    {
+        if (_subscribedAudio != null)
+        {
+            _subscribedAudio.MuteChanged -= RefreshMuteText;
+            _subscribedAudio = null;
+        }
     }
 
     private Control MakeVolumeRow(string label, float value, Action<float> onChanged)
@@ -96,7 +114,9 @@ public sealed partial class SettingsScreen : Control
             MaxValue = 1,
             Step = 0.05,
             Value = value,
-            SizeFlagsHorizontal = SizeFlags.Expand,
+            // ExpandFill 而非 Expand：Expand 只分配空间不填充，滑条塌缩到抓手宽度——拖不动且
+            // 值→位置映射退化（M3 分屏视口同款坑，2026-09-26 验收实测"滑不动/方向反"根因）
+            SizeFlagsHorizontal = SizeFlags.ExpandFill,
         };
         var percent = new Label { CustomMinimumSize = new Vector2(48, 0) };
         percent.Text = $"{(int)Mathf.Round(value * 100)}%";
@@ -117,8 +137,17 @@ public sealed partial class SettingsScreen : Control
         row.AddThemeConstantOverride("separation", 10);
         row.AddChild(MakeRowLabel(I18n.T(Text.Settings.WindowMode)));
 
-        var select = new OptionButton { SizeFlagsHorizontal = SizeFlags.Expand };
-        string current = SettingsStore.Get("general", "window_mode", "windowed").AsString();
+        var select = new OptionButton { SizeFlagsHorizontal = SizeFlags.ExpandFill };
+        // 初值=实际窗口状态（非 cfg）：cfg 只在 SizeChanged 同步点与实际收敛，重启恢复期可能短暂
+        // 分叉——下拉作为"当前模式视图"以窗口为准（headless 无窗口退回 cfg，回归锁用）
+        string current = DisplayServer.GetName() == "headless"
+            ? SettingsStore.Get("general", "window_mode", "windowed").AsString()
+            : GetWindow().Mode switch
+            {
+                Window.ModeEnum.Maximized => "maximized",
+                Window.ModeEnum.Fullscreen or Window.ModeEnum.ExclusiveFullscreen => "fullscreen",
+                _ => "windowed",
+            };
         foreach (var (key, text) in new[]
                  {
                      (ModeKeys[0], I18n.T(Text.Settings.ModeWindowed)),
@@ -156,8 +185,11 @@ public sealed partial class SettingsScreen : Control
         row.AddThemeConstantOverride("separation", 10);
         row.AddChild(MakeRowLabel(I18n.T(Text.Settings.Language)));
 
-        var select = new OptionButton { SizeFlagsHorizontal = SizeFlags.Expand };
-        // 选项=语言自称（不翻译），当前值来自持久化偏好
+        var select = new OptionButton { SizeFlagsHorizontal = SizeFlags.ExpandFill };
+        // 选项=语言自称（不翻译），当前值来自 TranslationServer 实时 locale。
+        // 匹配必须经 StandardizeLocale：GetLocale 返回下划线形（zh_CN），选项键是横线形（zh-CN）——
+        // 直接相等永不命中，下拉初值/重建后恒为空选（"改不回"观感的组成之一）
+        string current = TranslationServer.StandardizeLocale(TranslationServer.GetLocale());
         foreach (var (locale, name) in new[]
                  {
                      (Locales[0], "简体中文"),
@@ -169,7 +201,7 @@ public sealed partial class SettingsScreen : Control
             int idx = select.ItemCount;
             select.AddItem(name, idx);
             select.SetItemMetadata(idx, locale);
-            if (locale == TranslationServer.GetLocale())
+            if (TranslationServer.StandardizeLocale(locale) == current)
             {
                 select.Select(idx);
             }
@@ -197,7 +229,11 @@ public sealed partial class SettingsScreen : Control
 
     private void ToggleMute()
     {
-        AudioManager.Instance?.ToggleMute();
+        AudioManager.Instance?.ToggleMute(); // 文本刷新统一走 MuteChanged 事件（M 键同路）
+    }
+
+    private void RefreshMuteText()
+    {
         _muteButton.Text = MuteText();
     }
 

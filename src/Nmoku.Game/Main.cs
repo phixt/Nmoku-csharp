@@ -77,6 +77,7 @@ public partial class Main : Node
     public override void _Ready()
     {
         ApplyDisplayScaling();
+        RestoreLanguage(); // 语言偏好先于任何壳屏构建（首个 I18n.T 在标题屏 _Ready）
 
         // 0) 音频管理器（§3.5）：SFX 池 + BGM 引擎 + 偏好恢复；shell 各屏经 AudioManager.Instance 访问
         _audio = new AudioManager();
@@ -922,6 +923,7 @@ public partial class Main : Node
         _autotestSteps.Enqueue(("m5-audio-settings", AutotestAudioSettings));
         _autotestSteps.Enqueue(("m5-i18n", AutotestI18n));
         _autotestSteps.Enqueue(("m5-title-fit", AutotestTitleFit));
+        _autotestSteps.Enqueue(("m5-settings-bugs", AutotestSettingsBugs));
     }
 
     /// <summary>标题屏布局容量锁（2026-09-26 根治回归）：最坏情况（继续对局按钮可见=7 按钮）
@@ -948,6 +950,155 @@ public partial class Main : Node
             && restored == "开始游戏"
             ? "ok"
             : $"FAIL start={start} slot={slot} fallback={fallback} restored={restored}";
+    }
+
+    private int _setBugPhase;
+    private string _setBugLangBefore = "";
+    private string _setBugLocaleBefore = "";
+    private string _setBugMuteTextBefore = "";
+
+    private HSlider[] SettingsSliders() =>
+        _settingsScreen.FindChildren("*", "HSlider", true, false).OfType<HSlider>().ToArray();
+
+    private OptionButton? SettingsLanguageSelect() =>
+        _settingsScreen.FindChildren("*", "OptionButton", true, false)
+            .OfType<OptionButton>().FirstOrDefault(o => o.ItemCount == 4);
+
+    private OptionButton? SettingsModeSelect() =>
+        _settingsScreen.FindChildren("*", "OptionButton", true, false)
+            .OfType<OptionButton>().FirstOrDefault(o => o.ItemCount == 3);
+
+    private Button? SettingsMuteButton() =>
+        _settingsScreen.FindChildren("*", "Button", true, false).OfType<Button>()
+            .FirstOrDefault(b => b.Text == I18n.T(Text.Settings.MutedOn)
+                                 || b.Text == I18n.T(Text.Settings.MutedOff));
+
+    private Label? SettingsTitleLabel() =>
+        _settingsScreen.FindChildren("*", "Label", true, false).OfType<Label>()
+            .FirstOrDefault(l => l.Text == I18n.T(Text.Settings.Title));
+
+    /// <summary>M5 设置页四 bug 回归锁（2026-10-01）：①音量滑条不被 Expand 塌缩（M3 同款坑，
+    /// 宽度须铺满行）②M 键静音时设置页按钮文本联动刷新 ③语言切换 UI 全链路（合成 item_selected
+    /// 走真实 handler）——切 en 后重建屏文本/选中项正确、**改回 zh-CN 生效**（dash/underscore 匹配）
+    /// ④模式下拉初值=headless 取 cfg。测试前后快照/恢复 general.lang，不污染真实偏好。</summary>
+    private string AutotestSettingsBugs()
+    {
+        switch (_setBugPhase)
+        {
+            case 0:
+                _setBugLangBefore = SettingsStore.Get("general", "lang", "").AsString();
+                _setBugLocaleBefore = TranslationServer.GetLocale();
+                OpenSettings();
+                _setBugPhase = 1;
+                return "wait";
+            case 1:
+                if (_settingsScreen == null || !IsInstanceValid(_settingsScreen))
+                {
+                    return "FAIL no-settings";
+                }
+                HSlider[] sliders = SettingsSliders();
+                if (sliders.Length != 2)
+                {
+                    return $"FAIL sliders={sliders.Length}";
+                }
+                if (sliders.Any(s => s.SizeFlagsHorizontal != Godot.Control.SizeFlags.ExpandFill))
+                {
+                    return "FAIL slider-expand-not-fill";
+                }
+                if (sliders.Any(s => s.Size.X < 150f))
+                {
+                    return $"FAIL slider-collapsed width={sliders.Min(s => s.Size.X):0}";
+                }
+                Button? mute = SettingsMuteButton();
+                if (mute == null)
+                {
+                    return "FAIL mute-button";
+                }
+                _setBugMuteTextBefore = mute.Text;
+                SimulateActionPress("toggle_mute"); // M 键路径：toast+翻转，按钮文本应经事件联动
+                _setBugPhase = 2;
+                return "wait";
+            case 2:
+                Button? mute2 = SettingsMuteButton();
+                if (mute2 == null || mute2.Text == _setBugMuteTextBefore)
+                {
+                    return "FAIL mute-text-not-synced";
+                }
+                if (mute2.Text != (AudioManager.Instance!.Muted
+                        ? I18n.T(Text.Settings.MutedOn)
+                        : I18n.T(Text.Settings.MutedOff)))
+                {
+                    return $"FAIL mute-text-wrong-state {mute2.Text}";
+                }
+                SimulateActionPress("toggle_mute"); // 翻回
+                OptionButton? lang = SettingsLanguageSelect();
+                if (lang == null)
+                {
+                    return "FAIL language-select";
+                }
+                if (lang.GetSelected() < 0)
+                {
+                    return "FAIL language-initial-selection"; // bug3 伴随症状：初值永不选中
+                }
+                lang.EmitSignal("item_selected", 2); // en-US
+                _setBugPhase = 3;
+                return "wait";
+            case 3:
+                if (TranslationServer.GetLocale() != "en_US")
+                {
+                    return $"FAIL en-locale={TranslationServer.GetLocale()}";
+                }
+                OptionButton? langEn = SettingsLanguageSelect();
+                Label? titleEn = SettingsTitleLabel();
+                if (langEn == null || langEn.GetSelected() != 2 || langEn.Text != "English")
+                {
+                    return $"FAIL en-select sel={langEn?.GetSelected()} face={langEn?.Text}";
+                }
+                if (titleEn == null || titleEn.Text != "Settings")
+                {
+                    return $"FAIL en-title={titleEn?.Text ?? "null"}";
+                }
+                langEn.EmitSignal("item_selected", 0); // zh-CN——"改不回"锁
+                _setBugPhase = 4;
+                return "wait";
+            case 4:
+                if (TranslationServer.GetLocale() != "zh_CN")
+                {
+                    return $"FAIL zh-locale={TranslationServer.GetLocale()}";
+                }
+                OptionButton? langZh = SettingsLanguageSelect();
+                Label? titleZh = SettingsTitleLabel();
+                if (langZh == null || langZh.GetSelected() != 0 || langZh.Text != "简体中文")
+                {
+                    return $"FAIL zh-select sel={langZh?.GetSelected()} face={langZh?.Text}";
+                }
+                if (titleZh == null || titleZh.Text != "设置")
+                {
+                    return $"FAIL zh-title={titleZh?.Text ?? "null"}";
+                }
+                OptionButton? mode = SettingsModeSelect();
+                string modeCfg = SettingsStore.Get("general", "window_mode", "windowed").AsString();
+                int modeIdx = Array.IndexOf(new[] { "windowed", "maximized", "fullscreen" }, modeCfg);
+                if (mode == null || mode.GetSelected() != modeIdx)
+                {
+                    return $"FAIL mode-initial sel={mode?.GetSelected()} cfg={modeCfg}";
+                }
+                SettingsStore.Set("general", "lang", _setBugLangBefore); // 恢复偏好
+                _router.PopOverlay("settings");
+                _setBugPhase = 5;
+                return "wait";
+            case 5:
+                if (_router.IsOverlayOpen("settings"))
+                {
+                    return "wait";
+                }
+                TranslationServer.SetLocale(_setBugLocaleBefore); // locale 与偏好双双归位
+                _setBugPhase = 0;
+                return "ok";
+            default:
+                _setBugPhase = 0;
+                return "FAIL";
+        }
     }
 
     private int _kmPhase;
@@ -1031,7 +1182,10 @@ public partial class Main : Node
             }
             _audio.ToggleMute(); // 恢复
             OpenSettings();
-            return _router.IsOverlayOpen("settings") ? "ok" : "FAIL no-settings";
+            // 须返回 wait 让第二帧清理入队：自测框架对非 wait 结果立即出队——
+            // 此前返回 ok 使"关浮层"分支成为死代码，设置浮层泄漏开放到后续全部步骤
+            // （2026-10-01 被 m5-settings-bugs 暴露：旧实例不重建，新步骤拿到陈旧文本）
+            return _router.IsOverlayOpen("settings") ? "wait" : "FAIL no-settings";
         }
         // 第二帧：关浮层 + 最终恢复
         _router.PopOverlay("settings");
@@ -2284,9 +2438,24 @@ public partial class Main : Node
         }
     }
 
+    /// <summary>语言偏好启动恢复（M5 验收反馈批补缺口：设置页写入 cfg 后此前无人读，重启即丢失）。
+    /// cfg 存横线形（zh-CN），SetLocale 标准化为下划线形——翻译查找两端均按标准形，无匹配问题。</summary>
+    private void RestoreLanguage()
+    {
+        string lang = SettingsStore.Get("general", "lang", "").AsString();
+        if (!string.IsNullOrEmpty(lang))
+        {
+            TranslationServer.SetLocale(lang);
+        }
+    }
+
     /// <summary>窗口模式变化（含系统标题栏操作）写回偏好，保证 cfg 与实际状态一致。</summary>
     private void SyncWindowModeToPrefs()
     {
+        if (_modeRestorePending)
+        {
+            return; // 启动恢复期窗口尚在过渡态（实际仍是 windowed），写回会毁掉待恢复偏好
+        }
         string mode = GetWindow().Mode switch
         {
             Window.ModeEnum.Maximized => "maximized",
@@ -2295,6 +2464,9 @@ public partial class Main : Node
         };
         SettingsStore.Set("general", "window_mode", mode);
     }
+
+    /// <summary>启动恢复进行中：拦截 SyncWindowModeToPrefs 的过渡态写回（见 RestoreWindowMode）。</summary>
+    private bool _modeRestorePending;
 
     /// <summary>启动恢复持久化窗口模式（设置页写入；ApplyDisplayScaling 尾部调用）。
     /// CallDeferred：_Ready 早期窗口尚未完成 DPI/工作区初始化，立即设 Fullscreen 会被
@@ -2310,12 +2482,14 @@ public partial class Main : Node
         {
             return;
         }
+        _modeRestorePending = true;
         CallDeferred(nameof(ApplyRestoredMode), mode);
     }
 
     private void ApplyRestoredMode(string mode)
     {
         GetWindow().Mode = mode == "fullscreen" ? Window.ModeEnum.Fullscreen : Window.ModeEnum.Maximized;
+        _modeRestorePending = false; // 恢复完成后的 SizeChanged 才允许写回
     }
 
     /// <summary>语言切换热刷新（B20 ④ 源语义：立即重注入文本）——重建已挂载壳屏（game 基座除外，
