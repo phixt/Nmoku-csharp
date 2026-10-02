@@ -3,9 +3,10 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Nmoku 预开始页 — 初步设计原型 R3</title>
-<!-- 初步设计演示 R3：棋盘几何按源项目口径（层=竖立平面、纵深堆叠、三层拉深近正方体）；
-     辅助线按实际机制（悬停格 13 方向逐格扫描、首子即停、黑绿/白红）。未动游戏代码。 -->
+<title>Nmoku 预开始页 — 初步设计原型 R4</title>
+<!-- R4：N 重设计=线格板语三维字（与棋盘同材质）；Nmoku=N 首字下沉+moku；
+     转换动效=真形变（线格从字形展开成棋盘，顶点/宽度/相机连续插值，零交叉淡化，可逆）。
+     形变口径可平移 Godot（几何插值→_Draw/3D）。未动游戏代码。 -->
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/lxgw-wenkai-lite-webfont@1.7.0/style.css">
 <style>
   :root {
@@ -24,7 +25,6 @@
     background: radial-gradient(120% 120% at 50% 30%, var(--bg1) 0%, var(--bg2) 100%);
   }
 
-  /* ---- 背景：菱形晶格 + 音响光斑 + 悬停波澜 ---- */
   .bg-grid {
     position: fixed; inset: -60px; pointer-events: none; opacity: .45;
     background-image:
@@ -44,67 +44,36 @@
     transform: translate(-50%, -50%) scale(.25); opacity: .55;
     animation: ripple .9s ease-out forwards;
   }
-  @keyframes ripple {
-    to { transform: translate(-50%, -50%) scale(1.5); opacity: 0; }
-  }
+  @keyframes ripple { to { transform: translate(-50%, -50%) scale(1.5); opacity: 0; } }
 
   .scene { position: fixed; inset: 0; }
+  #stage { position: absolute; inset: 0; }
+  #stage canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
 
-  /* ================= Phase 1 预开始 ================= */
-  .p1-wrap {
-    position: absolute; left: 50%; top: 46%;
-    transform: translate(-50%, -50%);
-    display: flex; align-items: center; gap: 44px;
-    transition: opacity .4s ease;
+  /* ---- 文字锁排：N（画布内三维字形）右侧接 moku，下接中文标题（原样安排） ---- */
+  .wordmark {
+    position: absolute; z-index: 5; cursor: pointer;
+    transform-origin: top left;
   }
-  body.phase2 .p1-wrap { opacity: 0; pointer-events: none; }
-
-  .n-par { perspective: 1000px; transform: translate(calc(var(--px) * 14px), calc(var(--py) * 10px)); }
-  .n-fly { cursor: pointer; }
-  .n-fly.flying { animation: flyFlip 1.05s cubic-bezier(.45,.1,.3,1) forwards; }
-  @keyframes flyFlip {
-    0%   { transform: translate(0,0) rotate(0deg) scale(1); }
-    36%  { transform: translate(var(--fly-x), var(--fly-y)) rotate(45deg) scale(.6); }
-    100% { transform: translate(var(--fly-x), var(--fly-y)) rotate(45deg) rotateY(180deg) scale(.6); }
+  .wordmark .wm-moku {
+    font-family: 'Times New Roman', 'SimSun', serif;
+    font-size: 92px; line-height: .8; color: var(--ink); letter-spacing: 2px;
   }
-  .n-pulse {
-    display: block;
-    filter: drop-shadow(0 0 calc(4px + var(--audio) * 24px) rgba(79,120,128,.55));
-    transform: scale(calc(1 + var(--audio) * .03));
-  }
-  .n-hover:hover .n-pulse { filter: drop-shadow(0 0 18px rgba(44,74,78,.55)); }
-
-  .wordmark { transform: translate(calc(var(--px) * 7px), calc(var(--py) * 5px)); transition: opacity .45s ease, transform .45s ease; }
-  body.phase2 .wordmark { opacity: 0; }
-  .wm-title { font-size: 58px; letter-spacing: 6px; line-height: 1.15; }
-  .wm-latin {
-    font-family: 'Times New Roman', 'SimSun', serif; font-size: 19px;
-    letter-spacing: 11px; color: var(--accent); margin-top: 6px;
-  }
-  .wm-sub { font-size: 15px; color: var(--dim); margin-top: 14px; letter-spacing: 2px; }
-  .wm-hint { font-size: 13px; color: var(--dim); margin-top: 26px; opacity: .8; animation: breathe 2.6s ease-in-out infinite; }
+  .wordmark .wm-title { font-size: 56px; letter-spacing: 6px; line-height: 1.2; margin-top: 18px; }
+  .wordmark .wm-sub { font-size: 15px; color: var(--dim); margin-top: 10px; letter-spacing: 2px; transition: opacity .4s ease; }
+  .wordmark .wm-hint { font-size: 13px; color: var(--dim); margin-top: 22px; opacity: .8; animation: breathe 2.6s ease-in-out infinite; transition: opacity .4s ease; }
   @keyframes breathe { 50% { opacity: .35; } }
-
-  /* ================= Phase 2 主菜单 ================= */
-  .board-zone {
-    position: absolute; left: 3%; top: 0; width: 50%; height: 100%;
-    display: flex; align-items: center; justify-content: center;
-    opacity: 0; transform: scale(.96); transition: opacity .45s ease .62s, transform .45s ease .62s;
-    pointer-events: none;
-  }
-  body.phase2 .board-zone { opacity: 1; transform: scale(1); pointer-events: auto; }
-  #boardCv { cursor: grab; }
-  #boardCv.dragging { cursor: grabbing; }
+  body.morphing .wordmark .wm-sub, body.morphing .wordmark .wm-hint { opacity: 0; }
 
   .btn-col {
     position: absolute; right: 6%; top: 50%; transform: translateY(-50%);
     display: flex; flex-direction: column; gap: 12px;
     width: var(--btnw, 360px); height: 45vh; justify-content: space-between;
     opacity: 0; transform: translateY(-50%) translateX(46px);
-    transition: opacity .45s ease .7s, transform .45s ease .7s;
-    pointer-events: none;
+    transition: opacity .45s ease, transform .45s ease;
+    pointer-events: none; z-index: 6;
   }
-  body.phase2 .btn-col { opacity: 1; transform: translateY(-50%) translateX(0); pointer-events: auto; }
+  body.p2 .btn-col { opacity: 1; transform: translateY(-50%) translateX(0); pointer-events: auto; }
   .gbtn {
     flex: 1; border-radius: 8px; cursor: pointer;
     display: flex; align-items: center; justify-content: center;
@@ -118,15 +87,6 @@
   }
   .gbtn.primary { background: rgba(44,74,78,.12); border-color: rgba(44,74,78,.4); }
 
-  .title-small {
-    position: absolute; left: 42px; top: 24px; display: flex; align-items: center; gap: 12px;
-    opacity: 0; transition: opacity .45s ease .55s; pointer-events: none;
-  }
-  body.phase2 .title-small { opacity: 1; }
-  .title-small .ts-t { font-size: 26px; letter-spacing: 4px; }
-  .title-small .ts-l { font-family: 'Times New Roman', serif; font-size: 12px; letter-spacing: 5px; color: var(--accent); margin-top: 3px; }
-
-  /* ---- 音量图标（右下，半透明四态）---- */
   .vol {
     position: fixed; right: 18px; bottom: 14px; width: 34px; height: 34px;
     color: var(--ink); opacity: .42; cursor: pointer; z-index: 40;
@@ -141,7 +101,6 @@
   body.vol-0 .vol .mute { display: block; }
   .vol .mute { display: none; }
 
-  /* ---- 设计口径面板 ---- */
   .design-panel {
     position: fixed; left: 14px; bottom: 12px; z-index: 50;
     max-width: 470px; font-size: 12px; line-height: 1.65; color: var(--dim);
@@ -170,56 +129,13 @@
 <div class="bg-bloom"></div>
 
 <div class="scene">
+  <div id="stage"><canvas id="cv"></canvas></div>
 
-  <!-- ============ Phase 1 预开始：大 N（源图标语言） ============ -->
-  <div class="p1-wrap">
-    <div class="n-par">
-      <div class="n-fly n-hover" id="nArt" title="点击进入">
-        <svg class="n-pulse" viewBox="0 0 230 250" width="240" height="260" aria-label="Nmoku N">
-          <g stroke="#9db4b8" stroke-width="2.5" fill="rgba(255,255,255,.5)">
-            <rect x="26" y="20" width="52" height="210" rx="8"/>
-            <line x1="26" y1="90"  x2="78"  y2="90"/>
-            <line x1="26" y1="160" x2="78"  y2="160"/>
-            <rect x="152" y="20" width="52" height="210" rx="8"/>
-            <line x1="152" y1="90"  x2="204" y2="90"/>
-            <line x1="152" y1="160" x2="204" y2="160"/>
-          </g>
-          <g stroke="var(--red)" stroke-width="5" stroke-linecap="round">
-            <line x1="26" y1="20" x2="26" y2="230"/>
-            <line x1="204" y1="20" x2="204" y2="230"/>
-          </g>
-          <line x1="52" y1="34" x2="178" y2="216" stroke="var(--red)" stroke-width="9" stroke-linecap="round"/>
-          <line x1="52" y1="34" x2="115" y2="125" stroke="var(--green)" stroke-width="3"/>
-          <circle cx="115" cy="125" r="24" fill="var(--blue)"/>
-          <g stroke="#bcd9ff" stroke-width="3" stroke-linecap="round">
-            <line x1="115" y1="103" x2="115" y2="93"/><line x1="115" y1="147" x2="115" y2="157"/>
-            <line x1="93"  y1="125" x2="83"  y2="125"/><line x1="137" y1="125" x2="147" y2="125"/>
-          </g>
-          <circle cx="52" cy="34" r="30" fill="#1c1c20" stroke="#000" stroke-width="2"/>
-          <circle cx="52" cy="34" r="11" fill="#2e9e4f"/>
-          <circle cx="178" cy="216" r="30" fill="#f4f0ea" stroke="#00000055" stroke-width="2"/>
-          <circle cx="178" cy="216" r="11" fill="#d63a2f"/>
-        </svg>
-      </div>
-    </div>
-    <div class="wordmark" id="wordmark">
-      <div class="wm-title">立体五子棋</div>
-      <div class="wm-latin">NMOKU</div>
-      <div class="wm-sub">13×13×6 三维连珠 · 立体 N 子棋</div>
-      <div class="wm-hint">点击 N 或标题进入 · 拖动小棋盘可旋转 · 右下角点击开启演示音</div>
-    </div>
-  </div>
-
-  <!-- ============ Phase 2：竖立层线框小棋盘（拖拽旋转/悬停蓝球+13方向辅助线） + 按钮 ============ -->
-  <div class="board-zone">
-    <canvas id="boardCv" width="1240" height="1040" style="width:620px;height:520px;"></canvas>
-  </div>
-
-  <div class="title-small" id="titleSmall">
-    <div>
-      <div class="ts-t">立体五子棋</div>
-      <div class="ts-l">NMOKU</div>
-    </div>
+  <div class="wordmark" id="wordmark">
+    <div class="wm-moku">moku</div>
+    <div class="wm-title">立体五子棋</div>
+    <div class="wm-sub">13×13×6 三维连珠 · 立体 N 子棋</div>
+    <div class="wm-hint">点击 N 或标题进入 · 拖动棋盘可旋转 · 右下角点击开启演示音</div>
   </div>
 
   <div class="btn-col" id="btnCol">
@@ -231,10 +147,8 @@
     <div class="gbtn">设置</div>
     <div class="gbtn">退出</div>
   </div>
-
 </div>
 
-<!-- ============ 音量图标：半透明四态 ============ -->
 <div class="vol" id="volIcon" title="音量：点击循环 静音/1/2/3（正式版 M 键 + 设置页同步）；首次点击开启演示音">
   <svg viewBox="0 0 32 32" fill="none">
     <path d="M5 12h5l7-6v20l-7-6H5z" fill="currentColor"/>
@@ -249,35 +163,31 @@
   </svg>
 </div>
 
-<!-- ============ 设计口径面板 ============ -->
 <details class="design-panel" open>
-  <summary>设计口径 / 操作说明（R3，未动工）</summary>
+  <summary>设计口径 / 操作说明（R4，未动工）</summary>
   <div class="dp-body">
     <div class="icon-row">
       <img src="../assets-src/icon/icon-source-ref.png" alt="源项目原图标（暗）"
            onerror="this.onerror=null;this.src='../assets-src/icon/icon-master.png';" style="width:64px;height:64px;border-radius:50%;">
       <span style="font-size:18px;color:#4f7880;">→</span>
       <canvas id="iconCv" width="128" height="128" style="width:64px;height:64px;"></canvas>
-      <div>
-        <b>图标口径</b>：参考对象=源项目 gomoku-613B-E2D 原图标——近立方体线框、大子彩心、
-        红/绿辅助线连至中央蓝球。亮色化=同语言浅底。正式落地=重跑 make-icon.py 按此重绘（实施期）
-      </div>
+      <div><b>图标口径</b>：以源项目原图标为设计语言基准（近立方体线框/大子彩心/辅助线/蓝球）；
+        亮色化落地=重跑 make-icon.py（实施期）</div>
     </div>
-    <div><b>N 重设计</b>：两竖=线框层叠柱，对角=红色辅助线，中央=蓝球星芒，两端=大子彩心——全部元素取自原图标。</div>
-    <div><b>棋盘几何（R3 修正）</b>：<b>层=竖立平面</b>（行=竖直、层=纵深，同源项目 B8 口径），三层纵深堆叠并
-      拉深至<b>接近正方体</b>；层间<b>不画连接线</b>、<b>不强调首尾面</b>（统一浅色网格）。坐标：右手系，
-      最里面为 (0,0,0)，y 向上。</div>
-    <div><b>辅助线（⚠ 已知错误占位）</b>：当前演示的"13 方向扫描"为自创简化版，<b>已被判定与真实机制不符</b>；
-      真实机制将按源项目实现照抄引入（已独立挂账 TODO，之后再实行）。悬停蓝球吸附格位本身仍可用。</div>
-    <div><b>展示子（原图标真实坐标）</b>：黑(2,0,1)/白(2,1,0)/蓝球(1,1,1)，另添数子供辅助线演示。</div>
-    <div><b>旋转（R3 手感）</b>：默认匀速自转（加快）；拖拽直接控制偏航，松手带<b>惯性衰减</b>，不与自转打架。</div>
-    <div><b>蓝球</b>：纯不透明；星芒标记预落子位。本轮不可落子；最终玩具版可落子但规模取"无法成五"（如 4×4×3）。</div>
-    <div><b>过渡动效</b>：平面内旋转 45° → 垂直纸面方向翻 180°，翻转过侧立面瞬间小棋盘接棒。</div>
-    <div><b>按钮</b>：宽=标题宽、列高 45%；悬停特效本项目尚未实现，落地时随预开始页一并补（TODO 已挂）。</div>
-    <div><b>字体对位</b>：宋体 ↔ Times New Roman（多语言西文）；日语等默认 LXGW；本页暂全 LXGW。
-      <b>标题缩小位置定案：左上角</b>。</div>
-    <div><b>音乐响应</b>：演示音=WebAudio 合成琶音 + 响度分析 → N 光晕/背景光斑；正式版接 BGM 总线响度。</div>
-    <button class="backbtn" id="backBtn">↺ 返回预开始页</button>
+    <div><b>N 重设计（R4）</b>：弃"红棱柱"版——N 改为<b>与棋盘同材质的三维线格字</b>：
+      三根字干各是一块压缩的线格板（远/中/近三层的种子），中干斜置成对角并带红色中芯线；
+      两端大子彩心、中央蓝球即原图标元素。字即棋盘的种子，形变因此天然连续。</div>
+    <div><b>Nmoku 排版（R4）</b>：<b>N 首字下沉 + 接 moku</b>（Times 西文，宋体↔Times 对位口径），
+      下接中文标题与说明（原样安排）；进入后整个文字锁排滑移缩小为左上角小标题（不换元素、不淡切）。</div>
+    <div><b>转换动效（R4 真形变）</b>：点击后三根字干的线格<b>直接展开成三层棋盘</b>——顶点/线宽/
+      深度/相机偏航全部连续插值，红中芯线沿自身伸长画成盘面对角，大子滑入格位、蓝球原位长大；
+      <b>无交叉淡化、无闪屏、无黑场</b>，且整体可逆（返回=反向形变）。实现口径=纯几何插值，
+      可原样平移 Godot（_Draw/3D 网格）。</div>
+    <div><b>辅助线</b>：当前演示棋盘的悬停辅助线仍是<b>已知错误占位</b>；真实机制=复用游戏内
+      AuxScan/Board3DView（原生融入设计 docs/prestart-native-design.md，挂账已消解）。</div>
+    <div><b>Phase2</b>：按钮右列（宽=标题宽、列高 45%）、棋盘拖拽旋转（自转+惯性）、悬停蓝球吸附；
+      标题左上角（定案）。背景=菱形晶格+节流波澜。音乐响应=演示音 WebAudio（正式版接 BGM 总线峰值）。</div>
+    <button class="backbtn" id="backBtn">↺ 反向形变返回</button>
   </div>
 </details>
 
@@ -286,7 +196,7 @@
 const $ = s => document.querySelector(s);
 const body = document.body;
 
-/* ---- 视差 + 悬停波澜 ---- */
+/* ---- 视差 + 波澜 ---- */
 let tx = 0, ty = 0, cx = 0, cy = 0, lastRipple = 0;
 window.addEventListener('pointermove', e => {
   tx = (e.clientX / innerWidth) * 2 - 1;
@@ -308,222 +218,294 @@ window.addEventListener('pointermove', e => {
   requestAnimationFrame(lerp);
 })();
 
-/* ---- 按钮尺寸：宽=标题宽 ---- */
-function syncBtnWidth() {
-  const w = $('#wordmark').getBoundingClientRect().width;
-  document.documentElement.style.setProperty('--btnw', w.toFixed(0) + 'px');
-}
-window.addEventListener('resize', syncBtnWidth);
+/* ================= 场景：单一 3D 世界，N 与棋盘是同一批线格的两端 =================
+   坐标：x=列 0..5（右），y=行 0..5（上），d=纵深偏移（层 z∈{0,1,2} → d=z*2.5-2.5，
+   负=最里面）。投影：绕竖直轴偏航 + 等距。所有元素=三维线段对（源=字形态，目标=盘形态），
+   形变=逐段端点/线宽插值 + 相机位姿插值。 */
 
-/* ================= 棋盘渲染（源项目口径） =================
-   坐标：右手系，最里面（最远离观察者）为 (0,0,0)；x=列(右)，y=行(向上)，z=层(纵深，0=最里面)。
-   几何：每层=竖立平面（x-y 面），层沿纵深堆叠；层间距拉深使 5×5×3 占据近正方体。
-   投影：绕竖直轴偏航旋转后，等距投影（同源图标族）。 */
 const NCELL = 5, LAYERS = 3;
 const COS30 = Math.cos(Math.PI / 6), SIN30 = 0.5, VSCALE = 0.95, DEPTH = 2.5;
+const dOf = z => z * DEPTH - DEPTH;
 
-function makeView(cv, scale, yaw0) {
-  return { cv, g: cv.getContext('2d'), scale, yaw: yaw0,
-           cx: cv.width / 2, cy: cv.height / 2 + 30, w: cv.width, h: cv.height };
+const cv = $('#cv'), ctx = cv.getContext('2d');
+function resize() {
+  cv.width = innerWidth * devicePixelRatio;
+  cv.height = innerHeight * devicePixelRatio;
 }
-function proj(v, x, y, z) {
-  const px = x - NCELL / 2, py = y - NCELL / 2, pd = z * DEPTH - DEPTH;
-  const c = Math.cos(v.yaw), s = Math.sin(v.yaw);
-  const rx = px * c - pd * s, rz = px * s + pd * c;
-  return [ v.cx + (rx - rz) * COS30 * v.scale,
-           v.cy + (rx + rz) * SIN30 * v.scale - py * VSCALE * v.scale ];
-}
+window.addEventListener('resize', resize); resize();
 
-/* 展示子（原图标真实坐标 + 添子）：黑(2,0,1) 白(2,1,0) 蓝球(1,1,1) */
-const STONES = [
-  { x: 2, y: 0, z: 1, kind: 'b' },
-  { x: 2, y: 1, z: 0, kind: 'w' },
-  { x: 0, y: 4, z: 2, kind: 'w' },
-  { x: 4, y: 4, z: 2, kind: 'b' },
-  { x: 0, y: 1, z: 2, kind: 'b' },
-  { x: 4, y: 2, z: 1, kind: 'w' },
-  { x: 1, y: 4, z: 0, kind: 'b' },
+const view = { yaw: -0.10, scale: 130, cx: 0, cy: 0 };
+function applyViewport() { view.cx = cv.width / 2; }   // cy 由相机位姿管理
+function projW(x, y, d) {
+  const px = x - NCELL / 2, py = y - NCELL / 2;
+  const c = Math.cos(view.yaw), s = Math.sin(view.yaw);
+  const rx = px * c - d * s, rz = px * s + d * c;
+  return [ view.cx + (rx - rz) * COS30 * view.scale,
+           view.cy + (rx + rz) * SIN30 * view.scale - py * VSCALE * view.scale ];
+}
+const projL = (x, y, z) => projW(x, y, dOf(z));
+
+/* ---- 字形态（源）：三根字干=压缩线格板 ----
+   干参数：中心 (bx,by)、列向压缩 k（板宽）、旋转 rot、纵深 dNear（近层）。
+   目标（盘）：该层完整网格线。中干=斜置（对角），目标=中层面。 */
+const BAR = { k: 0.36, dNear: DEPTH };   // 板宽系数、字干位于近纵深
+const BARS = [
+  { bx: 1.05, by: 2.5, rot: 0,            z: 0 },  // 左干 → 远层
+  { bx: 2.5,  by: 2.5, rot: 0.76,         z: 1 },  // 中干（斜置，自左上到右下）→ 中层
+  { bx: 3.95, by: 2.5, rot: 0,            z: 2 },  // 右干 → 近层
 ];
-const OCC = new Map(STONES.map(s => [s.x + ',' + s.y + ',' + s.z, s]));
-const BALL_REST = { x: 1, y: 1, z: 1 };
-
-/* 13 方向（面内 8 + 竖向 1 + 跨层斜 4），双向 */
-const DIRS = [];
-for (const [dx, dy, dz] of [[1,0,0],[0,1,0],[0,0,1],[1,1,0],[1,-1,0],[1,0,1],[1,0,-1],
-                            [0,1,1],[0,1,-1],[1,1,1],[1,1,-1],[1,-1,1],[1,-1,-1]]) {
-  DIRS.push([dx, dy, dz], [-dx, -dy, -dz]);
+// 字干局部 (u,v)（u=列向 0..5，v=行向 0..5）→ 世界源点
+function barPointW(bar, u, v) {
+  const du = (u - 2.5) * BAR.k, dv = (v - 2.5);
+  const c = Math.cos(bar.rot), s = Math.sin(bar.rot);
+  const x = bar.bx + du * c - dv * s;
+  const y = bar.by + du * s + dv * c;
+  return [x, y, BAR.dNear];
 }
 
-function drawBoard(v, hover, dragging, label = true) {
-  const g = v.g, S = v.scale;
-  g.clearRect(0, 0, v.w, v.h);
+/* 线段注册：{a0,b0 源(字形), a1,b1 目标(盘), w0,w1, color, plane} */
+const SEGS = [];
+function seg(a0, b0, a1, b1, w0, w1, color, plane) {
+  SEGS.push({ a0, b0, a1, b1, w0, w1, color, plane });
+}
+for (const bar of BARS) {
+  const z = bar.z, d = dOf(z);
+  for (let i = 0; i <= NCELL; i++) {
+    seg(barPointW(bar, i, 0), barPointW(bar, i, NCELL), [i, 0, d], [i, NCELL, d], 15, 2.2, 'grid', z);
+    seg(barPointW(bar, 0, i), barPointW(bar, NCELL, i), [0, i, d], [NCELL, i, d], 9, 2.2, 'grid', z);
+  }
+}
+/* 红中芯线：中干的对角线 → 中层面主对角（同向：左上→右下，随 N 对角自然接棒） */
+{
+  const bar = BARS[1], d = dOf(1);
+  seg(barPointW(bar, 0, NCELL), barPointW(bar, NCELL, 0),
+      [0, NCELL, d], [NCELL, 0, d], 9, 5, 'red', 1);
+}
+/* 大子与蓝球：源=字干端点，目标=原图标真实格位 */
+const STONES = [
+  { kind: 'b', p0: barPointW(BARS[0], 2.5, NCELL + 0.55), p1: [2.5, 0.5, dOf(1)] },  // 黑(2,0,1)
+  { kind: 'w', p0: barPointW(BARS[2], 2.5, -0.35),        p1: [2.5, 1.5, dOf(0)] },  // 白(2,1,0)
+];
+const BALL = { p0: barPointW(BARS[1], 2.5, 2.5), p1: [1.5, 1.5, dOf(1)] };           // 蓝(1,1,1)
 
-  // 1) 各层竖立平面网格（统一浅色：无连接线、不强调首尾）
-  g.lineWidth = 2;
-  g.strokeStyle = 'rgba(90,122,126,.5)';
-  g.beginPath();
-  for (let z = 0; z < LAYERS; z++) {
-    for (let i = 0; i <= NCELL; i++) {
-      let a = proj(v, i, 0, z), b = proj(v, i, NCELL, z);   // 列线（竖直）
-      g.moveTo(a[0], a[1]); g.lineTo(b[0], b[1]);
-      a = proj(v, 0, i, z); b = proj(v, NCELL, i, z);       // 行线
-      g.moveTo(a[0], a[1]); g.lineTo(b[0], b[1]);
+const lerp = (a, b, t) => a + (b - a) * t;
+const lerp3 = (a, b, t) => [lerp(a[0], b[0], t), lerp(a[1], b[1], t), lerp(a[2], b[2], t)];
+const easeInOut = t => t < .5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+const clamp01 = t => Math.max(0, Math.min(1, t));
+
+/* 相机位姿：字位（近正对、N 居中偏左）→ 盘位（yaw 0.3） */
+const POSE0 = { yaw: -0.10, cyK: 0.50, off: 40 };
+const POSE1 = { yaw: 0.30,  cyK: 0.50, off: 40 };
+
+/* ---- 状态机：p1（字） → morph（真形变） → p2（盘） ；返回=反向形变 ---- */
+let phase = 'p1', mt = 0, dir = 1;
+const DUR = 1.5;                       // 形变时长（秒）
+const EASE = 'cubic-bezier(0.65,0,0.35,1)';
+
+function startMorph() {
+  if (phase !== 'p1') return;
+  initAudio();
+  phase = 'morph'; dir = 1; mt = 0;
+  body.classList.add('morphing');
+  // 文字锁排形变起点：当前锚定位置（由同一条缓动曲线驱动到左上角）
+  const wm = $('#wordmark');
+  wmStart = { left: parseFloat(wm.style.left) || 0, top: parseFloat(wm.style.top) || 0 };
+}
+function startMorphBack() {
+  if (phase !== 'p2') return;
+  phase = 'morph'; dir = -1;
+  body.classList.remove('p2');
+  body.classList.remove('morphing');
+}
+
+/* 文字锁排定位：p1 时跟随 N 字形右侧；形变时由主循环按同一缓动驱动到左上角 */
+const WM_CORNER = { left: 42, top: 18, scale: 0.42 };
+let wmStart = { left: 0, top: 0 };
+function positionWordmark() {
+  if (phase !== 'p1') return;
+  const dpr = devicePixelRatio;
+  // N 字形包围盒（投影后取 CSS 坐标）
+  let maxX = -1e9, minY = 1e9;
+  for (const s of SEGS) {
+    if (s.plane === 1) continue;
+    for (const p of [s.a0, s.b0]) {
+      const q = projW(p[0], p[1], p[2]);
+      maxX = Math.max(maxX, q[0]); minY = Math.min(minY, q[1]);
     }
   }
-  g.stroke();
+  const wm = $('#wordmark');
+  wm.style.left = (maxX / dpr) + 34 + 'px';
+  wm.style.top = Math.max(120, minY / dpr + 10) + 'px';
+  wm.style.transform = 'none';
+}
+function driveWordmark(e) {
+  const wm = $('#wordmark');
+  wm.style.left = lerp(wmStart.left, WM_CORNER.left, e) + 'px';
+  wm.style.top = lerp(wmStart.top, WM_CORNER.top, e) + 'px';
+  wm.style.transform = `scale(${lerp(1, WM_CORNER.scale, e)})`;
+}
 
-  // 2) 辅助线（实际机制）：悬停格 13 方向逐格扫描、首子即停；黑=绿、白=红，终点带标记环
-  const ball = hover || BALL_REST;
-  const bc = { x: ball.x + .5, y: ball.y + .5, z: ball.z };
-  g.lineWidth = 3.5; g.lineCap = 'round';
-  for (const [dx, dy, dz] of DIRS) {
-    let hit = null;
-    for (let k = 1; k <= 4; k++) {           // 渲染端 4 格上限（B5）
-      const px = ball.x + dx * k, py = ball.y + dy * k, pz = ball.z + dz * k;
-      if (px < 0 || px >= NCELL || py < 0 || py >= NCELL || pz < 0 || pz >= LAYERS) break;
-      const st = OCC.get(px + ',' + py + ',' + pz);
-      if (st) { hit = { st, px, py, pz }; break; }   // 首子即停（B9）
+/* ---- 绘制 ---- */
+function drawScene(e, hover, dragging, label) {
+  const g = ctx, dpr = devicePixelRatio;
+  g.setTransform(1, 0, 0, 1, 0, 0);
+  g.clearRect(0, 0, cv.width, cv.height);
+  applyViewport();
+
+  // 线格：逐段插值（平面错峰：远层先行）
+  for (const s of SEGS) {
+    const te = easeInOut(clamp01((e - s.plane * 0.06) / (1 - 0.12)));
+    const a = lerp3(s.a0, s.a1, te), b = lerp3(s.b0, s.b1, te);
+    const p1 = projW(a[0], a[1], a[2]), p2 = projW(b[0], b[1], b[2]);
+    g.strokeStyle = s.color === 'red'
+      ? `rgba(165,42,42,${0.65 + 0.25 * te})`
+      : `rgba(90,122,126,${0.62 + 0.08 * te})`;
+    g.lineWidth = lerp(s.w0, s.w1, te) * dpr;
+    g.lineCap = 'round';
+    // 红中芯线在形变中段才"落笔"——沿自身伸长（几何画线，非淡入）；零长度不画
+    let A = p1, B = p2;
+    if (s.color === 'red') {
+      const t2 = clamp01(te * 1.6 - 0.25);
+      if (t2 <= 0) continue;
+      B = [lerp(p1[0], p2[0], t2), lerp(p1[1], p2[1], t2)];
     }
-    if (!hit) continue;
-    const p1 = proj(v, bc.x, bc.y, bc.z);
-    const p2 = proj(v, hit.px + .5, hit.py + .5, hit.pz);
-    g.strokeStyle = hit.st.kind === 'b' ? 'rgba(46,155,79,.9)' : 'rgba(214,58,47,.9)';
-    g.beginPath(); g.moveTo(p1[0], p1[1]); g.lineTo(p2[0], p2[1]); g.stroke();
-    g.beginPath(); g.arc(p2[0], p2[1], S * 0.16, 0, 7); g.stroke();   // 终点标记环
+    g.beginPath(); g.moveTo(A[0], A[1]); g.lineTo(B[0], B[1]); g.stroke();
   }
 
-  // 3) 大子（按纵深由远及近绘制；球面感 + 彩心）
-  const withDepth = STONES.map(st => {
-    const c = Math.cos(v.yaw), s = Math.sin(v.yaw);
-    const depth = (st.x + .5 - NCELL / 2) * s + (st.z * DEPTH - DEPTH) * c;
-    return { st, depth };
-  }).sort((a, b) => a.depth - b.depth);
-  for (const { st } of withDepth) {
-    const p = proj(v, st.x + .5, st.y + .5, st.z), r = S * 0.72;
+  // 大子（源→目标滑入；按纵深排序）
+  const depthOf = p => { const c = Math.cos(view.yaw), s2 = Math.sin(view.yaw);
+    return (p[0] - 2.5) * s2 + p[2] * c; };
+  const stones = STONES.map(st => ({ st, e3: easeInOut(clamp01(e * 1.15 - 0.05)) }))
+    .map(o => ({ ...o, pos: lerp3(o.st.p0, o.st.p1, o.e3) }))
+    .sort((a, b) => depthOf(a.pos) - depthOf(b.pos));
+  for (const { st, pos, e3 } of stones) {
+    const p = projW(pos[0], pos[1], pos[2]), r = view.scale * 0.72 * (0.85 + 0.15 * e3);
     const grad = g.createRadialGradient(p[0] - r * .35, p[1] - r * .4, r * .1, p[0], p[1], r);
     if (st.kind === 'b') { grad.addColorStop(0, '#5a5a64'); grad.addColorStop(.55, '#222226'); grad.addColorStop(1, '#101014'); }
     else { grad.addColorStop(0, '#ffffff'); grad.addColorStop(.55, '#efe9e1'); grad.addColorStop(1, '#cfc8bd'); }
     g.fillStyle = grad;
     g.beginPath(); g.arc(p[0], p[1], r, 0, 7); g.fill();
-    g.strokeStyle = 'rgba(0,0,0,.35)'; g.lineWidth = 2; g.stroke();
+    g.strokeStyle = 'rgba(0,0,0,.35)'; g.lineWidth = 2 * dpr; g.stroke();
     g.fillStyle = st.kind === 'b' ? '#2e9e4f' : '#d63a2f';
     g.beginPath(); g.arc(p[0], p[1], r * .34, 0, 7); g.fill();
   }
 
-  // 4) 蓝球（纯不透明，星芒）
-  const pb = proj(v, bc.x, bc.y, bc.z), br = S * 0.5;
-  g.strokeStyle = '#2f86e8'; g.lineWidth = 3.5; g.lineCap = 'round';
-  g.beginPath();
-  for (const [dx, dy] of [[1,0],[-1,0],[0,1],[0,-1]]) {
-    g.moveTo(pb[0] + dx * br * 1.2, pb[1] + dy * br * 1.2);
-    g.lineTo(pb[0] + dx * br * 1.75, pb[1] + dy * br * 1.75);
+  // 蓝球（字形态=小蓝点，形变中长成预落子球；纯不透明 + 星芒）
+  const be = easeInOut(clamp01(e * 1.3 - 0.18));
+  const bp = lerp3(BALL.p0, BALL.p1, be);
+  const p = projW(bp[0], bp[1], bp[2]), br = Math.max(6 * dpr, view.scale * 0.5 * be);
+  if (br > 3) {
+    g.strokeStyle = '#2f86e8'; g.lineWidth = 3.5 * dpr; g.lineCap = 'round';
+    g.beginPath();
+    for (const [dx, dy] of [[1,0],[-1,0],[0,1],[0,-1]]) {
+      g.moveTo(p[0] + dx * br * 1.2, p[1] + dy * br * 1.2);
+      g.lineTo(p[0] + dx * br * 1.75, p[1] + dy * br * 1.75);
+    }
+    g.stroke();
+    g.fillStyle = '#2f86e8';
+    g.beginPath(); g.arc(p[0], p[1], br, 0, 7); g.fill();
+    g.strokeStyle = 'rgba(255,255,255,.55)'; g.lineWidth = 2 * dpr;
+    g.beginPath(); g.arc(p[0] - br * .25, p[1] - br * .3, br * .45, 0, 7); g.stroke();
   }
-  g.stroke();
-  g.fillStyle = '#2f86e8';
-  g.beginPath(); g.arc(pb[0], pb[1], br, 0, 7); g.fill();
-  g.strokeStyle = 'rgba(255,255,255,.55)'; g.lineWidth = 2;
-  g.beginPath(); g.arc(pb[0] - br * .25, pb[1] - br * .3, br * .45, 0, 7); g.stroke();
 
-  // 5) 状态角标
   if (label) {
-    g.fillStyle = 'rgba(90,122,126,.8)'; g.font = '26px LXGW WenKai Lite, serif';
-    g.fillText(dragging ? '拖拽旋转中…' : '悬停吸附格位 · 拖拽旋转', 20, v.h - 20);
+    g.fillStyle = 'rgba(90,122,126,.8)'; g.font = `${26 * dpr}px "LXGW WenKai Lite", serif`;
+    g.fillText(dragging ? '拖拽旋转中…' : '悬停吸附格位 · 拖拽旋转', 20 * dpr, cv.height - 20 * dpr);
   }
 }
 
-/* 悬停拾取：最近格（含层） */
-function pickCell(v, mx, my) {
-  let best = null, bd = 60 * 60;
+/* ---- 悬停拾取（盘形态） ---- */
+function pickCell(mx, my) {
+  let best = null, bd = 60 * 60 * devicePixelRatio * devicePixelRatio;
   for (let z = 0; z < LAYERS; z++)
     for (let x = 0; x < NCELL; x++)
       for (let y = 0; y < NCELL; y++) {
-        const p = proj(v, x + .5, y + .5, z);
-        const d = (p[0]-mx)*(p[0]-mx) + (p[1]-my)*(p[1]-my);
-        if (d < bd) { bd = d; best = { x, y, z }; }
+        const p = projL(x + .5, y + .5, z);
+        const dd = (p[0]-mx)*(p[0]-mx) + (p[1]-my)*(p[1]-my);
+        if (dd < bd) { bd = dd; best = { x, y, z }; }
       }
   return best;
 }
 
-const boardCv = $('#boardCv');
-const view = makeView(boardCv, 80, 0.3);
-let dragging = false, lastX = 0, yawVel = 0, hoverCell = null;
-let mouse = null;
-const AUTO = 0.011;   // 默认自转（约 9.5 秒/圈）
+/* ---- 交互：点击 N（p1）→ 形变；盘形态拖拽/悬停 ---- */
+let dragging = false, lastX = 0, yawVel = 0, hoverCell = null, mouse = null;
+const AUTO = 0.011;
 
-boardCv.addEventListener('pointerdown', e => {
+function hitN(mx, my) {
+  const rr = 46 * devicePixelRatio * devicePixelRatio;
+  for (const s of SEGS) {
+    if (s.color === 'red') continue;
+    const a = projW(s.a0[0], s.a0[1], s.a0[2]), b = projW(s.b0[0], s.b0[1], s.b0[2]);
+    // 点到线段距离
+    const vx = b[0]-a[0], vy = b[1]-a[1], wx = mx-a[0], wy = my-a[1];
+    const L2 = vx*vx + vy*vy || 1;
+    const t = Math.max(0, Math.min(1, (wx*vx + wy*vy) / L2));
+    const dx = mx - (a[0] + t*vx), dy = my - (a[1] + t*vy);
+    if (dx*dx + dy*dy < rr) return true;
+  }
+  return false;
+}
+
+cv.addEventListener('pointerdown', e => {
+  const r = cv.getBoundingClientRect();
+  const mx = (e.clientX - r.left) * (cv.width / r.width);
+  const my = (e.clientY - r.top) * (cv.height / r.height);
+  if (phase === 'p1') { if (hitN(mx, my)) startMorph(); return; }
   dragging = true; lastX = e.clientX; yawVel = 0;
-  boardCv.classList.add('dragging');
-  boardCv.setPointerCapture(e.pointerId);
+  cv.style.cursor = 'grabbing';
+  cv.setPointerCapture(e.pointerId);
 });
-boardCv.addEventListener('pointerup', e => {
-  dragging = false;
-  boardCv.classList.remove('dragging');
-});
-boardCv.addEventListener('pointermove', e => {
-  const r = boardCv.getBoundingClientRect();
-  mouse = { x: (e.clientX - r.left) * (boardCv.width / r.width),
-            y: (e.clientY - r.top)  * (boardCv.height / r.height) };
+cv.addEventListener('pointerup', () => { dragging = false; cv.style.cursor = 'grab'; });
+cv.addEventListener('pointermove', e => {
+  const r = cv.getBoundingClientRect();
+  const mx = (e.clientX - r.left) * (cv.width / r.width);
+  const my = (e.clientY - r.top) * (cv.height / r.height);
+  mouse = { x: mx, y: my };
+  if (phase === 'p1') { cv.style.cursor = hitN(mx, my) ? 'pointer' : 'default'; return; }
   if (dragging) {
     const dx = e.clientX - lastX; lastX = e.clientX;
-    view.yaw += dx * 0.012;
-    yawVel = dx * 0.012;            // 记录松手惯性
+    view.yaw += dx * 0.012; yawVel = dx * 0.012;
   }
 });
-boardCv.addEventListener('pointerleave', () => { mouse = null; hoverCell = null; });
+cv.addEventListener('pointerleave', () => { mouse = null; hoverCell = null; });
 
-(function boardLoop() {
-  if (body.classList.contains('phase2')) {
+$('#wordmark').addEventListener('click', () => { if (phase === 'p1') startMorph(); });
+$('#backBtn').addEventListener('click', startMorphBack);
+
+/* ---- 主循环 ---- */
+let lastT = performance.now();
+(function loop(now) {
+  const dt = Math.min(0.05, (now - lastT) / 1000); lastT = now;
+  if (phase === 'morph') {
+    mt += (dt / DUR) * dir;
+    if (mt >= 1) { mt = 1; phase = 'p2'; body.classList.add('p2'); body.classList.remove('morphing'); }
+    if (mt <= 0) { mt = 0; phase = 'p1'; body.classList.remove('morphing'); }
+    const e = easeInOut(clamp01(mt));
+    view.yaw = lerp(POSE0.yaw, POSE1.yaw, e);
+    view.cy = cv.height * lerp(POSE0.cyK, POSE1.cyK, e) + lerp(POSE0.off, POSE1.off, e) * devicePixelRatio;
+    driveWordmark(e);
+    drawScene(e, null, false, false);
+  } else if (phase === 'p1') {
+    view.yaw = POSE0.yaw;
+    view.cy = cv.height * POSE0.cyK + POSE0.off * devicePixelRatio;
+    positionWordmark();
+    drawScene(0, null, false, false);
+  } else {
     if (!dragging) {
-      yawVel *= 0.94;                                   // 惯性衰减
-      view.yaw += yawVel + AUTO;                        // 自转 + 惯性
-      if (mouse) hoverCell = pickCell(view, mouse.x, mouse.y);
+      yawVel *= 0.94;
+      view.yaw += yawVel + AUTO;
+      if (mouse) hoverCell = pickCell(mouse.x, mouse.y);
     }
-    drawBoard(view, hoverCell, dragging);
+    view.cy = cv.height * POSE1.cyK + POSE1.off * devicePixelRatio;
+    drawScene(1, hoverCell, dragging, true);
   }
-  requestAnimationFrame(boardLoop);
-})();
-
-/* 面板小图标：同一渲染器静态一帧（亮色圆底） */
-function drawIconBadge() {
-  const cv = $('#iconCv'), g = cv.getContext('2d');
-  const v = makeView(cv, 11, 0.3);
-  g.save();
-  g.beginPath(); g.arc(cv.width / 2, cv.height / 2, cv.width / 2 - 2, 0, 7); g.clip();
-  const grad = g.createLinearGradient(0, 0, 0, cv.height);
-  grad.addColorStop(0, '#f2f7f7'); grad.addColorStop(1, '#d9e8e9');
-  g.fillStyle = grad; g.fillRect(0, 0, cv.width, cv.height);
-  v.cx = cv.width / 2; v.cy = cv.height / 2 + 4;
-  drawBoard(v, null, false, false);
-  g.restore();
-}
-
-/* ---- Phase 过渡 ---- */
-function toPhase2() {
-  initAudio();
-  const n = $('#nArt');
-  const zone = boardCv.getBoundingClientRect();
-  const nr = n.getBoundingClientRect();
-  const dx = (zone.left + zone.width / 2) - (nr.left + nr.width / 2);
-  const dy = (zone.top + zone.height / 2) - (nr.top + nr.height / 2);
-  n.style.setProperty('--fly-x', dx + 'px');
-  n.style.setProperty('--fly-y', dy + 'px');
-  n.classList.add('flying');
-  setTimeout(() => body.classList.add('phase2'), 700);
-}
-$('#nArt').addEventListener('click', toPhase2);
-$('#wordmark').addEventListener('click', toPhase2);
-$('#backBtn').addEventListener('click', () => {
-  body.classList.remove('phase2');
-  const n = $('#nArt');
-  n.style.animation = 'none'; n.classList.remove('flying');
-  requestAnimationFrame(() => requestAnimationFrame(() => n.style.animation = ''));
-});
+  requestAnimationFrame(loop);
+})(performance.now());
 
 /* ---- 音量四态 + 演示音 ---- */
 const VOL_GAIN = [0, 0.35, 0.65, 1.0];
 let vol = 2, actx = null, analyser = null, master = null, step = 0;
 const SCALE = [261.63, 293.66, 329.63, 392.0, 440.0, 523.25, 587.33];
-
 function applyGain() { if (master) master.gain.value = VOL_GAIN[vol] * 0.5; }
 function initAudio() {
   if (actx) { if (actx.state === 'suspended') actx.resume(); return; }
@@ -559,7 +541,6 @@ function initAudio() {
     requestAnimationFrame(tick);
   })();
 }
-
 $('#volIcon').addEventListener('click', () => {
   initAudio();
   vol = (vol + 1) % 4;
@@ -568,8 +549,50 @@ $('#volIcon').addEventListener('click', () => {
   applyGain();
 });
 
-if (document.fonts && document.fonts.ready) document.fonts.ready.then(syncBtnWidth);
+/* ---- 面板小徽章：同一渲染器画盘形态静态帧 ---- */
+function drawIconBadge() {
+  const bcv = $('#iconCv'), g = bcv.getContext('2d');
+  const saveYaw = view.yaw, saveCx = view.cx, saveCy = view.cy;
+  view.yaw = 0.3; view.cx = bcv.width / 2; view.cy = bcv.height / 2 + 4;
+  const sv = view.scale; view.scale = 11;
+  g.save();
+  g.beginPath(); g.arc(bcv.width/2, bcv.height/2, bcv.width/2 - 2, 0, 7); g.clip();
+  const grad = g.createLinearGradient(0, 0, 0, bcv.height);
+  grad.addColorStop(0, '#f2f7f7'); grad.addColorStop(1, '#d9e8e9');
+  g.fillStyle = grad; g.fillRect(0, 0, bcv.width, bcv.height);
+  // 临时借用主绘制：把 ctx 指向徽章（简单起见重画线格与子）
+  const d = dOf(1);
+  g.strokeStyle = 'rgba(90,122,126,.5)'; g.lineWidth = 1.5;
+  for (let z = 0; z < LAYERS; z++) {
+    g.beginPath();
+    for (let i = 0; i <= NCELL; i++) {
+      let a = projW(i, 0, dOf(z)), b = projW(i, NCELL, dOf(z));
+      g.moveTo(a[0], a[1]); g.lineTo(b[0], b[1]);
+      a = projW(0, i, dOf(z)); b = projW(NCELL, i, dOf(z));
+      g.moveTo(a[0], a[1]); g.lineTo(b[0], b[1]);
+    }
+    g.stroke();
+  }
+  for (const st of STONES) {
+    const p = projW(st.p1[0], st.p1[1], st.p1[2]), r = view.scale * 0.72;
+    g.fillStyle = st.kind === 'b' ? '#222226' : '#efe9e1';
+    g.beginPath(); g.arc(p[0], p[1], r, 0, 7); g.fill();
+    g.fillStyle = st.kind === 'b' ? '#2e9e4f' : '#d63a2f';
+    g.beginPath(); g.arc(p[0], p[1], r * .34, 0, 7); g.fill();
+  }
+  g.restore();
+  view.yaw = saveYaw; view.cx = saveCx; view.cy = saveCy; view.scale = sv;
+}
+
+/* ---- 按钮宽=标题宽 ---- */
+function syncBtnWidth() {
+  const w = $('#wordmark').getBoundingClientRect().width;
+  document.documentElement.style.setProperty('--btnw', Math.max(300, w) + 'px');
+}
+window.addEventListener('resize', () => { syncBtnWidth(); });
+if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => { syncBtnWidth(); positionWordmark(); });
 syncBtnWidth();
+positionWordmark();
 drawIconBadge();
 </script>
 </body>
