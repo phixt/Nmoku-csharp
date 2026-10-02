@@ -921,6 +921,7 @@ public partial class Main : Node
         _autotestSteps.Enqueue(("m4c-window-sequence", AutotestWindowSequence));
         _autotestSteps.Enqueue(("m4c-keymap-paging", AutotestKeymapPaging));
         _autotestSteps.Enqueue(("m5-audio-settings", AutotestAudioSettings));
+        _autotestSteps.Enqueue(("m5-bgm-crossfade", AutotestBgmCrossfade));
         _autotestSteps.Enqueue(("m5-i18n", AutotestI18n));
         _autotestSteps.Enqueue(("m5-title-fit", AutotestTitleFit));
         _autotestSteps.Enqueue(("m5-settings-bugs", AutotestSettingsBugs));
@@ -1200,6 +1201,131 @@ public partial class Main : Node
         }
         _audioPhase = false;
         return "ok";
+    }
+
+    private int _bgmPhase;
+    private ulong _bgmT0;
+
+    private bool BgmWaited(double ms) => Time.GetTicksMsec() - _bgmT0 >= (ulong)ms;
+
+    private static string BgmSnap(SampleMusicEngine.LaneSnapshot[] s) =>
+        string.Join("|", s.Select(l => $"{l.TrackName}:{l.LinVolume:0.00}->{l.TargetVolume:0.00}{(l.Playing ? "" : "停")}"));
+
+    /// <summary>M5 BGM 平滑切换回归锁（2026-10-02，headless 可跑）：双播放器交叉淡化（0.5s 出/0.6s 入，
+    /// 源 playBGM 语义 B20 ②/B21）——①换轨=新轨淡入旧轨淡出并行、旧轨淡完即停 ②快速 A→B→A 走
+    /// 优雅回归（切回仍在淡出的轨=音量从中间值回升，不重启）③同轨在播守卫 no-op（B20 ②）。
+    /// 只断言轨位音量轨迹，不依赖真实音频输出（headless Dummy 驱动可用）。</summary>
+    private string AutotestBgmCrossfade()
+    {
+        var eng = _audio.MusicForTests;
+        if (eng == null)
+        {
+            return "FAIL no-engine";
+        }
+        switch (_bgmPhase)
+        {
+            case 0:
+                _bgmT0 = Time.GetTicksMsec();
+                _audio.PlayBgm(BgmTrack.Game);
+                _bgmPhase = 1;
+                return "wait";
+            case 1: // 0.8s：game 独占在播且已升满
+                if (!BgmWaited(800))
+                {
+                    return "wait";
+                }
+                var s1 = eng.LanesForTests;
+                var game = s1.FirstOrDefault(l => l.TrackName == "Game");
+                if (game == null || !game.Playing || game.LinVolume < 0.9f || s1.Count(l => l.Playing) != 1)
+                {
+                    return $"FAIL p1 {BgmSnap(s1)}";
+                }
+                _bgmT0 = Time.GetTicksMsec();
+                _audio.PlayBgm(BgmTrack.Menu);
+                _bgmPhase = 2;
+                return "wait";
+            case 2: // 再 0.8s：menu 升满在播，game 淡完已停
+                if (!BgmWaited(800))
+                {
+                    return "wait";
+                }
+                var s2 = eng.LanesForTests;
+                var menu = s2.FirstOrDefault(l => l.TrackName == "Menu");
+                if (menu == null || !menu.Playing || menu.LinVolume < 0.9f
+                    || s2.Any(l => l.TrackName == "Game" && l.Playing))
+                {
+                    return $"FAIL p2 {BgmSnap(s2)}";
+                }
+                _bgmT0 = Time.GetTicksMsec();
+                _audio.PlayBgm(BgmTrack.Game);
+                _bgmPhase = 3;
+                return "wait";
+            case 3: // 250ms：game 淡入中段
+                if (!BgmWaited(250))
+                {
+                    return "wait";
+                }
+                var g3 = eng.LanesForTests.FirstOrDefault(l => l.TrackName == "Game");
+                if (g3 == null || !g3.Playing || g3.LinVolume is < 0.15f or > 0.95f)
+                {
+                    return $"FAIL p3 {BgmSnap(eng.LanesForTests)}";
+                }
+                _bgmT0 = Time.GetTicksMsec();
+                _audio.PlayBgm(BgmTrack.Menu);
+                _bgmPhase = 4;
+                return "wait";
+            case 4: // 100ms：menu 淡入中段、game 淡出中段（优雅回归前置态；窗口须短于 game 淡完）
+                if (!BgmWaited(100))
+                {
+                    return "wait";
+                }
+                var s4 = eng.LanesForTests;
+                var g4 = s4.FirstOrDefault(l => l.TrackName == "Game");
+                if (g4 == null || !g4.Playing || g4.LinVolume < 0.15f || g4.TargetVolume != 0f)
+                {
+                    return $"FAIL p4 {BgmSnap(s4)}";
+                }
+                _bgmT0 = Time.GetTicksMsec();
+                _audio.PlayBgm(BgmTrack.Game); // A→B→A 快速切回
+                _bgmPhase = 5;
+                return "wait";
+            case 5: // 0.6s：game 优雅回归升满（原轨位继续），menu 淡完；随后守卫 no-op 校验
+                if (!BgmWaited(600))
+                {
+                    return "wait";
+                }
+                var s5 = eng.LanesForTests;
+                var g5 = s5.FirstOrDefault(l => l.TrackName == "Game");
+                if (g5 == null || !g5.Playing || g5.LinVolume < 0.9f
+                    || s5.Any(l => l.TrackName == "Menu" && l.Playing))
+                {
+                    return $"FAIL p5 {BgmSnap(s5)}";
+                }
+                _bgmT0 = Time.GetTicksMsec();
+                var before = s5.Select(l => (l.TrackName, l.TargetVolume)).ToArray();
+                _audio.PlayBgm(BgmTrack.Game);
+                var after = eng.LanesForTests.Select(l => (l.TrackName, l.TargetVolume)).ToArray();
+                if (eng.CurrentTrackForTests != BgmTrack.Game || !before.SequenceEqual(after))
+                {
+                    return $"FAIL p5-guard {BgmSnap(eng.LanesForTests)}";
+                }
+                _bgmPhase = 6;
+                return "wait";
+            case 6: // 守卫后仍在播 → 收尾停播
+                if (!BgmWaited(100))
+                {
+                    return "wait";
+                }
+                var g6 = eng.LanesForTests.FirstOrDefault(l => l.TrackName == "Game");
+                if (g6 == null || !g6.Playing || g6.LinVolume < 0.9f)
+                {
+                    return $"FAIL p6 {BgmSnap(eng.LanesForTests)}";
+                }
+                _audio.StopBgm();
+                _bgmPhase = 0;
+                return "ok";
+        }
+        return "FAIL phase";
     }
 
     private int _saveAlignPhase;

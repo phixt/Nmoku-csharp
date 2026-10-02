@@ -63,6 +63,9 @@ public sealed partial class AudioManager : Node
 
     public void StopBgm() => _music.Stop();
 
+    /// <summary>自测投影：headless 回归锁直接观测音乐引擎轨位状态。</summary>
+    internal SampleMusicEngine? MusicForTests => _music as SampleMusicEngine;
+
     /// <summary>动态强度（audio_var.md §五；透传引擎，当前采样版为空实现）。</summary>
     public void SetIntensity(float value) => _music.SetIntensity(value);
 
