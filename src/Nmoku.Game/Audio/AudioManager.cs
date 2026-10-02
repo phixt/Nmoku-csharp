@@ -59,7 +59,10 @@ public sealed partial class AudioManager : Node
         base._Notification(what);
     }
 
-    public void PlayBgm(BgmTrack track) => _music.Start(track);
+    public void PlayBgm(BgmTrack track) => PlayBgm(track.ToString().ToLowerInvariant());
+
+    /// <summary>槽位直调（新场景零枚举接入；文件约定与选曲策略见 <see cref="MusicLibrary"/>）。</summary>
+    public void PlayBgm(string slot) => _music.Start(slot);
 
     public void StopBgm() => _music.Stop();
 

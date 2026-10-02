@@ -9,7 +9,7 @@ namespace Nmoku.Game.Audio;
 /// </summary>
 public sealed partial class SynthMusicEngine : Node, IMusicEngine
 {
-    public void Start(BgmTrack track)
+    public void Start(string slot)
     {
     }
 

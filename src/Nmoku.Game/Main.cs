@@ -1209,12 +1209,13 @@ public partial class Main : Node
     private bool BgmWaited(double ms) => Time.GetTicksMsec() - _bgmT0 >= (ulong)ms;
 
     private static string BgmSnap(SampleMusicEngine.LaneSnapshot[] s) =>
-        string.Join("|", s.Select(l => $"{l.TrackName}:{l.LinVolume:0.00}->{l.TargetVolume:0.00}{(l.Playing ? "" : "停")}"));
+        string.Join("|", s.Select(l => $"{l.Slot}:{l.LinVolume:0.00}->{l.TargetVolume:0.00}{(l.Playing ? "" : "停")}"));
 
     /// <summary>M5 BGM 平滑切换回归锁（2026-10-02，headless 可跑）：双播放器交叉淡化（0.5s 出/0.6s 入，
     /// 源 playBGM 语义 B20 ②/B21）——①换轨=新轨淡入旧轨淡出并行、旧轨淡完即停 ②快速 A→B→A 走
-    /// 优雅回归（切回仍在淡出的轨=音量从中间值回升，不重启）③同轨在播守卫 no-op（B20 ②）。
-    /// 只断言轨位音量轨迹，不依赖真实音频输出（headless Dummy 驱动可用）。</summary>
+    /// 优雅回归（切回仍在淡出的轨=音量从中间值回升，不重启）③同槽在播守卫 no-op（B20 ②）
+    /// ④缺文件槽位容忍（pretitle 预留槽不炸不打断）+ 曲库按槽归池 + 槽位覆盖 off 淡出收尾
+    /// （cfg 快照/恢复）。只断言轨位音量轨迹，不依赖真实音频输出（headless Dummy 驱动可用）。</summary>
     private string AutotestBgmCrossfade()
     {
         var eng = _audio.MusicForTests;
@@ -1235,7 +1236,7 @@ public partial class Main : Node
                     return "wait";
                 }
                 var s1 = eng.LanesForTests;
-                var game = s1.FirstOrDefault(l => l.TrackName == "Game");
+                var game = s1.FirstOrDefault(l => l.Slot == "game");
                 if (game == null || !game.Playing || game.LinVolume < 0.9f || s1.Count(l => l.Playing) != 1)
                 {
                     return $"FAIL p1 {BgmSnap(s1)}";
@@ -1250,9 +1251,9 @@ public partial class Main : Node
                     return "wait";
                 }
                 var s2 = eng.LanesForTests;
-                var menu = s2.FirstOrDefault(l => l.TrackName == "Menu");
+                var menu = s2.FirstOrDefault(l => l.Slot == "menu");
                 if (menu == null || !menu.Playing || menu.LinVolume < 0.9f
-                    || s2.Any(l => l.TrackName == "Game" && l.Playing))
+                    || s2.Any(l => l.Slot == "game" && l.Playing))
                 {
                     return $"FAIL p2 {BgmSnap(s2)}";
                 }
@@ -1265,7 +1266,7 @@ public partial class Main : Node
                 {
                     return "wait";
                 }
-                var g3 = eng.LanesForTests.FirstOrDefault(l => l.TrackName == "Game");
+                var g3 = eng.LanesForTests.FirstOrDefault(l => l.Slot == "game");
                 if (g3 == null || !g3.Playing || g3.LinVolume is < 0.15f or > 0.95f)
                 {
                     return $"FAIL p3 {BgmSnap(eng.LanesForTests)}";
@@ -1280,7 +1281,7 @@ public partial class Main : Node
                     return "wait";
                 }
                 var s4 = eng.LanesForTests;
-                var g4 = s4.FirstOrDefault(l => l.TrackName == "Game");
+                var g4 = s4.FirstOrDefault(l => l.Slot == "game");
                 if (g4 == null || !g4.Playing || g4.LinVolume < 0.15f || g4.TargetVolume != 0f)
                 {
                     return $"FAIL p4 {BgmSnap(s4)}";
@@ -1295,38 +1296,73 @@ public partial class Main : Node
                     return "wait";
                 }
                 var s5 = eng.LanesForTests;
-                var g5 = s5.FirstOrDefault(l => l.TrackName == "Game");
+                var g5 = s5.FirstOrDefault(l => l.Slot == "game");
                 if (g5 == null || !g5.Playing || g5.LinVolume < 0.9f
-                    || s5.Any(l => l.TrackName == "Menu" && l.Playing))
+                    || s5.Any(l => l.Slot == "menu" && l.Playing))
                 {
                     return $"FAIL p5 {BgmSnap(s5)}";
                 }
                 _bgmT0 = Time.GetTicksMsec();
-                var before = s5.Select(l => (l.TrackName, l.TargetVolume)).ToArray();
+                var before = s5.Select(l => (l.Slot, l.TargetVolume)).ToArray();
                 _audio.PlayBgm(BgmTrack.Game);
-                var after = eng.LanesForTests.Select(l => (l.TrackName, l.TargetVolume)).ToArray();
-                if (eng.CurrentTrackForTests != BgmTrack.Game || !before.SequenceEqual(after))
+                var after = eng.LanesForTests.Select(l => (l.Slot, l.TargetVolume)).ToArray();
+                if (eng.CurrentSlotForTests != "game" || !before.SequenceEqual(after))
                 {
                     return $"FAIL p5-guard {BgmSnap(eng.LanesForTests)}";
                 }
                 _bgmPhase = 6;
                 return "wait";
-            case 6: // 守卫后仍在播 → 收尾停播
+            case 6: // 守卫后仍在播；随后 P2 扩展：缺槽容忍 + 曲库池 + 槽位覆盖 off
                 if (!BgmWaited(100))
                 {
                     return "wait";
                 }
-                var g6 = eng.LanesForTests.FirstOrDefault(l => l.TrackName == "Game");
+                var g6 = eng.LanesForTests.FirstOrDefault(l => l.Slot == "game");
                 if (g6 == null || !g6.Playing || g6.LinVolume < 0.9f)
                 {
                     return $"FAIL p6 {BgmSnap(eng.LanesForTests)}";
                 }
+                // ① 缺文件槽位：调用不炸、不打断当前播放
+                var pre6 = eng.LanesForTests.Select(l => (l.Slot, l.TrackId, l.TargetVolume)).ToArray();
+                _audio.PlayBgm("pretitle"); // 预开始页预留槽位，文件未交付
+                var post6 = eng.LanesForTests.Select(l => (l.Slot, l.TrackId, l.TargetVolume)).ToArray();
+                if (!pre6.SequenceEqual(post6))
+                {
+                    return $"FAIL p6-missing-slot {BgmSnap(eng.LanesForTests)}";
+                }
+                // ② 曲库池：现有四文件按槽位归池；未知槽位空池
+                var lib = eng.LibraryForTests;
+                if (lib.Pool("game").Count != 1 || lib.Pool("game")[0].Id != "bgm_game"
+                    || lib.Pool("pretitle").Count != 0)
+                {
+                    return $"FAIL p6-pool game={lib.Pool("game").Count} pretitle={lib.Pool("pretitle").Count}";
+                }
+                // ③ 槽位覆盖 off：当前槽位静默（淡出收尾）；cfg 快照/恢复不污染真实偏好
+                _bgmSlotOvrBefore = SettingsStore.Get("music", "slot_game", "<absent>").AsString();
+                SettingsStore.Set("music", "slot_game", "off");
+                _audio.PlayBgm("game");
+                _bgmT0 = Time.GetTicksMsec();
+                _bgmPhase = 7;
+                return "wait";
+            case 7: // 0.7s：off 覆盖淡出完成、无任何在播 → 恢复偏好收尾
+                if (!BgmWaited(700))
+                {
+                    return "wait";
+                }
+                var s7 = eng.LanesForTests;
+                if (s7.Any(l => l.Playing))
+                {
+                    return $"FAIL p7-off {BgmSnap(s7)}";
+                }
+                SettingsStore.Set("music", "slot_game", _bgmSlotOvrBefore == "<absent>" ? "auto" : _bgmSlotOvrBefore);
                 _audio.StopBgm();
                 _bgmPhase = 0;
                 return "ok";
         }
         return "FAIL phase";
     }
+
+    private string _bgmSlotOvrBefore = "";
 
     private int _saveAlignPhase;
     private int _saveAlignClearIdx;
