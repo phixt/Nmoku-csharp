@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Nmoku 预开始页 — 初步设计原型 R9</title>
+<title>Nmoku 预开始页 — 初步设计原型 R10</title>
 <!-- R6：演示棋盘=可简单游玩的真实实例——落子（黑白轮流）+ 真实 AuxScan 辅助线
      （13 方向×正反、首子即停、最多 4 步、可越空格不可穿子；己=深绿/敌=#D0021B，角色相对当前行棋方，
      与 Core/AuxScan.cs + Board3DView 渲染一致）；旋转=阻力跟手+惯性+松手弹簧回弹（自转让位给用户控制）；
@@ -58,7 +58,7 @@
     transform-origin: top left;
   }
   .wordmark .tx {
-    display: block; transform: skewY(var(--wmskew, 0deg)); transform-origin: left center;
+    display: block; transform: matrix(var(--wa, 1), var(--wb, 0), 0, 1, 0, 0); transform-origin: left center;
   }
   .wordmark .wm-moku {
     font-family: 'Times New Roman', 'SimSun', serif;
@@ -319,7 +319,11 @@ function startMorphBack() {
 /* 文字锁排：p1 跟随 N 字形右侧；形变由主循环按同一缓动驱动到左上角；
    透视（skew）字形态与 N 一致，落位归零。 */
 const WM_CORNER = { left: 42, top: 18, scale: 0.42 };
-const WM_SKEW = 12;    // 字形态文字=贴在近层平面的等距透视（基线随平面行线下倾 25°），随形变归零
+/* 文字=贴在近层平面的真实仿射：由投影实导（世界 x 步的屏幕分量，竖直单位归一），随形变归正 */
+function planeAB(yaw) {
+  const c = Math.cos(yaw), s2 = Math.sin(yaw);
+  return [(c - s2) * COS30 / VSCALE, (s2 + c) * SIN30 / VSCALE];
+}
 function positionWordmark() {
   if (phase !== 'p1') return;
   const dpr = devicePixelRatio;
@@ -335,7 +339,9 @@ function positionWordmark() {
   wm.style.left = (maxX / dpr) + 18 + 'px';
   wm.style.top = Math.max(120, minY / dpr + 10) + 'px';
   wm.style.transform = 'none';
-  wm.style.setProperty('--wmskew', WM_SKEW + 'deg');
+  const [pa, pb] = planeAB(view.yaw);
+  wm.style.setProperty('--wa', pa.toFixed(4));
+  wm.style.setProperty('--wb', pb.toFixed(4));
   const wmN = $('#wmN');
   wmN.style.transform = 'scale(0)';
   wmN.style.width = '0px';           // 字形态角标 N 不占位：moku 紧贴三维 N
@@ -345,7 +351,9 @@ function driveWordmark(e) {
   wm.style.left = lerp(wmStart.left, WM_CORNER.left, e) + 'px';
   wm.style.top = lerp(wmStart.top, WM_CORNER.top, e) + 'px';
   wm.style.transform = `scale(${lerp(1, WM_CORNER.scale, e)})`;
-  wm.style.setProperty('--wmskew', lerp(WM_SKEW, 0, e).toFixed(2) + 'deg');
+  const [pa, pb] = planeAB(view.yaw);
+  wm.style.setProperty('--wa', lerp(pa, 1, e).toFixed(4));
+  wm.style.setProperty('--wb', lerp(pb, 0, e).toFixed(4));
   const sn = easeInOut(clamp01((e - 0.55) / 0.45));
   const wmN = $('#wmN');
   wmN.style.transform = `scale(${sn})`;
@@ -368,6 +376,18 @@ function drawScene(e, hover, dragging, label) {
   g.setTransform(1, 0, 0, 1, 0, 0);
   g.clearRect(0, 0, cv.width, cv.height);
   applyViewport();
+
+  // 0) 校验模式（?debug）：每格中心画点，核对格点与格线是否重合
+  if (location.search.includes('debug')) {
+    const zc = ['rgba(255,80,80,.95)', 'rgba(80,255,80,.95)', 'rgba(80,160,255,.95)'];
+    for (let z = 0; z < LAYERS; z++) {
+      g.fillStyle = zc[z];
+      for (let x = 0; x < NCELL; x++) for (let y = 0; y < NCELL; y++) {
+        const q = projL(x + .5, y + .5, z);
+        g.beginPath(); g.arc(q[0], q[1], 3.5 * dpr, 0, 7); g.fill();
+      }
+    }
+  }
 
   // 1) 线格（对角干压底先画，端头藏入竖干；平面错峰：远层先行）
   for (const s of DRAW) {
@@ -409,7 +429,7 @@ function drawScene(e, hover, dragging, label) {
   } else {
     const now = performance.now();
     items = placed.map(s => ({
-      kind: s.kind, pos: [s.x + .5, s.y + .5, s.z],
+      kind: s.kind, pos: [s.x + .5, s.y + .5, dOf(s.z)],
       r: s.born ? easeOut(Math.min(1, (now - s.born) / 260)) : 1,
     }));
   }
