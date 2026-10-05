@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Nmoku 预开始页 — 初步设计原型 R7</title>
+<title>Nmoku 预开始页 — 初步设计原型 R8</title>
 <!-- R6：演示棋盘=可简单游玩的真实实例——落子（黑白轮流）+ 真实 AuxScan 辅助线
      （13 方向×正反、首子即停、最多 4 步、可越空格不可穿子；己=深绿/敌=#D0021B，角色相对当前行棋方，
      与 Core/AuxScan.cs + Board3DView 渲染一致）；旋转=阻力跟手+惯性+松手弹簧回弹（自转让位给用户控制）；
@@ -62,17 +62,17 @@
   }
   .wordmark .wm-moku {
     font-family: 'Times New Roman', 'SimSun', serif;
-    font-size: 92px; line-height: .8; color: var(--ink); letter-spacing: 2px;
+    font-size: 107px; line-height: .8; color: var(--ink); letter-spacing: 2px;
   }
   .wordmark .wm-n {
     font-family: 'Times New Roman', 'SimSun', serif;
-    font-size: 132px; line-height: .78; color: var(--accent);
+    font-size: 152px; line-height: .78; color: var(--accent);
     display: inline-block; transform-origin: left bottom;
     overflow: visible; vertical-align: bottom;
   }
-  .wordmark .wm-title { font-size: 56px; letter-spacing: 6px; line-height: 1.2; margin-top: 18px; }
-  .wordmark .wm-sub { font-size: 15px; color: var(--dim); margin-top: 10px; letter-spacing: 2px; transition: opacity .4s ease; }
-  .wordmark .wm-hint { font-size: 13px; color: var(--dim); margin-top: 22px; opacity: .8; animation: breathe 2.6s ease-in-out infinite; transition: opacity .4s ease; }
+  .wordmark .wm-title { font-size: 65px; letter-spacing: 6px; line-height: 1.2; margin-top: 18px; }
+  .wordmark .wm-sub { font-size: 17px; color: var(--dim); margin-top: 10px; letter-spacing: 2px; transition: opacity .4s ease; }
+  .wordmark .wm-hint { font-size: 14px; color: var(--dim); margin-top: 22px; opacity: .8; animation: breathe 2.6s ease-in-out infinite; transition: opacity .4s ease; }
   @keyframes breathe { 50% { opacity: .35; } }
   body.morphing .wordmark .wm-sub, body.morphing .wordmark .wm-hint { opacity: 0; }
 
@@ -208,7 +208,7 @@ const COS30 = Math.cos(Math.PI / 6), SIN30 = 0.5, VSCALE = 0.95, DEPTH = 2.5;
 const dOf = z => z * DEPTH - DEPTH;
 
 const cv = $('#cv'), ctx = cv.getContext('2d');
-const view = { yaw: -0.10, scale: 105, cx: 0, cy: 0, offX: -190 };
+const view = { yaw: -0.10, scale: 122, cx: 0, cy: 0, offX: -190 };
 function applyViewport() { view.cx = cv.width / 2 + view.offX * devicePixelRatio; }
 function projW(x, y, d) {
   const px = x - NCELL / 2, py = y - NCELL / 2;
@@ -293,7 +293,7 @@ const easeInOut = t => t < .5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
 const clamp01 = t => Math.max(0, Math.min(1, t));
 
 /* 相机位姿：字位（锁排整体居中，文字贴近层平面透视）→ 盘位（棋盘偏左） */
-const POSE0 = { yaw: -0.10, cyK: 0.50, off: 40, offX: 40 };    // 字形态：N+文字锁排整体居中
+const POSE0 = { yaw: -0.10, cyK: 0.47, off: 10, offX: 60 };    // 字形态：N+文字锁排整体居中
 const POSE1 = { yaw: 0.30,  cyK: 0.50, off: 40, offX: -280 };  // 盘形态：棋盘偏左，按钮居右
 
 /* ---- 状态机：p1（字） → morph（真形变） → p2（可游玩的盘） ---- */
@@ -319,7 +319,7 @@ function startMorphBack() {
 /* 文字锁排：p1 跟随 N 字形右侧；形变由主循环按同一缓动驱动到左上角；
    透视（skew）字形态与 N 一致，落位归零。 */
 const WM_CORNER = { left: 42, top: 18, scale: 0.42 };
-const WM_SKEW = 25;    // 字形态文字=贴在近层平面的等距透视（基线随平面行线下倾 25°），随形变归零
+const WM_SKEW = 12;    // 字形态文字=贴在近层平面的等距透视（基线随平面行线下倾 25°），随形变归零
 function positionWordmark() {
   if (phase !== 'p1') return;
   const dpr = devicePixelRatio;
@@ -349,7 +349,7 @@ function driveWordmark(e) {
   const sn = easeInOut(clamp01((e - 0.55) / 0.45));
   const wmN = $('#wmN');
   wmN.style.transform = `scale(${sn})`;
-  wmN.style.width = (sn * 96) + 'px';
+  wmN.style.width = (sn * 110) + 'px';
 }
 
 /* ---- 绘制 ---- */
