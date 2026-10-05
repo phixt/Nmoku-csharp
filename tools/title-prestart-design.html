@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Nmoku 预开始页 — 初步设计原型 R6</title>
+<title>Nmoku 预开始页 — 初步设计原型 R7</title>
 <!-- R6：演示棋盘=可简单游玩的真实实例——落子（黑白轮流）+ 真实 AuxScan 辅助线
      （13 方向×正反、首子即停、最多 4 步、可越空格不可穿子；己=深绿/敌=#D0021B，角色相对当前行棋方，
      与 Core/AuxScan.cs + Board3DView 渲染一致）；旋转=阻力跟手+惯性+松手弹簧回弹（自转让位给用户控制）；
@@ -58,7 +58,7 @@
     transform-origin: top left;
   }
   .wordmark .tx {
-    display: block; transform: skewX(var(--wmskew, 0deg)); transform-origin: bottom left;
+    display: block; transform: skewY(var(--wmskew, 0deg)); transform-origin: left center;
   }
   .wordmark .wm-moku {
     font-family: 'Times New Roman', 'SimSun', serif;
@@ -208,9 +208,8 @@ const COS30 = Math.cos(Math.PI / 6), SIN30 = 0.5, VSCALE = 0.95, DEPTH = 2.5;
 const dOf = z => z * DEPTH - DEPTH;
 
 const cv = $('#cv'), ctx = cv.getContext('2d');
-const view = { yaw: -0.10, scale: 105, cx: 0, cy: 0 };
-const CX_OFF = -400;   // 构图左移：图形重心居左，文字/按钮居右
-function applyViewport() { view.cx = cv.width / 2 + CX_OFF * devicePixelRatio; }
+const view = { yaw: -0.10, scale: 105, cx: 0, cy: 0, offX: -190 };
+function applyViewport() { view.cx = cv.width / 2 + view.offX * devicePixelRatio; }
 function projW(x, y, d) {
   const px = x - NCELL / 2, py = y - NCELL / 2;
   const c = Math.cos(view.yaw), s = Math.sin(view.yaw);
@@ -293,9 +292,9 @@ const lerp3 = (a, b, t) => [lerp(a[0], b[0], t), lerp(a[1], b[1], t), lerp(a[2],
 const easeInOut = t => t < .5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
 const clamp01 = t => Math.max(0, Math.min(1, t));
 
-/* 相机位姿：字位（近正对）→ 盘位 */
-const POSE0 = { yaw: -0.10, cyK: 0.50, off: 40 };
-const POSE1 = { yaw: 0.30,  cyK: 0.50, off: 40 };
+/* 相机位姿：字位（锁排整体居中，文字贴近层平面透视）→ 盘位（棋盘偏左） */
+const POSE0 = { yaw: -0.10, cyK: 0.50, off: 40, offX: 40 };    // 字形态：N+文字锁排整体居中
+const POSE1 = { yaw: 0.30,  cyK: 0.50, off: 40, offX: -280 };  // 盘形态：棋盘偏左，按钮居右
 
 /* ---- 状态机：p1（字） → morph（真形变） → p2（可游玩的盘） ---- */
 let phase = 'p1', mt = 0, dir = 1;
@@ -320,7 +319,7 @@ function startMorphBack() {
 /* 文字锁排：p1 跟随 N 字形右侧；形变由主循环按同一缓动驱动到左上角；
    透视（skew）字形态与 N 一致，落位归零。 */
 const WM_CORNER = { left: 42, top: 18, scale: 0.42 };
-const WM_SKEW = -10;   // 字形态文字倾斜角（deg，右倾），随形变归零
+const WM_SKEW = 25;    // 字形态文字=贴在近层平面的等距透视（基线随平面行线下倾 25°），随形变归零
 function positionWordmark() {
   if (phase !== 'p1') return;
   const dpr = devicePixelRatio;
@@ -542,15 +541,21 @@ let lastT = performance.now();
     if (mt <= 0) { mt = 0; phase = 'p1'; body.classList.remove('morphing'); }
     const e = easeInOut(clamp01(mt));
     view.yaw = lerp(POSE0.yaw, POSE1.yaw, e);
+    view.offX = lerp(POSE0.offX, POSE1.offX, e);
     view.cy = cv.height * lerp(POSE0.cyK, POSE1.cyK, e) + lerp(POSE0.off, POSE1.off, e) * devicePixelRatio;
+    applyViewport();
     driveWordmark(e);
     drawScene(e, null, false, false);
   } else if (phase === 'p1') {
     view.yaw = POSE0.yaw;
+    view.offX = POSE0.offX;
     view.cy = cv.height * POSE0.cyK + POSE0.off * devicePixelRatio;
+    applyViewport();
     positionWordmark();
     drawScene(0, null, false, false);
   } else {
+    view.offX = POSE1.offX;
+    applyViewport();
     // 盘形态：拖拽（阻力跟手）→ 松手惯性 → 弹簧回弹至最近 30° 槽位；自转仅在被接管前
     if (dragging) {
       view.yaw += (targetYaw - view.yaw) * Math.min(1, dt * 14);
