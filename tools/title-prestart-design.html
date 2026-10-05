@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Nmoku 预开始页 — 初步设计原型 R8</title>
+<title>Nmoku 预开始页 — 初步设计原型 R9</title>
 <!-- R6：演示棋盘=可简单游玩的真实实例——落子（黑白轮流）+ 真实 AuxScan 辅助线
      （13 方向×正反、首子即停、最多 4 步、可越空格不可穿子；己=深绿/敌=#D0021B，角色相对当前行棋方，
      与 Core/AuxScan.cs + Board3DView 渲染一致）；旋转=阻力跟手+惯性+松手弹簧回弹（自转让位给用户控制）；
@@ -293,7 +293,7 @@ const easeInOut = t => t < .5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
 const clamp01 = t => Math.max(0, Math.min(1, t));
 
 /* 相机位姿：字位（锁排整体居中，文字贴近层平面透视）→ 盘位（棋盘偏左） */
-const POSE0 = { yaw: -0.10, cyK: 0.47, off: 10, offX: 60 };    // 字形态：N+文字锁排整体居中
+const POSE0 = { yaw: -0.10, cyK: 0.44, off: 10, offX: -140 };    // 字形态：N+文字锁排整体居中
 const POSE1 = { yaw: 0.30,  cyK: 0.50, off: 40, offX: -280 };  // 盘形态：棋盘偏左，按钮居右
 
 /* ---- 状态机：p1（字） → morph（真形变） → p2（可游玩的盘） ---- */
@@ -361,8 +361,6 @@ function drawStone(g, p, kind, r) {
   g.fillStyle = grad;
   g.beginPath(); g.arc(p[0], p[1], r, 0, 7); g.fill();
   g.strokeStyle = 'rgba(0,0,0,.35)'; g.lineWidth = 2 * devicePixelRatio; g.stroke();
-  g.fillStyle = kind === 'b' ? '#2e9e4f' : '#d63a2f';
-  g.beginPath(); g.arc(p[0], p[1], r * .34, 0, 7); g.fill();
 }
 
 function drawScene(e, hover, dragging, label) {
@@ -417,21 +415,21 @@ function drawScene(e, hover, dragging, label) {
   }
   items = items.map(o => ({ ...o, scr: projW(o.pos[0], o.pos[1], o.pos[2]), dep: depthOf(o.pos) }))
                .sort((a, b) => a.dep - b.dep);
-  for (const o of items) drawStone(g, o.scr, o.kind, view.scale * 0.72 * o.r);
+  for (const o of items) drawStone(g, o.scr, o.kind, view.scale * 0.36 * o.r);
 
   // 4) 辅助线标记小球（r 与真实 3D 比例一致：0.12/0.34×棋子）
   if (showAux) {
     for (const m of aux.markers) {
       const q = projL(m.p[0], m.p[1], m.p[2]);
       g.fillStyle = m.role === 'self' ? 'rgba(0,140,64,.85)' : 'rgba(208,2,27,.85)';
-      g.beginPath(); g.arc(q[0], q[1], view.scale * 0.25, 0, 7); g.fill();
+      g.beginPath(); g.arc(q[0], q[1], view.scale * 0.13, 0, 7); g.fill();
     }
   }
 
   // 5) 悬停蓝球（仅空格；纯不透明）
   if (showAux) {
     const bc = [hover.x + .5, hover.y + .5, hover.z];
-    const p = projL(bc[0], bc[1], bc[2]), br = view.scale * 0.5;
+    const p = projL(bc[0], bc[1], bc[2]), br = view.scale * 0.30;
     g.fillStyle = '#2f86e8';
     g.beginPath(); g.arc(p[0], p[1], br, 0, 7); g.fill();
     g.strokeStyle = 'rgba(255,255,255,.55)'; g.lineWidth = 2 * dpr;
@@ -443,7 +441,7 @@ function drawScene(e, hover, dragging, label) {
     g.fillStyle = 'rgba(90,122,126,.85)'; g.font = `${24 * dpr}px "LXGW WenKai Lite", serif`;
     const msg = dragging ? '拖拽旋转中…'
       : `回合：${turn === 'b' ? '黑' : '白'} · 点击空格落子 · 拖拽旋转`;
-    g.fillText(msg, 20 * dpr, cv.height - 20 * dpr);
+    g.fillText(msg, 175 * dpr, cv.height - 20 * dpr);   // 右移避开左下重置按钮
   }
 }
 const easeOut = t => 1 - Math.pow(1 - t, 3);
