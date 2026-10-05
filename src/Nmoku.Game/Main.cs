@@ -33,7 +33,7 @@ public partial class Main : Node
     private SceneRouter _router = null!;
     private OverlayManager _overlay = null!;
     private AudioManager _audio = null!;
-    private TitleScreen _titleScreen = null!;
+    private PreTitleScreen _titleScreen = null!;
     private PauseMenu _pauseMenu = null!;
     private GameOverModal _gameOverModal = null!;
     private SaveMenu _saveMenu = null!;
@@ -266,7 +266,7 @@ public partial class Main : Node
             KeepAlive = true,
             Factory = () =>
             {
-                var screen = new TitleScreen();
+                var screen = new PreTitleScreen();
                 screen.StartRequested += () => _store.RequestStartNew();
                 screen.ResumeRequested += () => _store.ResumeLive();
                 screen.CustomGameRequested += () => _router.PushOverlay("sandbox");
@@ -2510,6 +2510,7 @@ public partial class Main : Node
         }
         if (state == GameState.Title)
         {
+            _titleScreen.OnEntered();
             _titleScreen.UpdateResumeButton(_store.HasLiveGame);
         }
         if (state is GameState.GuideFromTitle or GameState.GuideFromGame)
