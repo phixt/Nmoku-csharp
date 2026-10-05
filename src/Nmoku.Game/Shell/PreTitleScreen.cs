@@ -26,12 +26,12 @@ public sealed partial class PreTitleScreen : Control
     private const float MorphDuration = 1.5f;      // 形变时长（秒）
     private const float LetterYaw = -0.10f;        // 字形态偏航（rad）
     private const float MenuYaw = 0.30f;           // 盘形态偏航
-    private const float CamXLetter = 3.55f;        // 字形态相机 X（锁排整体居中）
+    private const float CamXLetter = 3.80f;        // 字形态相机 X（锁排整体居中）
     private const float CamXMenu = 3.30f;          // 盘形态相机 X（棋盘偏左）
     private const float CamYLetter = 2.20f;        // 字形态相机 Y（锁排上移）
     private const float CamYMenu = 2.60f;          // 盘形态相机 Y
     private const float OrthoSize = 7.2f;          // 正交视口高（世界单位）
-    private const float BarK = 0.24f;              // 字干压缩系数（格线不可辨=实心）
+    private const float BarK = 0.18f;              // 字干压缩系数（格线不可辨=实心）
     private const float BarDx = 2.9f;              // 左右干中心距
     private const float LineWLetter = 0.26f;       // 字形态线宽（世界单位，互相覆盖=实心）
     private const float LineWBoard = 0.025f;       // 盘形态线宽
@@ -150,6 +150,7 @@ public sealed partial class PreTitleScreen : Control
             },
         };
 
+        AddChild(_vp);                               // 视口必须入树才会渲染
         _root = new Node3D { Rotation = new Vector3(0, _yaw, 0) };
         _vp.AddChild(_root);
 
@@ -161,7 +162,7 @@ public sealed partial class PreTitleScreen : Control
         };
         _vp.AddChild(_cam);
 
-        var light = new DirectionalLight3D { Rotation = new Vector3(-0.9f, 0.6f, 0f) };
+        var light = new DirectionalLight3D { Rotation = new Vector3(-0.9f, 0.6f, 0f), LightEnergy = 0.6f };
         _vp.AddChild(light);
 
         var host = new ViewportHost { Viewport = _vp };
@@ -226,8 +227,8 @@ public sealed partial class PreTitleScreen : Control
                 var du = (i - 2.5f) * BarK;
                 // 列线：字形态=实心笔画（宽线互相覆盖），盘形态=该层竖线
                 _segs.Add(new Seg(
-                    new Vector3(bx + du * cs, 2.5f - 2.5f * cs, Spacing),
-                    new Vector3(bx + du * cs, 2.5f + 2.5f * cs, Spacing),
+                    new Vector3(bx + du * cs + 2.5f * sn, 2.5f + du * sn - 2.5f * cs, Spacing),
+                    new Vector3(bx + du * cs - 2.5f * sn, 2.5f + du * sn + 2.5f * cs, Spacing),
                     new Vector3(i, 0, d), new Vector3(i, 5, d),
                     LineWLetter, LineWBoard));
                 // 行线：字形态宽 0（几何消失），盘形态=该层横线
@@ -265,7 +266,7 @@ public sealed partial class PreTitleScreen : Control
             {
                 Mesh = stoneMesh,
                 Position = new Vector3(x + .5f, y + .5f, DOf(z)),
-                Scale = Vector3.One * StoneR,
+                Scale = Vector3.Zero,   // 字形态隐藏；形变中滑入格位并长成
             };
             ApplyStoneMaterial(mi, kind);
             _root.AddChild(mi);
@@ -324,21 +325,21 @@ public sealed partial class PreTitleScreen : Control
         var z = Spacing + 0.15f;
         _text3D.Add(new Label3D
         {
-            Text = "moku", Font = times, FontSize = 320, PixelSize = 0.005f,
+            Text = "moku", Font = times, FontSize = 230, PixelSize = 0.005f, Rotation = new Vector3(0, 0, -0.42f),
             Modulate = Palette.Active.TextPrimary, HorizontalAlignment = HorizontalAlignment.Left,
-            Position = new Vector3(3.75f, 4.35f, z),
+            Position = new Vector3(4.95f, 4.30f, z),
         });
         _text3D.Add(new Label3D
         {
-            Text = I18n.T(Text.Title.GameName), Font = lxgw, FontSize = 220, PixelSize = 0.005f,
+            Text = I18n.T(Text.Title.GameName), Font = lxgw, FontSize = 140, PixelSize = 0.005f, Rotation = new Vector3(0, 0, -0.42f),
             Modulate = Palette.Active.TextPrimary, HorizontalAlignment = HorizontalAlignment.Left,
-            Position = new Vector3(3.75f, 3.45f, z),
+            Position = new Vector3(4.95f, 3.50f, z),
         });
         _text3D.Add(new Label3D
         {
-            Text = I18n.T(Text.Title.Subtitle), Font = lxgw, FontSize = 64, PixelSize = 0.005f,
+            Text = I18n.T(Text.Title.Subtitle), Font = lxgw, FontSize = 52, PixelSize = 0.005f, Rotation = new Vector3(0, 0, -0.42f),
             Modulate = Palette.Active.TextDim, HorizontalAlignment = HorizontalAlignment.Left,
-            Position = new Vector3(3.75f, 2.75f, z),
+            Position = new Vector3(4.95f, 2.80f, z),
         });
         foreach (var l in _text3D)
         {
@@ -444,6 +445,7 @@ public sealed partial class PreTitleScreen : Control
         };
         _status.AddThemeColorOverride("font_color", Palette.Active.TextDim);
         _status.AddThemeFontSizeOverride("font_size", 15);
+        _menuUi.Add(_status);
         AddChild(_status);
 
         ShowMenuUi(false);
@@ -681,7 +683,7 @@ public sealed partial class PreTitleScreen : Control
         mi.MaterialOverride = new StandardMaterial3D
         {
             AlbedoColor = kind == PlayerColor.Black ? new Color(0.13f, 0.13f, 0.15f) : new Color(0.94f, 0.92f, 0.88f),
-            Roughness = 0.35f,
+            Roughness = 0.55f,
             Metallic = 0.1f,
         };
     }
@@ -729,6 +731,7 @@ public sealed partial class PreTitleScreen : Control
             _cam.Position = new Vector3(CamXLetter, CamYLetter, 12f);
             DriveText3D(0f);
             UpdateLines(0f);
+            UpdateMorphStones(0f);
         }
         else
         {
@@ -788,7 +791,7 @@ public sealed partial class PreTitleScreen : Control
                 : new Vector3(2.5f + BarDx / 2, -0.4f, Spacing);
             var dst = new Vector3(s.X + .5f, s.Y + .5f, DOf(s.Z));
             s.Node.Position = src.Lerp(dst, me);
-            s.Node.Scale = Vector3.One * (StoneR * (0.2f + 0.8f * me));
+            s.Node.Scale = Vector3.One * (StoneR * me);
         }
     }
 
