@@ -943,6 +943,19 @@ public partial class Main : Node
         _autotestSteps.Enqueue(("m5-viewport-level-fit", AutotestViewportLevelFit));
         _autotestSteps.Enqueue(("m5-window-mode-pref", AutotestWindowModePref));
         _autotestSteps.Enqueue(("m5-overlay-scope", AutotestOverlayScope));
+        _autotestSteps.Enqueue(("m5-keymap-keys", AutotestKeymapKeys));
+    }
+
+    /// <summary>
+    /// 键位一致性审计（修复批 ③-6 延伸）：KeymapTable 的**展示键** ↔ InputMap 的**实际绑定**。
+    /// 漂移即「帮助屏广告的键按了没反应」——此前这条只靠人工核对（审查报告确认当时零漂移）。
+    /// </summary>
+    private string AutotestKeymapKeys()
+    {
+        var issues = KeymapAudit.FindMismatches();
+        return issues.Count == 0
+            ? "ok"
+            : $"FAIL {string.Join(" | ", issues.Take(6))}{(issues.Count > 6 ? $" (+{issues.Count - 6})" : "")}";
     }
 
     private int _ovScopePhase;
