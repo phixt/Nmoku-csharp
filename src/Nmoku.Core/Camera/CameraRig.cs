@@ -13,7 +13,11 @@ public sealed class CameraRig
     private CameraState _current = null!;
     private WorldPoint _formulaCenter;
     private WorldPoint _panOffset;
-    private double? _distanceOverride; // 用户缩放（Z/C 改层间距等重算后保留；X 复位清除）
+    /// <summary>用户缩放**倍率**（相对公式距离；1=公式距离本身）。修复批 ③-2：此前存绝对距离，
+    /// 构造后任何 Update 都走 clamp 分支 → 公式距离永不重算（窄视口不贴合画面）。</summary>
+    private double _zoomFactor = 1.0;
+    /// <summary>最近一次公式距离（重算基准；用户缩放倍率以它为分母）。</summary>
+    private double _formulaDistance;
     private bool _userPitched;
     private bool _initialized;
 
@@ -22,6 +26,9 @@ public sealed class CameraRig
 
     /// <summary>渲染态（平滑逼近 Target；Game 每帧读取并应用到 Camera3D）。</summary>
     public CameraState Current => _current;
+
+    /// <summary>用户缩放倍率（1=公式距离；0.3–3.0 为 §6.1 限幅）。测试可观测。</summary>
+    public double ZoomFactor => _zoomFactor;
 
     /// <summary>测试可观测：公式态重算次数（§8.1 增量验证）。</summary>
     public int RecomputeCount { get; private set; }
@@ -44,7 +51,8 @@ public sealed class CameraRig
 
     /// <summary>
     /// 重算公式态。yawDeg 仅首次构造/Reset 时作为种子（之后朝向由 <see cref="Orbit"/> 累积持有）。
-    /// 平移偏移跨输入变化保留（clamp 到新对角线）；pitch 在用户 Orbit 过后不再被 aspect 覆盖。
+    /// 平移偏移跨输入变化保留（clamp 到新对角线）；pitch 在用户 Orbit 过后不再被 aspect 覆盖；
+    /// 用户缩放以**倍率**跨重算保留（构图比例不变，绝对距离随公式基准缩放——修复批 ③-2）。
     /// </summary>
     public void Update(int boardSize, int layers, double layerSpacing, double aspect, double yawDeg)
     {
@@ -67,11 +75,14 @@ public sealed class CameraRig
         double fov = CameraMath.ComputeFov(normalizedAspect);
         double pitch = _initialized && _userPitched ? _target.Pitch : CameraMath.ComputePitch(normalizedAspect);
         var (minDist, maxDist) = CameraMath.ComputeDistanceLimits(targetDiagonal, fov, aspect);
-        // 用户缩放优先于公式距离（修复：Z/C 改层间距触发重算时缩放被拉回初始态）
-        double distance = _distanceOverride is { } overridden
-            ? Math.Clamp(overridden, minDist, maxDist)
-            : CameraMath.ComputeDistance(targetDiagonal, fov, aspect);
-        _distanceOverride = distance;
+        // 用户缩放以**倍率**参与公式距离（修复批 ③-2）：此前存绝对距离并无条件写回，
+        // 构造后任何 Update 都走 clamp 分支 → 公式距离永不重算（视口变窄后盘不再贴合画面，
+        // 实测 16:9→0.5 应为 57.13 却仍为 31.69）。倍率语义：缩放意图随基准一起缩放，
+        // 层间距/视口变化时构图比例不变（X 复位清零倍率）。
+        double formula = CameraMath.ComputeDistance(targetDiagonal, fov, aspect);
+        _formulaDistance = formula;
+        double distance = Math.Clamp(formula * _zoomFactor, minDist, maxDist);
+        _zoomFactor = distance / formula; // 吸收限幅（clamp 后倍率即实际比例）
         var (near, far) = CameraMath.ComputeClipPlanes(distance);
         double yaw = _initialized ? _target.Yaw : yawDeg;
         var center = _formulaCenter + _panOffset;
@@ -114,12 +125,12 @@ public sealed class CameraRig
         ApplyTarget(_target.Yaw, _target.Pitch, _target.Distance, _formulaCenter + _panOffset);
     }
 
-    /// <summary>径向缩放（§6.1）：delta&gt;0 拉近；范围 [base×0.3, base×3.0]。缩放跨公式重算保留。</summary>
+    /// <summary>径向缩放（§6.1）：delta&gt;0 拉近；范围 [base×0.3, base×3.0]。缩放跨公式重算保留（以倍率记）。</summary>
     public void Zoom(double delta)
     {
         var (min, max) = CameraMath.ComputeDistanceLimits(_target.TargetDiagonal, _target.Fov, _target.AspectRatio);
         double distance = Math.Clamp(_target.Distance - delta * GameConfig.ZoomSpeed * _target.Distance, min, max);
-        _distanceOverride = distance;
+        _zoomFactor = distance / _formulaDistance;
         ApplyTarget(_target.Yaw, _target.Pitch, distance, _target.Center);
     }
 
@@ -140,7 +151,7 @@ public sealed class CameraRig
         var (pitch, yaw, radius) = CameraMath.DecomposePosition(position, _target.Center);
         var (min, max) = CameraMath.ComputeDistanceLimits(_target.TargetDiagonal, _target.Fov, _target.AspectRatio);
         radius = Math.Clamp(radius, min, max);
-        _distanceOverride = radius;
+        _zoomFactor = radius / _formulaDistance;
         ApplyTarget(yaw, Math.Clamp(pitch, GameConfig.MinPitch, GameConfig.MaxPitch), radius, _target.Center);
     }
 
@@ -148,7 +159,7 @@ public sealed class CameraRig
     public void Reset(int boardSize, int layers, double layerSpacing, double aspect)
     {
         _panOffset = default;
-        _distanceOverride = null;
+        _zoomFactor = 1.0;
         _userPitched = false;
         _initialized = false;
         Update(boardSize, layers, layerSpacing, aspect, GameConfig.DefaultYaw);

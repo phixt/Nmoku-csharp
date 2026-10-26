@@ -11,6 +11,13 @@ public class CameraRigTests
 
     private static CameraRig NewRig() => new(13, 6, 3.5, Aspect);
 
+    /// <summary>公式距离（03-camera §9 STEP 5）：独立复算，不抄实现里的中间量。</summary>
+    private static double FormulaDistanceOf(int boardSize, int layers, double spacing, double aspect) =>
+        CameraMath.ComputeDistance(
+            CameraMath.ComputeTargetDiagonal(CameraMath.ComputeDiagonal(boardSize, layers, spacing)),
+            CameraMath.ComputeFov(CameraMath.ComputeNormalizedAspect(boardSize, layers, spacing)),
+            aspect);
+
     // ---- 构造与增量缓存 ----
 
     [Fact]
@@ -35,14 +42,42 @@ public class CameraRigTests
     }
 
     [Fact]
-    public void Update_AspectChange_RecomputesDistanceAndKeepsYaw()
+    public void Update_AspectChange_RecomputesDistanceToFormulaValue()
     {
         var rig = NewRig();
         rig.Update(13, 6, 3.5, 0.5, 45);
 
         Assert.Equal(2, rig.RecomputeCount);
-        Assert.True(rig.Target.Distance > FormulaDistance, "窄视口水平 FOV 限制 → 更远");
+        // 修复批 ③-2：旧实现把用户缩放存成绝对距离并无条件写回 → 公式距离永不重算
+        // （16:9→0.5 应为 57.13 却仍为 31.69）。断言改为**精确等于公式值**：
+        // 旧断言 rig.Target.Distance > FormulaDistance 靠 1 ulp（3.55e-15）浮点毛刺假绿。
+        Assert.Equal(FormulaDistanceOf(13, 6, 3.5, 0.5), rig.Target.Distance, 9);
+        Assert.True(rig.Target.Distance > FormulaDistance * 1.5, "窄视口水平 FOV 限制 → 显著更远");
         Assert.Equal(45, rig.Target.Yaw, 9);
+    }
+
+    [Fact]
+    public void Update_AspectChange_KeepsUserZoomFactor_AndRefitsViewport()
+    {
+        // 用户缩放以倍率参与公式距离：视口变窄时倍率不变（构图意图不变），绝对距离按新基准重算
+        var rig = NewRig();
+        rig.Zoom(5);
+        double factor = rig.ZoomFactor;
+        Assert.True(factor < 1.0, "缩放拉近 → 倍率 < 1");
+
+        rig.Update(13, 6, 3.5, 0.5, 45);
+
+        Assert.Equal(factor, rig.ZoomFactor, 9);
+        Assert.Equal(FormulaDistanceOf(13, 6, 3.5, 0.5) * factor, rig.Target.Distance, 9);
+    }
+
+    [Fact]
+    public void Update_NoUserZoom_DistanceEqualsFormulaValue()
+    {
+        var rig = NewRig();
+        rig.Update(13, 6, 3.0, 0.5, 45);
+        Assert.Equal(1.0, rig.ZoomFactor, 9);
+        Assert.Equal(FormulaDistanceOf(13, 6, 3.0, 0.5), rig.Target.Distance, 9);
     }
 
     [Fact]
@@ -136,27 +171,32 @@ public class CameraRigTests
     }
 
     [Fact]
-    public void Zoom_PersistsAcrossSpacingRecompute()
+    public void Zoom_PersistsAcrossSpacingRecompute_AsRelativeFactor()
     {
-        // 人类反馈修复：Z/C 改层间距触发公式重算时，用户缩放不得被拉回初始态
+        // 人类反馈修复：Z/C 改层间距触发公式重算时，用户缩放不得被拉回初始态。
+        // 修复批 ③-2 后语义细化为「**倍率**保留」：绝对距离随公式基准（盘面包围盒）一起缩放，
+        // 构图比例不变——绝对距离不变会让缩小的盘看起来被拉远。
         var rig = NewRig();
         rig.Zoom(5);
+        double factor = rig.ZoomFactor;
         double zoomed = rig.Target.Distance;
         Assert.True(zoomed < FormulaDistance);
 
-        rig.Update(13, 6, 3.0, Aspect, 45);
+        rig.Update(13, 6, 3.0, Aspect, 45); // 层间距变化
 
-        Assert.Equal(zoomed, rig.Target.Distance, 9); // 距离保留（未被公式覆盖）
-        Assert.Equal(7.5, rig.Target.Center.Z, 9);    // 层轴中心确实随 spacing 更新
+        Assert.Equal(factor, rig.ZoomFactor, 9);                            // 倍率保留（未被公式覆盖）
+        Assert.Equal(FormulaDistanceOf(13, 6, 3.0, Aspect) * factor, rig.Target.Distance, 9);
+        Assert.Equal(7.5, rig.Target.Center.Z, 9);                          // 层轴中心确实随 spacing 更新
     }
 
     [Fact]
-    public void Reset_ClearsDistanceOverride_BackToFormula()
+    public void Reset_ClearsZoomFactor_BackToFormula()
     {
         var rig = NewRig();
         rig.Zoom(5);
         rig.Reset(13, 6, 3.5, Aspect);
-        Assert.Equal(FormulaDistance, rig.Target.Distance, 9);
+        Assert.Equal(1.0, rig.ZoomFactor, 9);
+        Assert.Equal(FormulaDistanceOf(13, 6, 3.5, Aspect), rig.Target.Distance, 9);
     }
 
     // ---- 缩放 ----
