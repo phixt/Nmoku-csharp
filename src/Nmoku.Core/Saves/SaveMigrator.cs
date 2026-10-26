@@ -9,23 +9,57 @@ namespace Nmoku.Core.Saves;
 /// </summary>
 public static class SaveMigrator
 {
-    /// <summary>解析任意版本存档 JSON → v2.0.0 SaveData（必要时迁移）。非法 JSON 返回 null。</summary>
+    /// <summary>解析任意版本存档 JSON → v2.0.0 SaveData（必要时迁移）。
+    /// 非法 JSON、结构畸形（字段类型不符）、尺寸越界一律返回 null，**不抛异常**——
+    /// 本方法是统一读档入口（剪贴板 / 文件 / 槽位）的唯一闸门，契约见 SaveArchive。</summary>
     public static SaveData? Normalize(string json)
     {
-        JsonElement root;
-        try
-        {
-            root = JsonDocument.Parse(json).RootElement;
-        }
-        catch (JsonException)
+        if (string.IsNullOrWhiteSpace(json))
         {
             return null;
         }
-        return root.ValueKind == JsonValueKind.Object ? Normalize(root) : null;
+        try
+        {
+            using var doc = JsonDocument.Parse(json);
+            return Normalize(doc.RootElement);
+        }
+        catch (JsonException)
+        {
+            return null; // 非法 JSON 文本
+        }
+        catch (FormatException)
+        {
+            return null; // 数值字段非整数 / 超范围
+        }
+        catch (InvalidOperationException)
+        {
+            return null; // JsonElement 类型与预期不符
+        }
+        catch (ArgumentException)
+        {
+            return null; // JsonDocument.Parse 参数非法
+        }
     }
 
-    public static SaveData Normalize(JsonElement root)
+    /// <summary>解析 v1/v2 存档 JSON 元素 → v2.0.0 SaveData（必要时迁移）。
+    /// 结构畸形（字段类型不符、moves 元素非对象、尺寸越界）一律返回 null，**不抛异常**。</summary>
+    public static SaveData? Normalize(JsonElement root)
     {
+        if (root.ValueKind != JsonValueKind.Object)
+        {
+            return null;
+        }
+        // 尺寸闸门前置到版本分支之前：v1 迁移按声明值分配盘面（NewBoard）、v2 直通档下游按
+        // BoardSize/Layers 索引，两条路径同一份不可信输入 → 越界值先判废，
+        // 否则百字节输入即可换来 GB 级分配
+        int boardSize = GetInt(root, "boardSize", GameConfig.DefaultBoardSize);
+        int layers = GetInt(root, "layers", GameConfig.DefaultLayerCount);
+        if (boardSize < 1 || boardSize > GameConfig.MaxBoardSize
+            || layers < 1 || layers > GameConfig.MaxLayers)
+        {
+            return null;
+        }
+
         string? version = root.TryGetProperty("version", out var v) && v.ValueKind == JsonValueKind.String
             ? v.GetString()
             : null;
@@ -35,11 +69,21 @@ public static class SaveMigrator
 
         if (!needsMigration)
         {
-            return root.Deserialize<SaveData>(SaveData.JsonOptions)!;
+            try
+            {
+                return root.Deserialize<SaveData>(SaveData.JsonOptions);
+            }
+            catch (JsonException)
+            {
+                return null; // v2 直通档结构畸形（字段类型不符）
+            }
         }
 
-        int boardSize = GetInt(root, "boardSize", GameConfig.DefaultBoardSize);
-        int layers = GetInt(root, "layers", GameConfig.DefaultLayerCount);
+        long? timestamp = TryReadTimestamp(root);
+        if (timestamp == null)
+        {
+            return null; // timestamp 数值非整数 / 超范围 → 结构畸形
+        }
 
         var moves = new List<SaveMove>();
         int[][][] boardState = NewBoard(layers, boardSize);
@@ -47,7 +91,19 @@ public static class SaveMigrator
         {
             foreach (var m in movesEl.EnumerateArray())
             {
-                var move = m.Deserialize<SaveMove>(SaveData.JsonOptions)!;
+                SaveMove? move;
+                try
+                {
+                    move = m.Deserialize<SaveMove>(SaveData.JsonOptions);
+                }
+                catch (JsonException)
+                {
+                    return null; // 元素结构畸形：意图无法确定 → 整档判废（不静默丢手）
+                }
+                if (move == null)
+                {
+                    return null;
+                }
                 moves.Add(move);
                 if (move.X >= 0 && move.X < boardSize &&
                     move.Y >= 0 && move.Y < boardSize &&
@@ -62,9 +118,7 @@ public static class SaveMigrator
         {
             Id = GetStringValue(root, "id") ?? Guid.NewGuid().ToString(),
             Version = GameConfig.SaveVersion,
-            Timestamp = root.TryGetProperty("timestamp", out var ts) && ts.ValueKind == JsonValueKind.Number
-                ? ts.GetInt64()
-                : DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(),
+            Timestamp = timestamp.Value,
             BoardState = boardState,
             Moves = moves,
             Rules = GetStringValue(root, "rules") ?? "gomoku",
@@ -90,10 +144,15 @@ public static class SaveMigrator
     /// </summary>
     public static IReadOnlyList<(int Index, SaveData Save)> SplitMonolith(string json)
     {
+        if (string.IsNullOrWhiteSpace(json))
+        {
+            return [];
+        }
         JsonElement root;
         try
         {
-            root = JsonDocument.Parse(json).RootElement;
+            using var doc = JsonDocument.Parse(json);
+            root = doc.RootElement.Clone();
         }
         catch (JsonException)
         {
@@ -110,11 +169,26 @@ public static class SaveMigrator
         {
             if (item.ValueKind == JsonValueKind.Object && SaveData.HasTruthyString(item, "id"))
             {
-                result.Add((index, Normalize(item)));
+                var normalized = Normalize(item);
+                if (normalized != null)
+                {
+                    result.Add((index, normalized));
+                }
             }
             index++;
         }
         return result;
+    }
+
+    /// <summary>timestamp：缺省/非数值 → 补当前时刻（v1 旧档兼容）；
+    /// 数值但非整数或超范围 → null（结构畸形，由调用方整档判废）。</summary>
+    private static long? TryReadTimestamp(JsonElement root)
+    {
+        if (!root.TryGetProperty("timestamp", out var ts) || ts.ValueKind != JsonValueKind.Number)
+        {
+            return DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+        }
+        return ts.TryGetInt64(out long v) ? v : null;
     }
 
     private static int[][][] NewBoard(int layers, int boardSize)

@@ -232,4 +232,43 @@ public class SaveBehaviorTests
         var b64 = Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes(json));
         Assert.Null(SaveData.TryParseFromBase64(b64));
     }
+
+    // ---- 统一读档入口对畸形输入的契约：一律 null，不抛异常（SaveArchive 契约） ----
+
+    [Theory]
+    [InlineData("""{"version":"2.0.0","moves":"x","boardState":[]}""")]      // moves 类型错
+    [InlineData("""{"version":"2.0.0","moves":[1,2],"boardState":[]}""")]   // moves 元素非对象
+    [InlineData("""{"version":"2.0.0","timestamp":1.5,"moves":[]}""")]      // timestamp 非整数
+    [InlineData("""{"version":"2.0.0","boardSize":99999,"layers":99999}""")]// 尺寸越界
+    [InlineData("""{"version":"2.0.0","boardSize":0,"layers":6}""")]        // 尺寸为零
+    [InlineData("""{"version":"2.0.0","layers":99999,"moves":[]}""")]       // 层数越界
+    [InlineData("""{"moves":[{"x":0,"y":0,"z":0,"player":1}],"boardSize":99999}""")] // v1 迁移路径尺寸越界
+    public void Normalize_StructurallyMalformedJson_ReturnsNullWithoutThrowing(string json)
+    {
+        Assert.Null(SaveMigrator.Normalize(json));
+    }
+
+    [Fact]
+    public void TryParsePackage_StructurallyMalformedJson_ReturnsNullWithoutThrowing()
+    {
+        // 统一读档入口（剪贴板/文件导入的唯一闸门）：契约是"无法识别/校验失败一律 null，不抛异常"
+        const string json = """{"version":"2.0.0","moves":"x","boardState":[]}""";
+        Assert.Null(SaveArchive.TryParsePackage(json));
+        Assert.Null(SaveArchive.TryParse(json));
+    }
+
+    [Fact]
+    public void Normalize_NonObjectElement_ReturnsNull()
+    {
+        using var doc = System.Text.Json.JsonDocument.Parse("""[1,2,3]""");
+        Assert.Null(SaveMigrator.Normalize(doc.RootElement));
+    }
+
+    [Fact]
+    public void Normalize_OversizedBoardDimensions_DoesNotAllocate()
+    {
+        // 尺寸闸门：盘面按声明值分配，越界值必须先判废——否则百字节输入即换来 GB 级分配
+        const string json = """{"version":"2.0.0","boardSize":99999,"layers":99999,"moves":[]}""";
+        Assert.Null(SaveMigrator.Normalize(json));
+    }
 }

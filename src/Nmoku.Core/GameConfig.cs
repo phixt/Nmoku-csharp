@@ -23,6 +23,12 @@ public static class GameConfig
     public const int MinWinLength = 4;
     public const int MaxWinLength = 9;
 
+    /// <summary>棋盘边长与层数硬上限（高于沙盒表单的 19/8，为外来源旧档留余量）。
+    /// 存档迁移按声明值分配盘面（NewBoard）、下游按 BoardSize/Layers 索引，越界值必须先判废——
+    /// 否则百字节输入即可换来 GB 级分配。</summary>
+    public const int MaxBoardSize = 32;
+    public const int MaxLayers = 16;
+
     public const string SaveVersion = "2.0.0";
 
     // ---- 相机（03-camera 附录 A / migration-plan §4，角度均为度）----
