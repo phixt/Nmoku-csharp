@@ -2,13 +2,30 @@ using Nmoku.Core.Saves;
 
 namespace Nmoku.Core.Tests;
 
-/// <summary>内存版 IStorageAdapter（04-contracts §6.3 mock adapter 清单）。</summary>
+/// <summary>
+/// 内存版 IStorageAdapter（04-contracts §6.3 mock adapter 清单）。
+/// <para>
+/// <b>修复批 ②-1（2026-10-27）</b>：契约改「槽位号为主键」——旧契约以「档 Id」寻址，
+/// 复制/导入同一份档到另一槽会让原槽从索引表消失（数据丢失）。
+/// </para>
+/// </summary>
 public sealed class MemoryStorageAdapter : IStorageAdapter
 {
-    public Dictionary<string, string> Saves { get; } = [];
+    /// <summary>槽位号 → 内容（槽位号主键）。</summary>
+    public Dictionary<int, string> Saves { get; } = [];
+
     public List<SlotMeta> Index { get; } = [];
     public bool InitCalled { get; private set; }
     public bool ThrowOnInit { get; set; }
+
+    /// <summary>模拟写盘失败（磁盘满/权限不足）：写入返回 false 且不落内容。</summary>
+    public bool FailWrites { get; set; }
+
+    /// <summary>模拟删除失败。</summary>
+    public bool FailDeletes { get; set; }
+
+    /// <summary>模拟读某槽失败（槽位号）；-1 = 不注入。</summary>
+    public int ThrowOnReadSlot { get; set; } = -1;
 
     public int SetSaveCalls { get; private set; }
     public int DeleteCalls { get; private set; }
@@ -26,14 +43,24 @@ public sealed class MemoryStorageAdapter : IStorageAdapter
     public Task<IReadOnlyList<SlotMeta>> GetIndexAsync() =>
         Task.FromResult<IReadOnlyList<SlotMeta>>(Index);
 
-    public Task<string?> GetSaveAsync(string id) =>
-        Task.FromResult(Saves.TryGetValue(id, out var s) ? s : null);
+    public Task<string?> GetSaveAsync(int slotIndex)
+    {
+        if (slotIndex == ThrowOnReadSlot)
+        {
+            throw new IOException("read failed");
+        }
+        return Task.FromResult(Saves.TryGetValue(slotIndex, out var s) ? s : null);
+    }
 
-    public Task SetSaveAsync(string id, string data, SlotMeta meta)
+    public Task<bool> SetSaveAsync(int slotIndex, string data, SlotMeta meta)
     {
         SetSaveCalls++;
-        Saves[id] = data; // 原子性：字典两步间无 await
-        var existing = Index.FindIndex(m => m.Id == id);
+        if (FailWrites)
+        {
+            return Task.FromResult(false);
+        }
+        Saves[slotIndex] = data; // 原子性：字典两步间无 await
+        var existing = Index.FindIndex(m => m.Index == slotIndex);
         if (existing >= 0)
         {
             Index[existing] = meta;
@@ -42,21 +69,25 @@ public sealed class MemoryStorageAdapter : IStorageAdapter
         {
             Index.Add(meta);
         }
-        return Task.CompletedTask;
+        return Task.FromResult(true);
     }
 
-    public Task DeleteSaveAsync(string id)
+    public Task<bool> DeleteSaveAsync(int slotIndex)
     {
         DeleteCalls++;
-        Saves.Remove(id);
-        Index.RemoveAll(m => m.Id == id);
-        return Task.CompletedTask;
+        if (FailDeletes)
+        {
+            return Task.FromResult(false);
+        }
+        Saves.Remove(slotIndex);
+        Index.RemoveAll(m => m.Index == slotIndex);
+        return Task.FromResult(true);
     }
 
     /// <summary>注入损坏项：索引存在但内容不是 JSON。</summary>
-    public void Poison(string id, string corruptContent, int slotIndex)
+    public void Poison(int slotIndex, string corruptContent, string id = "bad-id")
     {
-        Saves[id] = corruptContent;
+        Saves[slotIndex] = corruptContent;
         Index.Add(new SlotMeta { Index = slotIndex, Id = id, Timestamp = 1, BoardSize = 9, Layers = 3, MovesCount = 0 });
     }
 }
@@ -109,7 +140,7 @@ public class SaveManagerTests : IDisposable
         var manager = new SaveManager(storage);
         await manager.InitAsync();
 
-        await manager.SaveAsync(slot, NewSave(1));
+        Assert.False(await manager.SaveAsync(slot, NewSave(1)));
         Assert.Empty(storage.Saves);
     }
 
@@ -124,6 +155,211 @@ public class SaveManagerTests : IDisposable
         Assert.NotNull(manager.QuickLoad());
         Assert.False(manager.IsSlotEmpty(GameConfig.QuickSaveIndex));
         Assert.True(manager.IsSlotEmpty(4));
+    }
+
+    // ---- 槽位主键（修复批 ②-1：P0-1 数据丢失回归锁）----
+
+    [Fact]
+    public async Task SaveAsync_SameArchiveIntoTwoSlots_BothSlotsSurvive()
+    {
+        // 复现 P0-1：旧契约以「档 Id」为主键 → 复制/导入同一份档到另一槽会让原槽从索引表消失。
+        // 修法：索引以槽位号为主键，同一 Id 出现在两槽互不干扰。
+        var storage = new MemoryStorageAdapter();
+        var manager = new SaveManager(storage);
+        await manager.InitAsync();
+
+        var data = NewSave(100);
+        Assert.True(await manager.SaveAsync(0, data));
+        Assert.True(await manager.SaveAsync(1, data)); // 同一份档写入另一槽（= 复制→填写）
+
+        Assert.False(manager.IsSlotEmpty(0));
+        Assert.False(manager.IsSlotEmpty(1));
+        Assert.Equal(data.Id, manager.Load(0)!.Id);
+        Assert.Equal(data.Id, manager.Load(1)!.Id); // id 保真（导入语义不变）
+        Assert.Equal(2, storage.Index.Count); // 索引两条（原槽不消失）
+    }
+
+    [Fact]
+    public async Task SaveAsync_SameArchiveIntoTwoSlots_RestoresBothAfterReload()
+    {
+        var storage = new MemoryStorageAdapter();
+        var first = new SaveManager(storage);
+        await first.InitAsync();
+        var data = NewSave(100);
+        await first.SaveAsync(0, data);
+        await first.SaveAsync(1, data);
+
+        var second = new SaveManager(storage);
+        await second.InitAsync();
+
+        Assert.NotNull(second.Load(0));
+        Assert.NotNull(second.Load(1));
+        Assert.Equal(data.Id, second.Load(0)!.Id);
+        Assert.Equal(data.Id, second.Load(1)!.Id);
+    }
+
+    [Fact]
+    public async Task DeleteAsync_OneOfTwoSlotsWithSameArchive_KeepsOtherSlot()
+    {
+        // 同 Id 两槽：删除其一不得连带删掉另一槽（旧契约按 Id 删 blob → 连带删除）
+        var storage = new MemoryStorageAdapter();
+        var manager = new SaveManager(storage);
+        await manager.InitAsync();
+        var data = NewSave(100);
+        await manager.SaveAsync(0, data);
+        await manager.SaveAsync(1, data);
+
+        Assert.True(await manager.DeleteAsync(0));
+
+        Assert.True(manager.IsSlotEmpty(0));
+        Assert.False(manager.IsSlotEmpty(1));
+        Assert.NotNull(manager.Load(1));
+    }
+
+    // ---- 写盘失败可见（修复批 ②-2：存档假成功回归锁）----
+
+    [Fact]
+    public async Task SaveAsync_StorageWriteFails_ReturnsFalseAndKeepsSlotEmpty()
+    {
+        var storage = new MemoryStorageAdapter { FailWrites = true };
+        var manager = new SaveManager(storage);
+        await manager.InitAsync();
+
+        Assert.False(await manager.SaveAsync(0, NewSave(1)));
+
+        Assert.True(manager.IsSlotEmpty(0)); // 内存不显示「已存」
+        Assert.Empty(storage.Index);
+    }
+
+    [Fact]
+    public async Task SaveAsync_StorageWriteFails_DoesNotOverwritePreviousSlotContent()
+    {
+        var storage = new MemoryStorageAdapter();
+        var manager = new SaveManager(storage);
+        await manager.InitAsync();
+        var first = NewSave(1);
+        await manager.SaveAsync(0, first);
+
+        storage.FailWrites = true;
+        Assert.False(await manager.SaveAsync(0, NewSave(2)));
+
+        Assert.Equal(first.Id, manager.Load(0)!.Id); // 旧档仍在（未被失败写入顶掉）
+        storage.FailWrites = false;
+        var reloaded = new SaveManager(storage);
+        await reloaded.InitAsync();
+        Assert.Equal(first.Id, reloaded.Load(0)!.Id);
+    }
+
+    [Fact]
+    public async Task SaveAsync_InvalidArchive_ReturnsFalseWithoutWriting()
+    {
+        // 写前校验：结构非法的档不进槽（此前脏档照落盘）
+        var storage = new MemoryStorageAdapter();
+        var manager = new SaveManager(storage);
+        await manager.InitAsync();
+
+        var bad = NewSave(1);
+        bad.BoardState = [[[0, 0, 0]]]; // 维度错配：boardState 1 层 vs layers 3
+
+        Assert.False(await manager.SaveAsync(0, bad));
+        Assert.True(manager.IsSlotEmpty(0));
+        Assert.Empty(storage.Saves);
+    }
+
+    [Fact]
+    public async Task DeleteAsync_StorageDeleteFails_KeepsSlotContent()
+    {
+        var storage = new MemoryStorageAdapter();
+        var manager = new SaveManager(storage);
+        await manager.InitAsync();
+        await manager.SaveAsync(1, NewSave(1));
+
+        storage.FailDeletes = true;
+        Assert.False(await manager.DeleteAsync(1));
+
+        Assert.False(manager.IsSlotEmpty(1)); // 删除未完成 → 槽位保留（不制造界面空/磁盘有的幽灵档）
+    }
+
+    // ---- 逐槽容错（修复批 ②-3：一个坏档清空全部槽位回归锁）----
+
+    [Fact]
+    public async Task Init_OneCorruptSlotContent_OtherSlotsSurvive()
+    {
+        var storage = new MemoryStorageAdapter();
+        storage.Poison(1, "{ not json !!");
+        var good = NewSave(42);
+        storage.Saves[3] = SaveData.Serialize(good);
+        storage.Index.Add(new SlotMeta { Index = 3, Id = good.Id, Timestamp = 42, BoardSize = 9, Layers = 3, MovesCount = 0 });
+
+        var manager = new SaveManager(storage);
+        await manager.InitAsync();
+
+        Assert.True(manager.IsSlotEmpty(1)); // 坏槽只丢自己
+        Assert.NotNull(manager.Load(3)); // 好槽不被连带清空
+    }
+
+    [Fact]
+    public async Task Init_OneSlotReadThrows_OtherSlotsSurvive()
+    {
+        // 旧实现是 catch-all Array.Clear：任一槽读失败即清空全部槽位（实测好槽被连带清空）
+        var storage = new MemoryStorageAdapter();
+        var good = NewSave(42);
+        storage.Saves[3] = SaveData.Serialize(good);
+        storage.Index.Add(new SlotMeta { Index = 3, Id = good.Id, Timestamp = 42, BoardSize = 9, Layers = 3, MovesCount = 0 });
+        storage.Index.Add(new SlotMeta { Index = 1, Id = "unreadable", Timestamp = 43, BoardSize = 9, Layers = 3, MovesCount = 0 });
+        storage.ThrowOnReadSlot = 1;
+
+        var manager = new SaveManager(storage);
+        await manager.InitAsync();
+
+        Assert.True(manager.IsSlotEmpty(1));
+        Assert.NotNull(manager.Load(3));
+    }
+
+    [Fact]
+    public async Task Init_IndexUnavailable_SlotsStayEmpty()
+    {
+        var storage = new MemoryStorageAdapter { ThrowOnInit = true };
+        var manager = new SaveManager(storage);
+        await Assert.ThrowsAsync<IOException>(() => manager.InitAsync());
+        Assert.False(manager.Ready);
+    }
+
+    // ---- 外圈 winLength 范围校验（修复批 ②-4）----
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(-3)]
+    [InlineData(10)]
+    public async Task Init_IndexWinLengthOutOfRange_FallsBackToDefault(int winLength)
+    {
+        // index 通道此前零校验 → winLength=0 即「任意一子判胜」
+        var storage = new MemoryStorageAdapter();
+        var data = NewSave(42);
+        storage.Saves[2] = SaveData.Serialize(data);
+        storage.Index.Add(new SlotMeta
+        {
+            Index = 2, Id = data.Id, Timestamp = 42, BoardSize = 9, Layers = 3, MovesCount = 0, WinLength = winLength,
+        });
+
+        var manager = new SaveManager(storage);
+        await manager.InitAsync();
+
+        Assert.Null(manager.GetSlotWinLength(2)); // 越界视为缺失 → 回默认 5
+        Assert.NotNull(manager.Load(2));
+    }
+
+    [Fact]
+    public async Task SaveAsync_OutOfRangeWinLength_NormalizedToDefault()
+    {
+        var storage = new MemoryStorageAdapter();
+        var manager = new SaveManager(storage);
+        await manager.InitAsync();
+
+        Assert.True(await manager.SaveAsync(0, NewSave(1), winLength: 0));
+        Assert.Null(manager.GetSlotWinLength(0));
+        Assert.True(await manager.SaveAsync(1, NewSave(1), winLength: 7));
+        Assert.Equal(7, manager.GetSlotWinLength(1));
     }
 
     // ---- 槽位外圈元数据 winLength（B14）----
@@ -220,6 +456,18 @@ public class SaveManagerTests : IDisposable
     }
 
     [Fact]
+    public async Task GetLatestIndex_OnlyArchiveWithZeroTimestamp_StillSelected()
+    {
+        // 源实现 latestTs 初值 0 + 严格 > → 唯一一档 timestamp=0 时返回 -1（漏选）
+        var manager = new SaveManager(new MemoryStorageAdapter());
+        await manager.InitAsync();
+
+        await manager.SaveAsync(2, NewSave(0));
+
+        Assert.Equal(2, manager.GetLatestIndex());
+    }
+
+    [Fact]
     public async Task Delete_ClearsSlotAndStorage()
     {
         var storage = new MemoryStorageAdapter();
@@ -231,7 +479,7 @@ public class SaveManagerTests : IDisposable
         await manager.DeleteAsync(2);
 
         Assert.True(manager.IsSlotEmpty(2));
-        Assert.Null(await storage.GetSaveAsync(data.Id));
+        Assert.Null(await storage.GetSaveAsync(2));
         Assert.Equal(1, storage.DeleteCalls);
     }
 
@@ -253,7 +501,7 @@ public class SaveManagerTests : IDisposable
     public async Task Init_CorruptSlotContent_SkippedWithoutThrow()
     {
         var storage = new MemoryStorageAdapter();
-        storage.Poison("bad-id", "{ not json !!", 1);
+        storage.Poison(1, "{ not json !!");
 
         var manager = new SaveManager(storage);
         await manager.InitAsync(); // 不应抛出
@@ -268,22 +516,13 @@ public class SaveManagerTests : IDisposable
         // v2 直通档维度错配（boardState 1 层 vs layers 3）：旧实现不过 Validate 会穿透进槽位
         const string json = """{"id":"bad-dims","version":"2.0.0","boardSize":9,"layers":3,"moves":[],"boardState":[[[0,0,0]]]}""";
         var storage = new MemoryStorageAdapter();
-        storage.Poison("bad-dims", json, 2);
+        storage.Poison(2, json, "bad-dims");
 
         var manager = new SaveManager(storage);
         await manager.InitAsync();
 
         Assert.True(manager.IsSlotEmpty(2));
         Assert.True(manager.Ready);
-    }
-
-    [Fact]
-    public async Task Init_StorageUnavailable_SlotsStayEmpty()
-    {
-        var storage = new MemoryStorageAdapter { ThrowOnInit = true };
-        var manager = new SaveManager(storage);
-        await Assert.ThrowsAsync<IOException>(() => manager.InitAsync());
-        Assert.False(manager.Ready);
     }
 
     [Fact]
