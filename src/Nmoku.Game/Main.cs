@@ -2814,7 +2814,9 @@ public partial class Main : Node
 
     private double ViewportAspect() => _lastViewportSize.X / _lastViewportSize.Y;
 
-    /// <summary>M3 参数：`-- --board=9 --layers=1 --spacing=3.5 --rules=swap2 --mode=pve --ai=hard`（`--` 后为用户参数）。</summary>
+    /// <summary>M3 参数：`-- --board=9 --layers=1 --spacing=3.5 --rules=swap2 --mode=pve --ai=hard`（`--` 后为用户参数）。
+    /// 尺寸一律钳到 GameConfig 硬上限：Board 构造不校验，0 尺寸盘会让 IsFull() 恒真（首手即判和），
+    /// 负尺寸盘会让 InBounds 恒假（落子被静默吞、僵尸盘）。</summary>
     private static (int Size, int Layers, double Spacing, RuleSet Rules, bool PvE, AIDifficulty Ai) ParseDebugArgs()
     {
         int size = GameConfig.DefaultBoardSize;
@@ -2828,11 +2830,11 @@ public partial class Main : Node
         {
             if (arg.StartsWith("--board=") && int.TryParse(arg["--board=".Length..], out int s))
             {
-                size = s;
+                size = Math.Clamp(s, GameConfig.MinBoardSize, GameConfig.MaxBoardSize);
             }
             else if (arg.StartsWith("--layers=") && int.TryParse(arg["--layers=".Length..], out int l))
             {
-                layers = l;
+                layers = Math.Clamp(l, 1, GameConfig.MaxLayers);
             }
             else if (arg.StartsWith("--spacing=")
                      && double.TryParse(arg["--spacing=".Length..],
