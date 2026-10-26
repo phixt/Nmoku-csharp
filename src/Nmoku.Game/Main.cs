@@ -925,6 +925,8 @@ public partial class Main : Node
         _autotestSteps.Enqueue(("m5-i18n", AutotestI18n));
         _autotestSteps.Enqueue(("m5-title-fit", AutotestTitleFit));
         _autotestSteps.Enqueue(("m5-settings-bugs", AutotestSettingsBugs));
+        _autotestSteps.Enqueue(("m5-save-integrity", AutotestSaveIntegrity));
+        _autotestSteps.Enqueue(("m5-save-legacy-migration", AutotestSaveLegacyMigration));
     }
 
     /// <summary>标题屏布局容量锁（2026-09-26 根治回归）：最坏情况（继续对局按钮可见=7 按钮）
@@ -937,7 +939,117 @@ public partial class Main : Node
         return minH <= 416f ? "ok" : $"FAIL title-min-height={minH:0.0} > 416";
     }
 
-    /// <summary>M5 i18n 端到端（2026-09-26）：CSV→Translation→I18n.T 全链路——切 en_US 后
+    /// <summary>
+    /// 存档数据完整性回归（修复批 ②，2026-10-27）：
+    /// ①<b>槽位号主键</b>——「复制→填写」后原槽不得从索引/列表消失（旧契约以档 Id 为主键，原槽直接消失）；
+    /// ②<b>规则白名单</b>——renju 档（引擎未实装）导入必须被拒，不进槽位；
+    /// ③<b>垃圾 JSON</b>——无 version 的垃圾不得被迁成「最新空档」。
+    /// 走隔离目录（与真实存档隔离），并直接核对磁盘 index.json（内存态断言会掩盖索引塌缩）。
+    /// </summary>
+    private string AutotestSaveIntegrity()
+    {
+        const string dir = "user://saves_autotest_integrity";
+        var iso = new GameStore(new FileSystemStorageAdapter(dir));
+        iso.InitializeSaves();
+        for (int i = 0; i < GameConfig.SaveSlotCount; i++)
+        {
+            iso.Saves.DeleteAsync(i).GetAwaiter().GetResult();
+        }
+
+        // ① 复制→填写：槽 0 的档写入槽 1（原槽必须仍在）
+        var data = _gm.BuildSaveData(false);
+        iso.Saves.SaveAsync(0, data).GetAwaiter().GetResult();
+        string b64 = iso.ExportSlot(0);
+        iso.FillSlot(1, b64);
+        bool bothSlots = iso.Saves.Load(0) != null && iso.Saves.Load(1) != null;
+        bool sameId = iso.Saves.Load(0)?.Id == iso.Saves.Load(1)?.Id && iso.Saves.Load(0)?.Id == data.Id;
+
+        // 索引核对：两条槽位记录（磁盘层才算数——内存态断言掩盖索引塌缩）
+        int indexEntries = 0;
+        using (var file = Godot.FileAccess.Open($"{dir}/index.json", Godot.FileAccess.ModeFlags.Read))
+        {
+            if (file != null)
+            {
+                try
+                {
+                    using var doc = System.Text.Json.JsonDocument.Parse(file.GetAsText());
+                    indexEntries = doc.RootElement.GetArrayLength();
+                }
+                catch (System.Text.Json.JsonException)
+                {
+                    indexEntries = -1;
+                }
+            }
+        }
+
+        // ② renju 档（引擎未实装）导入必须被拒
+        const string renjuJson = """
+            {"id":"renju-probe","version":"2.0.0","timestamp":1,"boardSize":5,"layers":1,
+             "rules":"renju","gameMode":"pvp","status":"playing","winner":0,"currentPlayer":1,
+             "isDarkTheme":false,"playerColor":1,"layerSpacing":3.5,"moves":[],
+             "boardState":[[[0,0,0,0,0],[0,0,0,0,0],[0,0,0,0,0],[0,0,0,0,0],[0,0,0,0,0]]]}
+            """;
+        iso.FillSlot(2, renjuJson);
+        bool renjuRejected = iso.Saves.Load(2) == null;
+
+        // ③ 垃圾 JSON 不得迁成空档
+        iso.FillSlot(3, """{"foo":"bar"}""");
+        bool garbageRejected = iso.Saves.Load(3) == null;
+
+        for (int i = 0; i < GameConfig.SaveSlotCount; i++)
+        {
+            iso.Saves.DeleteAsync(i).GetAwaiter().GetResult();
+        }
+        return bothSlots && sameId && indexEntries == 2 && renjuRejected && garbageRejected
+            ? "ok"
+            : $"FAIL slots={bothSlots} id={sameId} index={indexEntries} renju={renjuRejected} garbage={garbageRejected}";
+    }
+
+    /// <summary>
+    /// 旧盘布局迁移回归（修复批 ②-1，2026-10-27）：0.1.0-alpha 的存档布局是
+    /// <c>index.json</c> + <c>{档 Id}.sav</c>；新布局改为槽位号主键的 <c>slot{n}.sav</c>。
+    /// 升级后首次启动必须把旧 blob 搬到新名并删旧件，<b>旧存档不得丢</b>。
+    /// </summary>
+    private string AutotestSaveLegacyMigration()
+    {
+        const string dir = "user://saves_autotest_legacy";
+        const string legacyId = "legacy-id-1";
+        foreach (string name in new[] { "index.json", $"{legacyId}.sav", "slot0.sav" })
+        {
+            DirAccess.RemoveAbsolute($"{dir}/{name}");
+        }
+        DirAccess.MakeDirRecursiveAbsolute(dir);
+
+        // 造一份旧布局：index.json + {档 Id}.sav
+        var legacy = _gm.BuildSaveData(false);
+        legacy.Id = legacyId;
+        using (var file = Godot.FileAccess.Open($"{dir}/{legacyId}.sav", Godot.FileAccess.ModeFlags.Write))
+        {
+            file?.StoreString(SaveData.Serialize(legacy));
+        }
+        using (var file = Godot.FileAccess.Open($"{dir}/index.json", Godot.FileAccess.ModeFlags.Write))
+        {
+            file?.StoreString(
+                $$"""[{"index":0,"id":"{{legacyId}}","timestamp":{{legacy.Timestamp}},"boardSize":{{legacy.BoardSize}},"layers":{{legacy.Layers}},"movesCount":{{legacy.Moves.Count}}}]""");
+        }
+
+        var iso = new GameStore(new FileSystemStorageAdapter(dir));
+        iso.InitializeSaves();
+        var loaded = iso.Saves.Load(0);
+        bool migrated = loaded != null && loaded.Id == legacyId;
+        bool newBlob = Godot.FileAccess.FileExists($"{dir}/slot0.sav");
+        bool legacyGone = !Godot.FileAccess.FileExists($"{dir}/{legacyId}.sav");
+
+        iso.Saves.DeleteAsync(0).GetAwaiter().GetResult();
+        DirAccess.RemoveAbsolute($"{dir}/index.json");
+        DirAccess.RemoveAbsolute($"{dir}/slot0.sav");
+        return migrated && newBlob && legacyGone
+            ? "ok"
+            : $"FAIL migrated={migrated} newBlob={newBlob} legacyGone={legacyGone}";
+    }
+
+    /// <summary>
+    /// M5 i18n 端到端（2026-09-26）：CSV→Translation→I18n.T 全链路——切 en_US 后
     /// Text 常量（zh 键）应查出英文译文、带参模板正确格式化、切回 zh-CN 回落原文。幂等无副作用。</summary>
     private string AutotestI18n()
     {
