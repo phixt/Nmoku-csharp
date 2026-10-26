@@ -29,4 +29,11 @@
     <None Include="Fixtures\**\*.txt" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- 键位护栏的单一事实源：Godot InputMap 定义（project.godot 的 [input] 节）。
+         显式声明 content → 复制到测试输出目录，测试从 AppContext.BaseDirectory 读取；
+         **不用「向上找 Nmoku.slnx」的仓库布局耦合**（审查报告 P1 #33 同款坑：离开 checkout 即失败）。 -->
+    <None Include="..\..\src\Nmoku.Game\project.godot" Link="project.godot" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
 </Project>

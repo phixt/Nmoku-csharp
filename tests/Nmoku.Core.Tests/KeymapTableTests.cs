@@ -6,17 +6,17 @@ namespace Nmoku.Core.Tests;
 /// <summary>快捷键单一数据源（04-contracts §4.2 + §6.5）。</summary>
 public class KeymapTableTests
 {
-    /// <summary>project.godot [input] 全部自定义 action（M0 建立 + M2/M3/M4 追加）；新增 action 必须登记进表。</summary>
-    private static readonly string[] AllInputMapActions =
-    [
-        "pause", "resume", "confirm", "load_latest", "quick_save", "save_first_empty", "restart",
-        "return_to_title", "open_guide", "toggle_theme", "toggle_mute", "undo",
-        "layer_prev", "layer_next", "rotate_left", "rotate_right", "zoom_in", "zoom_out",
-        "replay_prev", "replay_next", "exit_replay",
-        "spacing_compress", "spacing_expand", "spacing_reset",
-        "toggle_helper_lines", "toggle_colorblind", "pan_up", "pan_down",
-        "pan_left", "pan_right", "toggle_grid_all", "toggle_help",
-    ];
+    /// <summary>
+    /// 运行时注册（不进 project.godot）的 action：F1 帮助屏——Main._Ready 动态注册
+    /// （理由：避免 --import 回写 project.godot 的风险）。
+    /// </summary>
+    private static readonly string[] RuntimeRegisteredActions = ["toggle_help"];
+
+    /// <summary>
+    /// 引擎内置 action（ui_* 前缀）：project.godot 不登记（用引擎默认绑定，
+    /// 如 ui_cancel=Esc），但运行时存在于 InputMap。
+    /// </summary>
+    private const string BuiltinActionPrefix = "ui_";
 
     [Fact]
     public void FindConflicts_AnyState_PrimaryKeysDoNotOverlap()
@@ -27,9 +27,34 @@ public class KeymapTableTests
     [Fact]
     public void Entries_CoverEveryInputMapAction()
     {
+        // 护栏自维护化（修复批 ③-6）：清单由 project.godot 的 [input] 节**生成**——
+        // 此前是硬编码 32 项且早已漂移（漏 quick_load/mirror_2d），新增 action 无人能发现。
         var documented = KeymapTable.Entries.SelectMany(e => e.Actions).ToHashSet();
-        var missing = AllInputMapActions.Where(a => !documented.Contains(a)).ToList();
+        var missing = ProjectGodot.InputMapActions()
+            .Where(a => !documented.Contains(a))
+            .OrderBy(a => a, StringComparer.Ordinal)
+            .ToList();
         Assert.True(missing.Count == 0, $"未登记进 KeymapTable 的 action: {string.Join(", ", missing)}");
+    }
+
+    [Fact]
+    public void Entries_ReferenceOnlyExistingActions()
+    {
+        // 反向护栏：表里登记的 action 必须真实存在（project.godot / 运行时注册 / 引擎内置 ui_*），
+        // 否则 F1 帮助屏会广告一个根本不存在的键位。
+        var existing = ProjectGodot.InputMapActions();
+        foreach (string runtime in RuntimeRegisteredActions)
+        {
+            existing.Add(runtime);
+        }
+        var stale = KeymapTable.Entries
+            .SelectMany(e => e.Actions)
+            .Where(a => !a.StartsWith('@')) // 纯文档行（鼠标操作）无对应 action
+            .Distinct()
+            .Where(a => !existing.Contains(a) && !a.StartsWith(BuiltinActionPrefix))
+            .OrderBy(a => a, StringComparer.Ordinal)
+            .ToList();
+        Assert.True(stale.Count == 0, $"KeymapTable 登记了不存在的 action: {string.Join(", ", stale)}");
     }
 
     [Fact]
