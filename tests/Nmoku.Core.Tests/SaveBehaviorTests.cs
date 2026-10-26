@@ -137,6 +137,8 @@ public class SaveBehaviorTests
         Assert.Equal(2, migrated.Moves.Count); // 历史保留原样
         Assert.Equal(1, migrated.BoardState[0][0][0]);
         Assert.Equal(0, migrated.BoardState[0][0][1]); // 越界子不写上盘
+        // 但校验层判废（修复批 ②-8）：越界手在复盘重放时会「静默消失」→ 整档不受理
+        Assert.Equal(SaveValidator.InvalidMove, SaveValidator.Validate(migrated));
     }
 
     [Fact]
@@ -270,5 +272,78 @@ public class SaveBehaviorTests
         // 尺寸闸门：盘面按声明值分配，越界值必须先判废——否则百字节输入即换来 GB 级分配
         const string json = """{"version":"2.0.0","boardSize":99999,"layers":99999,"moves":[]}""";
         Assert.Null(SaveMigrator.Normalize(json));
+    }
+
+    // ---- 值域与规则白名单（修复批 ②-8）----
+
+    private static SaveData ValidArchive()
+    {
+        var data = NewSave(boardSize: 9, layers: 3);
+        data.Moves.Add(new SaveMove { X = 1, Y = 2, Z = 1, Player = 1 });
+        data.BoardState[1][2][1] = 1;
+        return data;
+    }
+
+    [Fact]
+    public void Validate_MoveCoordinateOutOfRange_ReturnsInvalidMove()
+    {
+        var data = ValidArchive();
+        data.Moves[0].X = 99; // 超出 boardSize
+        Assert.Equal(SaveValidator.InvalidMove, SaveValidator.Validate(data));
+
+        data.Moves[0].X = 1;
+        data.Moves[0].Z = 9; // 超出 layers
+        Assert.Equal(SaveValidator.InvalidMove, SaveValidator.Validate(data));
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(3)]
+    [InlineData(-1)]
+    public void Validate_MovePlayerOutOfDomain_ReturnsInvalidMove(int player)
+    {
+        var data = ValidArchive();
+        data.Moves[0].Player = player; // 只允许 1 黑 / 2 白
+        Assert.Equal(SaveValidator.InvalidMove, SaveValidator.Validate(data));
+    }
+
+    [Fact]
+    public void Validate_BoardStateCellValueOutOfDomain_ReturnsInvalidCellValue()
+    {
+        var data = ValidArchive();
+        data.BoardState[0][0][0] = 9; // 越界格值 → (CellState) 强转成永久封锁的僵尸格
+        Assert.Equal(SaveValidator.InvalidCellValue, SaveValidator.Validate(data));
+    }
+
+    [Fact]
+    public void Validate_RulesRenju_ReturnsUnsupportedRules()
+    {
+        // renju 引擎未实装（RuleEngineFactory 抛 NotSupportedException）：此类档永不可载入
+        var data = ValidArchive();
+        data.Rules = "renju";
+        Assert.Equal(SaveValidator.UnsupportedRules, SaveValidator.Validate(data));
+
+        using var doc = System.Text.Json.JsonDocument.Parse(SaveData.Serialize(data));
+        Assert.Equal(SaveValidator.UnsupportedRules, SaveValidator.Validate(doc.RootElement));
+    }
+
+    [Fact]
+    public void TryParsePackage_RenjuArchive_ReturnsNull()
+    {
+        // 导入闸门：renju 档此前能通过导入、直到读档才炸（且炸在半加载之后）
+        var data = ValidArchive();
+        data.Rules = "renju";
+        Assert.Null(SaveArchive.TryParsePackage(SaveData.Serialize(data)));
+    }
+
+    [Theory]
+    [InlineData("gomoku")]
+    [InlineData("GOMOKU")]
+    [InlineData("swap2")]
+    public void Validate_SupportedRules_Accepted(string rules)
+    {
+        var data = ValidArchive();
+        data.Rules = rules;
+        Assert.Null(SaveValidator.Validate(data));
     }
 }
