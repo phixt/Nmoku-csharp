@@ -147,12 +147,24 @@ public sealed partial class GameManager : Node
         FocusChanged?.Invoke(_focusZ);
     }
 
-    /// <summary>落子（2D 点击入口）：胜负/判和/决策期/合法性全部在此门控；复盘态拒绝。</summary>
+    /// <summary>
+    /// 落子（2D 点击入口）：胜负/判和/决策期/合法性/执子方全部在此门控；复盘态拒绝。
+    /// <para>
+    /// <b>执子方门控（修复批 ③-1）</b>：PvE 下此前只判「界内+空格」，人类可在 AI 思考窗内
+    /// 替 AI 落子 → AI 已算好的应手被 <see cref="ApplyAiMove"/> 的行棋方守卫静默丢弃且无重试，
+    /// 对局就此卡死（双方皆人类在走）。门控点唯一即此处（判定抽成 Core 纯函数
+    /// <see cref="TurnOwnership"/> 以便 xUnit 锁死）。
+    /// </para>
+    /// </summary>
     public bool TryPlace(int x, int y, int z)
     {
         if (IsOver || _swapPending || InReplay)
         {
             return false;
+        }
+        if (!TurnOwnership.CanHumanPlace(_pve, _current, _aiColor))
+        {
+            return false; // PvE：轮到 AI（AI 思考窗内）→ 人类不得替 AI 落子
         }
         if (!_engine.IsLegalMove(x, y, z, _current, _history, _board))
         {
@@ -161,6 +173,9 @@ public sealed partial class GameManager : Node
         ApplyMove(x, y, z);
         return true;
     }
+
+    /// <summary>此刻是否轮到人类落子（PvE 下 AI 思考窗内为假；视图/指示器据此显示行棋方）。</summary>
+    public bool HumanTurn => TurnOwnership.CanHumanPlace(_pve, _current, _aiColor);
 
     /// <summary>悔棋（Ctrl+Z）：PvE 下回退到人类可行动为止；SWAP2 决策期回退即撤销首子。复盘态拒绝。</summary>
     public void Undo()

@@ -646,6 +646,19 @@ public partial class Main : Node
             }
             return _gm.History.Count == 2 ? "ok" : "wait";
         }));
+        // PvE 执子方门控（修复批 ③-1）：AI 思考窗内人类不得替 AI 落子——
+        // AI 的应手经 CallDeferred 回主线程（下一帧才应用），故同帧内行棋方必为 AI 色。
+        _autotestSteps.Enqueue(("pve-turn-gate", () =>
+        {
+            _gm.Configure(9, 3, RuleSet.Gomoku, true, AIDifficulty.Medium);
+            bool humanPlaced = _gm.TryPlace(4, 4, 1);
+            bool aiTurn = _gm.Current == PlayerColor.White;      // 人执黑、AI 执白（M3 约定）
+            bool blocked = !_gm.TryPlace(3, 3, 1);                // 替 AI 落子必须被拒
+            bool noExtraMove = _gm.History.Count == 1;           // 被拒的落子不得进历史
+            return humanPlaced && aiTurn && blocked && noExtraMove
+                ? "ok"
+                : $"FAIL placed={humanPlaced} aiTurn={aiTurn} blocked={blocked} hist={_gm.History.Count}";
+        }));
 
         // ---- M4：状态机 + 存档往返 + 复盘（隔离目录 user://saves_autotest，不污染真实存档）----
         _autotestSteps.Enqueue(("m4-cfg", () =>
