@@ -20,6 +20,15 @@ public static class NzSaveContainer
     public const string ManifestEntry = "manifest.json";
     public const string SaveDataEntry = "savedata.json";
 
+    /// <summary>容器原始字节上限（.nzsave 实测 KB 级；超出者视为异常输入）。</summary>
+    public const int MaxContainerBytes = 8 * 1024 * 1024;
+
+    /// <summary>单条目解压字节上限（zip bomb 闸门：解压后超过即判废）。</summary>
+    public const int MaxEntryBytes = 4 * 1024 * 1024;
+
+    /// <summary>剪贴板/文本输入字符上限（Base64/Latin-1 解码前的闸门，防超长输入换 GB 级分配）。</summary>
+    public const int MaxInputChars = 8 * 1024 * 1024;
+
     /// <summary>打包为 zip 容器字节流（压缩级别对存档这种小 JSON 不敏感，取默认）。
     /// winLength 为外圈元数据（B14）：null 时 manifest 省略该键。</summary>
     public static byte[] Pack(SaveData data, long createdAtUnixMs, int? winLength = null)
@@ -44,9 +53,18 @@ public static class NzSaveContainer
     /// 解包 zip 容器（含 manifest 外圈元数据）；缺 savedata.json、缺 manifest、损坏、内层档结构非法
     /// （含偶数阶）一律返回 null。manifest 只做形状检查（容器版本演进时在此分流）；
     /// winLength 越界视为缺失（外圈脏数据不毙档）。
+    /// <para>
+    /// <b>解压上限（修复批 ②-7）</b>：容器原始字节与单条目解压字节均设上限——
+    /// 此前 <c>ReadToEnd</c> 无闸门，几十字节的 zip bomb 即可换来 GB 级分配。
+    /// 条目名查找大小写不敏感（与本类 <c>PropertyNameCaseInsensitive=true</c> 的意图一致）。
+    /// </para>
     /// </summary>
     public static NzSavePackage? TryUnpackPackage(byte[] raw)
     {
+        if (raw == null || raw.Length == 0 || raw.Length > MaxContainerBytes)
+        {
+            return null;
+        }
         if (!IsZipMagic(raw))
         {
             return null;
@@ -54,13 +72,13 @@ public static class NzSaveContainer
         try
         {
             using var zip = new ZipArchive(new MemoryStream(raw), ZipArchiveMode.Read);
-            var manifestEntry = zip.GetEntry(ManifestEntry);
-            var dataEntry = zip.GetEntry(SaveDataEntry);
+            var manifestEntry = FindEntry(zip, ManifestEntry);
+            var dataEntry = FindEntry(zip, SaveDataEntry);
             if (manifestEntry == null || dataEntry == null)
             {
                 return null;
             }
-            using var manifestDoc = JsonDocument.Parse(ReadEntry(manifestEntry));
+            using var manifestDoc = JsonDocument.Parse(ReadEntry(manifestEntry, MaxEntryBytes));
             if (manifestDoc.RootElement.ValueKind != JsonValueKind.Object ||
                 !manifestDoc.RootElement.TryGetProperty("format", out var fmt) ||
                 fmt.GetString() is not { Length: > 0 })
@@ -75,7 +93,7 @@ public static class NzSaveContainer
                     ? parsed
                     : null;
             }
-            var data = SaveData.Deserialize(ReadEntry(dataEntry));
+            var data = SaveData.Deserialize(ReadEntry(dataEntry, MaxEntryBytes));
             return data == null || SaveValidator.Validate(data) != null
                 ? null
                 : new NzSavePackage(data, winLength);
@@ -109,11 +127,33 @@ public static class NzSaveContainer
         stream.Write(Encoding.UTF8.GetBytes(content));
     }
 
-    private static string ReadEntry(ZipArchiveEntry entry)
+    /// <summary>条目名查找（大小写不敏感：与本类 PropertyNameCaseInsensitive 的意图一致）。</summary>
+    private static ZipArchiveEntry? FindEntry(ZipArchive zip, string name) =>
+        zip.Entries.FirstOrDefault(e => string.Equals(e.FullName, name, StringComparison.OrdinalIgnoreCase));
+
+    /// <summary>
+    /// 读条目内容，<b>解压字节数硬上限</b>（zip bomb 闸门）：
+    /// 先看中央目录声明的长度，再按实际读取量兜底计数——声明值可被伪造，计数不可。
+    /// </summary>
+    private static string ReadEntry(ZipArchiveEntry entry, int maxBytes)
     {
+        if (entry.Length > maxBytes)
+        {
+            throw new InvalidDataException("zip 条目超出解压上限");
+        }
         using var stream = entry.Open();
-        using var reader = new StreamReader(stream, Encoding.UTF8);
-        return reader.ReadToEnd();
+        var buffer = new byte[8192];
+        using var memory = new MemoryStream();
+        int read;
+        while ((read = stream.Read(buffer, 0, buffer.Length)) > 0)
+        {
+            if (memory.Length + read > maxBytes)
+            {
+                throw new InvalidDataException("zip 条目超出解压上限");
+            }
+            memory.Write(buffer, 0, read);
+        }
+        return Encoding.UTF8.GetString(memory.ToArray());
     }
 
     /// <summary>manifest.json 键为 camelCase（migration-plan §3.4 示例：{ "format", "createdAt", "appId" }）。</summary>
@@ -171,6 +211,10 @@ public static class SaveArchive
             return null;
         }
         string trimmed = input.Trim();
+        if (trimmed.Length > NzSaveContainer.MaxInputChars)
+        {
+            return null; // 超长输入闸门：防 Base64/Latin-1 解码换来 GB 级分配
+        }
 
         if (trimmed.StartsWith('{'))
         {

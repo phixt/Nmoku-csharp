@@ -230,4 +230,57 @@ public class NzSaveContainerTests
         using var r = new StreamReader(s, Encoding.UTF8);
         return r.ReadToEnd();
     }
+
+    // ---- zip bomb 闸门与条目名大小写（修复批 ②-7）----
+
+    [Fact]
+    public void TryUnpackPackage_EntryExceedingDecompressLimit_ReturnsNull()
+    {
+        // zip bomb：压缩后极小、解压后超大——此前 ReadToEnd 无闸门 → 几十字节换来 GB 级分配
+        using var buffer = new MemoryStream();
+        using (var zip = new System.IO.Compression.ZipArchive(buffer, System.IO.Compression.ZipArchiveMode.Create, leaveOpen: true))
+        {
+            using var s = zip.CreateEntry("savedata.json").Open();
+            s.Write(new byte[NzSaveContainer.MaxEntryBytes + 1024]); // 全零 → 压缩率极高
+        }
+        byte[] raw = buffer.ToArray();
+        Assert.True(raw.Length < NzSaveContainer.MaxContainerBytes); // 容器本身很小（确属 bomb 形态）
+
+        Assert.Null(NzSaveContainer.TryUnpackPackage(raw));
+    }
+
+    [Fact]
+    public void TryUnpackPackage_ContainerExceedingSizeLimit_ReturnsNull()
+    {
+        Assert.Null(NzSaveContainer.TryUnpackPackage(new byte[NzSaveContainer.MaxContainerBytes + 1]));
+    }
+
+    [Fact]
+    public void TryUnpackPackage_EntryNamesCaseInsensitive_Unpacks()
+    {
+        // 清单查找此前大小写敏感，与本类 PropertyNameCaseInsensitive=true 的意图不一致
+        using var buffer = new MemoryStream();
+        using (var zip = new System.IO.Compression.ZipArchive(buffer, System.IO.Compression.ZipArchiveMode.Create, leaveOpen: true))
+        {
+            using (var s = zip.CreateEntry("MANIFEST.JSON").Open())
+            {
+                s.Write(Encoding.UTF8.GetBytes("""{"format":"nzsave/1","appId":"nmoku.godot","createdAt":1}"""));
+            }
+            using var s2 = zip.CreateEntry("SAVEDATA.JSON").Open();
+            s2.Write(Encoding.UTF8.GetBytes(SaveData.Serialize(Sample())));
+        }
+
+        var package = NzSaveContainer.TryUnpackPackage(buffer.ToArray());
+
+        Assert.NotNull(package);
+        Assert.Equal(Sample().Id, package!.Data.Id);
+    }
+
+    [Fact]
+    public void TryParse_OversizedTextInput_ReturnsNull()
+    {
+        // 超长输入闸门：防 Base64/Latin-1 解码换来 GB 级分配
+        string huge = new('A', NzSaveContainer.MaxInputChars + 1);
+        Assert.Null(SaveArchive.TryParse(huge));
+    }
 }
