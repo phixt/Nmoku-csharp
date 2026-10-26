@@ -15,16 +15,10 @@ public class I18nCsvTests
 {
     private static readonly string[] LocaleColumns = ["zh-CN", "zh-Hant", "en-US", "ja-JP"];
 
-    private static string FindCsvPath()
-    {
-        var dir = new DirectoryInfo(AppContext.BaseDirectory);
-        while (dir != null && !File.Exists(Path.Combine(dir.FullName, "Nmoku.slnx")))
-        {
-            dir = dir.Parent;
-        }
-        Assert.NotNull(dir);
-        return Path.Combine(dir!.FullName, "src", "Nmoku.Game", "assets", "i18n", "translations.csv");
-    }
+    private static string FindCsvPath() =>
+        // 数据文件由 csproj 显式声明 content（复制到测试输出目录）→ 不依赖仓库布局，
+        // 也不必「向上找 Nmoku.slnx」（审查报告 P1 #33：那种定位离开 checkout 即 302 PASS / 2 FAIL）
+        Path.Combine(AppContext.BaseDirectory, "translations.csv");
 
     /// <summary>单遍 RFC4180 状态机解析（引号内的逗号/换行不拆分；仓库锁 LF，无 \r）。</summary>
     private static List<string[]> ReadCsv()

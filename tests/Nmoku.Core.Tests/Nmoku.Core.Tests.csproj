@@ -34,6 +34,8 @@
          显式声明 content → 复制到测试输出目录，测试从 AppContext.BaseDirectory 读取；
          **不用「向上找 Nmoku.slnx」的仓库布局耦合**（审查报告 P1 #33 同款坑：离开 checkout 即失败）。 -->
     <None Include="..\..\src\Nmoku.Game\project.godot" Link="project.godot" CopyToOutputDirectory="PreserveNewest" />
+    <!-- i18n 翻译表同理：数据文件走 content 声明，不再向上找仓库根。 -->
+    <None Include="..\..\src\Nmoku.Game\assets\i18n\translations.csv" Link="translations.csv" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
 </Project>
