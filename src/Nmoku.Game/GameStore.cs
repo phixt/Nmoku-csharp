@@ -183,37 +183,81 @@ public sealed partial class GameStore : Node
     public bool LoadSlot(int index)
     {
         var data = Saves.Load(index);
-        if (data == null || !GM.LoadFrom(data, Saves.GetSlotWinLength(index)))
+        if (data == null)
+        {
+            Overlay?.ShowToast(I18n.T(Text.Save.LoadSlotFailed), isError: true);
+            return false;
+        }
+        // 转移合法性先判（修复批 ②-5）：此前先 LoadFrom 覆盖 GM 再判转移，转移非法时留下半加载现场
+        var to = GameStateMachine.Transition(State, GameTrigger.LoadLatest);
+        if (to == null)
+        {
+            GD.PrintErr($"GameStore: 非法转移 {State} --LoadLatest--> 已拒绝");
+            Overlay?.ShowToast(I18n.T(Text.Save.LoadSlotFailed), isError: true);
+            return false;
+        }
+        if (!TryLoadIntoGame(data, index))
         {
             Overlay?.ShowToast(I18n.T(Text.Save.LoadSlotFailed), isError: true);
             return false;
         }
         ApplySavedTheme(data); // 存档主题随档恢复（SaveData.isDarkTheme）
-        var to = GameStateMachine.Transition(State, GameTrigger.LoadLatest);
-        if (to == null)
-        {
-            GD.PrintErr($"GameStore: 非法转移 {State} --LoadLatest--> 已拒绝");
-            return false;
-        }
         SetState(to.Value);
         return true;
+    }
+
+    /// <summary>
+    /// 把档装进对局内核。<b>异常兜底</b>（修复批 ②-5）：装档失败一律 false，
+    /// 不让异常冒泡到 Godot 主循环（此前 renju 规则档会在引擎工厂抛 NotSupportedException）。
+    /// </summary>
+    private bool TryLoadIntoGame(SaveData data, int index)
+    {
+        try
+        {
+            return GM.LoadFrom(data, Saves.GetSlotWinLength(index));
+        }
+        catch (Exception e)
+        {
+            GD.PrintErr($"GameStore: 装档失败（槽位 {index + 1}）: {e.Message}");
+            return false;
+        }
+    }
+
+    /// <summary>复盘装档（同 <see cref="TryLoadIntoGame"/>：失败即 false，异常不外冒）。</summary>
+    private bool TryBeginReplay(SaveData data, int index)
+    {
+        try
+        {
+            return GM.BeginReplay(data, Saves.GetSlotWinLength(index));
+        }
+        catch (Exception e)
+        {
+            GD.PrintErr($"GameStore: 复盘装档失败（槽位 {index + 1}）: {e.Message}");
+            return false;
+        }
     }
 
     /// <summary>进入复盘（存档槽按钮，任意态）：复盘数据装载失败则整体取消。</summary>
     public bool EnterReplay(int slot)
     {
         var data = Saves.Load(slot);
-        if (data == null || !GM.BeginReplay(data, Saves.GetSlotWinLength(slot)))
+        if (data == null)
         {
             Overlay?.ShowToast(I18n.T(Text.Save.LoadSlotFailed), isError: true);
             return false;
         }
-        ApplySavedTheme(data);
+        // 转移合法性先判（修复批 ②-5）：非法转移不得留下半加载现场
         var to = GameStateMachine.Transition(State, GameTrigger.EnterReplay);
         if (to == null)
         {
             return false;
         }
+        if (!TryBeginReplay(data, slot))
+        {
+            Overlay?.ShowToast(I18n.T(Text.Save.LoadSlotFailed), isError: true);
+            return false;
+        }
+        ApplySavedTheme(data);
         SetState(to.Value);
         return true;
     }
@@ -248,8 +292,10 @@ public sealed partial class GameStore : Node
         {
             return;
         }
-        Saves.QuickSaveAsync(GM.BuildSaveData(IsDarkTheme), GM.WinLength).GetAwaiter().GetResult();
-        Overlay?.ShowToast(I18n.T(Text.Save.QuickSaved));
+        // 写盘失败可见（修复批 ②-2）：此前无视落盘结果一律弹「已快存」= 存档假成功
+        bool ok = Saves.QuickSaveAsync(GM.BuildSaveData(IsDarkTheme), GM.WinLength)
+            .GetAwaiter().GetResult();
+        Overlay?.ShowToast(ok ? I18n.T(Text.Save.QuickSaved) : I18n.T(Text.Save.SaveFailed), isError: !ok);
     }
 
     /// <summary>
@@ -292,15 +338,25 @@ public sealed partial class GameStore : Node
     /// <summary>保存当前对局到指定槽位（S 键落槽路径与自测造档用；占用覆盖不确认，源 saveGame 语义）。</summary>
     public void SaveToSlot(int index)
     {
-        Saves.SaveAsync(index, GM.BuildSaveData(IsDarkTheme), GM.WinLength).GetAwaiter().GetResult();
-        Overlay?.ShowToast(I18n.T(Text.Save.SavedToSlot, index + 1));
+        bool ok = Saves.SaveAsync(index, GM.BuildSaveData(IsDarkTheme), GM.WinLength)
+            .GetAwaiter().GetResult();
+        Overlay?.ShowToast(ok
+            ? I18n.T(Text.Save.SavedToSlot, index + 1)
+            : I18n.T(Text.Save.SaveFailed), isError: !ok);
     }
 
     public void DeleteSlot(int index)
     {
         Overlay.ShowConfirmDialog(I18n.T(Text.Save.DeleteTitle),
             I18n.T(Text.Save.DeleteConfirm, index + 1),
-            onYes: () => Saves.DeleteAsync(index).GetAwaiter().GetResult());
+            onYes: () =>
+            {
+                bool ok = Saves.DeleteAsync(index).GetAwaiter().GetResult();
+                if (!ok)
+                {
+                    Overlay?.ShowToast(I18n.T(Text.Save.DeleteFailed), isError: true);
+                }
+            });
     }
 
     /// <summary>复制槽位为 Base64(JSON) 到剪贴板（菜单「复制」；与源浏览器版互通的格式）。</summary>
@@ -411,8 +467,10 @@ public sealed partial class GameStore : Node
     {
         void DoWrite()
         {
-            Saves.SaveAsync(index, package.Data, package.WinLength).GetAwaiter().GetResult();
-            Overlay?.ShowToast(I18n.T(Text.Save.ImportedToSlot, index + 1));
+            bool ok = Saves.SaveAsync(index, package.Data, package.WinLength).GetAwaiter().GetResult();
+            Overlay?.ShowToast(ok
+                ? I18n.T(Text.Save.ImportedToSlot, index + 1)
+                : I18n.T(Text.Save.SaveFailed), isError: !ok);
         }
         if (!confirmIfOccupied || Saves.IsSlotEmpty(index))
         {

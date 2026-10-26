@@ -58,6 +58,10 @@ public static class Text
         public const string DeleteConfirm = "确定删除槽位 {0} 的存档？";
         public const string LoadSlotFailed = "该存档无法读取";
         public const string SavedToSlot = "已保存到存档 {0}";
+        /// <summary>写盘失败（修复批 ②-2：落盘失败不再假报「已快存」）。</summary>
+        public const string SaveFailed = "保存失败";
+        /// <summary>删除失败（磁盘删除未完成，槽位保留）。</summary>
+        public const string DeleteFailed = "删除失败";
         public const string MenuKeyHint = "保存当前对局：Ctrl+S 写快存 · S 存入首个空槽 · Ctrl+L 读快存";
         /// <summary>.nzsave 文件对话框的筛选描述（文件类型通配符不入翻译）。</summary>
         public const string SaveFileFilter = "Nmoku 存档文件";

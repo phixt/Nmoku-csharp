@@ -36,6 +36,8 @@ keys,zh-CN,zh-Hant,en-US,ja-JP
 确定删除槽位 {0} 的存档？,确定删除槽位 {0} 的存档？,確定刪除槽位 {0} 的存檔？,Delete the save in slot {0}?,スロット {0} のセーブを削除しますか？
 该存档无法读取,该存档无法读取,該存檔無法讀取,This save cannot be loaded,このセーブは読み込めません
 已保存到存档 {0},已保存到存档 {0},已保存到存檔 {0},Saved to slot {0},スロット {0} に保存しました
+保存失败,保存失败,儲存失敗,Save failed,保存に失敗しました
+删除失败,删除失败,刪除失敗,Delete failed,削除に失敗しました
 保存当前对局：Ctrl+S 写快存 · S 存入首个空槽 · Ctrl+L 读快存,保存当前对局：Ctrl+S 写快存 · S 存入首个空槽 · Ctrl+L 读快存,儲存目前對局：Ctrl+S 寫快存 · S 存入首個空槽 · Ctrl+L 讀快存,Save current game: Ctrl+S quick save · S first empty slot · Ctrl+L load quick save,対局を保存：Ctrl+S クイック保存 · S 先頭の空きスロット · Ctrl+L クイック読み込み
 Nmoku 存档文件,Nmoku 存档文件,Nmoku 存檔檔案,Nmoku save file,Nmoku セーブファイル
 立体五子棋,立体五子棋,立體五子棋,Nmoku 3D Gomoku,立体五目並べ

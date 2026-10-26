@@ -251,25 +251,70 @@ public sealed partial class GameManager : Node
     /// 回合与 SWAP2 决策期由引擎从 history 重新推导（不信任 currentPlayer 字段的中间态）；
     /// focusZ 读入即弃（migration-plan §3.1），复位到层 0。维度非法返回 false。
     /// winLength 为外圈元数据（B14）：v2.0.0 schema 无连珠数字段，null 回默认 5。
+    /// <para>
+    /// <b>半加载根治（修复批 ②-5）</b>：此前 <c>_board</c> 先被替换、引擎工厂后创建，
+    /// 而 renju（引擎未实装）必抛 <c>NotSupportedException</c> → 抛出点在「棋盘已换、引擎未换」之后，
+    /// 留下半加载现场且异常冒泡到 Godot 主循环。现改为：<b>规则白名单 → 连珠数范围 → 引擎先建 → 维度核对
+    /// → 才动现场</b>，任一步不合即返回 false（不改任何状态）。
+    /// </para>
     /// </summary>
     public bool LoadFrom(SaveData d, int? winLength = null)
     {
-        if (d.BoardSize <= 0 || d.Layers <= 0)
+        if (d == null || d.BoardSize <= 0 || d.Layers <= 0 || d.Moves == null)
         {
             return false;
         }
+        // 规则白名单：只受理 gomoku / swap2（renju 引擎未实装，装它必抛）
+        RuleSet rules;
+        if (string.Equals(d.Rules, "swap2", StringComparison.OrdinalIgnoreCase))
+        {
+            rules = RuleSet.Swap2;
+        }
+        else if (string.IsNullOrEmpty(d.Rules)
+                 || string.Equals(d.Rules, "gomoku", StringComparison.OrdinalIgnoreCase))
+        {
+            rules = RuleSet.Gomoku;
+        }
+        else
+        {
+            GD.PrintErr($"GameManager: 规则集不受支持（{d.Rules}），拒绝装档");
+            return false;
+        }
+        int effectiveWinLength = winLength ?? GameConfig.WinLength;
+        if (effectiveWinLength < GameConfig.MinWinLength || effectiveWinLength > GameConfig.MaxWinLength)
+        {
+            GD.PrintErr($"GameManager: 连珠数越界（{effectiveWinLength}），拒绝装档");
+            return false;
+        }
+        // 引擎先建：失败即返回，绝不在「棋盘已换、引擎未换」的半加载状态下抛异常
+        IRuleEngine engine;
+        try
+        {
+            engine = RuleEngineFactory.Create(rules, effectiveWinLength);
+        }
+        catch (Exception e)
+        {
+            GD.PrintErr($"GameManager: 规则引擎创建失败: {e.Message}");
+            return false;
+        }
+        // 盘面维度须与声明一致（否则按维度索引会抛越界，且半加载）
+        if (!HasConsistentBoardShape(d))
+        {
+            return false;
+        }
+        if (d.Moves.Any(m => m == null))
+        {
+            return false;
+        }
+
         _generation++;
         _ai?.Cancel();
         _saveId = d.Id;
 
-        var rules = d.Rules.Equals("swap2", StringComparison.OrdinalIgnoreCase) ? RuleSet.Swap2
-            : d.Rules.Equals("renju", StringComparison.OrdinalIgnoreCase) ? RuleSet.Renju
-            : RuleSet.Gomoku;
-        int effectiveWinLength = winLength ?? GameConfig.WinLength;
         _board = new Board(d.BoardSize, d.Layers);
         _level = new LevelConfig { Id = "sandbox", BoardSize = d.BoardSize, Layers = d.Layers, Rules = rules, WinLength = effectiveWinLength };
-        _engine = RuleEngineFactory.Create(rules, effectiveWinLength);
-        _pve = d.GameMode.Equals("pve", StringComparison.OrdinalIgnoreCase);
+        _engine = engine;
+        _pve = string.Equals(d.GameMode, "pve", StringComparison.OrdinalIgnoreCase);
         _aiColor = d.PlayerColor == 2 ? PlayerColor.White : PlayerColor.Black;
         _aiDifficulty = d.AiDifficulty switch
         {
@@ -320,6 +365,33 @@ public sealed partial class GameManager : Node
         StateChanged?.Invoke();
         FocusChanged?.Invoke(_focusZ);
         MaybeTriggerAi(); // PvE 恢复时恰好轮到 AI 则续下
+        return true;
+    }
+
+    /// <summary>
+    /// 盘面形状与自身声明的 boardSize/layers 是否一致（不一致则按维度索引会抛越界）。
+    /// 校验层（<c>SaveValidator</c>）已挡一道，这里是装档前的最后一道闸门。
+    /// </summary>
+    private static bool HasConsistentBoardShape(SaveData d)
+    {
+        if (d.BoardState == null || d.BoardState.Length != d.Layers)
+        {
+            return false;
+        }
+        foreach (var layer in d.BoardState)
+        {
+            if (layer == null || layer.Length != d.BoardSize)
+            {
+                return false;
+            }
+            foreach (var row in layer)
+            {
+                if (row == null || row.Length != d.BoardSize)
+                {
+                    return false;
+                }
+            }
+        }
         return true;
     }
 
