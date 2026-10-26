@@ -941,6 +941,34 @@ public partial class Main : Node
         _autotestSteps.Enqueue(("m5-save-integrity", AutotestSaveIntegrity));
         _autotestSteps.Enqueue(("m5-save-legacy-migration", AutotestSaveLegacyMigration));
         _autotestSteps.Enqueue(("m5-viewport-level-fit", AutotestViewportLevelFit));
+        _autotestSteps.Enqueue(("m5-window-mode-pref", AutotestWindowModePref));
+    }
+
+    /// <summary>
+    /// 最小化不得改写窗口模式偏好（修复批 ③-4）：最小化是窗口态不是模式选择，
+    /// 此前兜底分支把它写成 windowed → 用户「上次会话是全屏」的偏好被一次最小化抹掉。
+    /// headless 无窗口管理器，故直接验「模式→偏好值」映射与写回函数本身；测毕复原真实偏好。
+    /// </summary>
+    private string AutotestWindowModePref()
+    {
+        bool mappingOk =
+            WindowModeToPref(DisplayServer.WindowMode.Windowed) == "windowed"
+            && WindowModeToPref(DisplayServer.WindowMode.Minimized) == null
+            && WindowModeToPref(DisplayServer.WindowMode.Maximized) == "maximized"
+            && WindowModeToPref(DisplayServer.WindowMode.Fullscreen) == "fullscreen"
+            && WindowModeToPref(DisplayServer.WindowMode.ExclusiveFullscreen) == "fullscreen";
+
+        string before = SettingsStore.Get("general", "window_mode", "windowed").AsString();
+        SettingsStore.Set("general", "window_mode", "fullscreen");
+        WriteWindowModePref(DisplayServer.WindowMode.Minimized);
+        bool kept = SettingsStore.Get("general", "window_mode", "").AsString() == "fullscreen";
+        WriteWindowModePref(DisplayServer.WindowMode.Maximized);
+        bool wrote = SettingsStore.Get("general", "window_mode", "").AsString() == "maximized";
+        SettingsStore.Set("general", "window_mode", before); // 复原真实偏好（不污染用户设置）
+
+        return mappingOk && kept && wrote
+            ? "ok"
+            : $"FAIL mapping={mappingOk} kept={kept} wrote={wrote}";
     }
 
     private int _vpFitPhase;
@@ -2824,13 +2852,46 @@ public partial class Main : Node
         {
             return; // 启动恢复期窗口尚在过渡态（实际仍是 windowed），写回会毁掉待恢复偏好
         }
-        string mode = GetWindow().Mode switch
+        WriteWindowModePref(EffectiveWindowMode());
+    }
+
+    /// <summary>
+    /// 当前有效窗口模式（**最小化优先**：窗口属性与 DisplayServer 任一报 Minimized 即最小化）。
+    /// 最小化是窗口态而非模式选择，必须与「最大化/全屏」区分——否则最小化一次就把用户的
+    /// 模式偏好抹成 windowed（修复批 ③-4）。
+    /// </summary>
+    private DisplayServer.WindowMode EffectiveWindowMode()
+    {
+        var ds = DisplayServer.WindowGetMode();
+        if (ds == DisplayServer.WindowMode.Minimized)
         {
-            Window.ModeEnum.Maximized => "maximized",
-            Window.ModeEnum.Fullscreen or Window.ModeEnum.ExclusiveFullscreen => "fullscreen",
-            _ => "windowed",
-        };
-        SettingsStore.Set("general", "window_mode", mode);
+            return ds;
+        }
+        return GetWindow().Mode == Window.ModeEnum.Minimized ? DisplayServer.WindowMode.Minimized : ds;
+    }
+
+    /// <summary>
+    /// 窗口模式 → 偏好值；**最小化返回 null**（不写回）。
+    /// 修复批 ③-4：此前 switch 的兜底分支把最小化当成 windowed 写回 cfg，
+    /// 「上次会话是全屏」被最小化一次即抹掉（与本文件原注释「最小化不误写」直接矛盾）。
+    /// </summary>
+    internal static string? WindowModeToPref(DisplayServer.WindowMode mode) => mode switch
+    {
+        DisplayServer.WindowMode.Maximized => "maximized",
+        DisplayServer.WindowMode.Fullscreen or DisplayServer.WindowMode.ExclusiveFullscreen => "fullscreen",
+        DisplayServer.WindowMode.Minimized => null,
+        _ => "windowed",
+    };
+
+    /// <summary>写回窗口模式偏好（null = 不写：最小化等非模式选择态）。</summary>
+    private void WriteWindowModePref(DisplayServer.WindowMode mode)
+    {
+        string? pref = WindowModeToPref(mode);
+        if (pref == null)
+        {
+            return;
+        }
+        SettingsStore.Set("general", "window_mode", pref);
     }
 
     /// <summary>启动恢复进行中：拦截 SyncWindowModeToPrefs 的过渡态写回（见 RestoreWindowMode）。</summary>
