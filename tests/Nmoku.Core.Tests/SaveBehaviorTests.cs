@@ -274,6 +274,38 @@ public class SaveBehaviorTests
         Assert.Null(SaveMigrator.Normalize(json));
     }
 
+    // ---- 垃圾 JSON 不再迁成合法空档（修复批 ②-6）----
+
+    [Theory]
+    [InlineData("""{"foo":"bar"}""")]
+    [InlineData("""{"id":"x","timestamp":1757000000000}""")]
+    [InlineData("""{"id":"x","moves":null}""")]
+    [InlineData("""{"id":"x","moves":{}}""")]
+    public void Normalize_GarbageJsonWithoutMovesArray_ReturnsNull(string json)
+    {
+        // 此前：无 version 的任意 JSON 都被迁成「合法空存档」，且缺失 timestamp 被补成当前时刻
+        // → 该垃圾档成为「最新档」，用户「读最新」读到空盘
+        Assert.Null(SaveMigrator.Normalize(json));
+    }
+
+    [Fact]
+    public void Normalize_V1WithEmptyMovesArray_IsAcceptedAsEmptyArchive()
+    {
+        // 边界：v1 档带空 moves 数组 = 合法空对局（源存档恒有 moves 数组，只是可能为空）
+        var migrated = SaveMigrator.Normalize("""{"moves":[]}""");
+
+        Assert.NotNull(migrated);
+        Assert.Empty(migrated!.Moves);
+        Assert.Equal("2.0.0", migrated.Version);
+        Assert.Null(SaveValidator.Validate(migrated));
+    }
+
+    [Fact]
+    public void TryParsePackage_GarbageJson_ReturnsNull()
+    {
+        Assert.Null(SaveArchive.TryParsePackage("""{"foo":"bar"}"""));
+    }
+
     // ---- 值域与规则白名单（修复批 ②-8）----
 
     private static SaveData ValidArchive()

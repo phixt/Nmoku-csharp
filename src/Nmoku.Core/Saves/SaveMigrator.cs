@@ -87,30 +87,34 @@ public static class SaveMigrator
 
         var moves = new List<SaveMove>();
         int[][][] boardState = NewBoard(layers, boardSize);
-        if (root.TryGetProperty("moves", out var movesEl) && movesEl.ValueKind == JsonValueKind.Array)
+        // v1 档必须带 moves 数组（源存档恒有）：缺它 = 垃圾 JSON。
+        // 此前「无 version 的任意 JSON」都被迁成合法空存档，且缺失 timestamp 被补成当前时刻
+        // → 该垃圾档成为「最新档」，用户「读最新」读到空盘（修复批 ②-6）。
+        if (!root.TryGetProperty("moves", out var movesEl) || movesEl.ValueKind != JsonValueKind.Array)
         {
-            foreach (var m in movesEl.EnumerateArray())
+            return null;
+        }
+        foreach (var m in movesEl.EnumerateArray())
+        {
+            SaveMove? move;
+            try
             {
-                SaveMove? move;
-                try
-                {
-                    move = m.Deserialize<SaveMove>(SaveData.JsonOptions);
-                }
-                catch (JsonException)
-                {
-                    return null; // 元素结构畸形：意图无法确定 → 整档判废（不静默丢手）
-                }
-                if (move == null)
-                {
-                    return null;
-                }
-                moves.Add(move);
-                if (move.X >= 0 && move.X < boardSize &&
-                    move.Y >= 0 && move.Y < boardSize &&
-                    move.Z >= 0 && move.Z < layers)
-                {
-                    boardState[move.Z][move.Y][move.X] = move.Player;
-                }
+                move = m.Deserialize<SaveMove>(SaveData.JsonOptions);
+            }
+            catch (JsonException)
+            {
+                return null; // 元素结构畸形：意图无法确定 → 整档判废（不静默丢手）
+            }
+            if (move == null)
+            {
+                return null;
+            }
+            moves.Add(move);
+            if (move.X >= 0 && move.X < boardSize &&
+                move.Y >= 0 && move.Y < boardSize &&
+                move.Z >= 0 && move.Z < layers)
+            {
+                boardState[move.Z][move.Y][move.X] = move.Player;
             }
         }
 
