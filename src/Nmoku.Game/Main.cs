@@ -1534,8 +1534,29 @@ public partial class Main : Node
 
     private int _bgmPhase;
     private ulong _bgmT0;
+    private bool _bgmTimedOut;
 
     private bool BgmWaited(double ms) => Time.GetTicksMsec() - _bgmT0 >= (ulong)ms;
+
+    /// <summary>
+    /// 条件等待（修复批 ③ 顺带：交叉淡化回归锁去「时刻采样」化）——条件成立即 true；
+    /// 未成立则按墙钟上限区分「继续等」与「超时失败」（<see cref="_bgmTimedOut"/>）。
+    /// <para>
+    /// 此前各检查点是「固定延时 → 瞬时采样淡化中段」：进程卡顿（GC / 杀软扫描新构建产物）
+    /// 会让采样点整个跳过淡变窗口 → 间歇性红（本次实测 8 轮 1 次红在 p4：
+    /// 淡出已走到 0.13 而断言要求 ≥0.15）。改为**逐帧条件等待**后，卡顿只影响「走到哪一步」，
+    /// 不再影响「确实在渐变」这一语义断言。
+    /// </para>
+    /// </summary>
+    private bool BgmWait(Func<bool> cond, double timeoutMs = 2500)
+    {
+        if (cond())
+        {
+            return true;
+        }
+        _bgmTimedOut = BgmWaited(timeoutMs);
+        return false;
+    }
 
     private static string BgmSnap(SampleMusicEngine.LaneSnapshot[] s) =>
         string.Join("|", s.Select(l => $"{l.Slot}:{l.LinVolume:0.00}->{l.TargetVolume:0.00}{(l.Playing ? "" : "停")}"));
@@ -1559,78 +1580,71 @@ public partial class Main : Node
                 _audio.PlayBgm(BgmTrack.Game);
                 _bgmPhase = 1;
                 return "wait";
-            case 1: // 0.8s：game 独占在播且已升满
-                if (!BgmWaited(800))
+            case 1: // game 独占在播且已升满（条件等待：升满且只剩一轨即走，不取固定时刻）
+                if (!BgmWait(() =>
                 {
-                    return "wait";
-                }
-                var s1 = eng.LanesForTests;
-                var game = s1.FirstOrDefault(l => l.Slot == "game");
-                if (game == null || !game.Playing || game.LinVolume < 0.9f || s1.Count(l => l.Playing) != 1)
+                    var s = eng.LanesForTests;
+                    var g = s.FirstOrDefault(l => l.Slot == "game");
+                    return g is { Playing: true } && g.LinVolume >= 0.9f && s.Count(l => l.Playing) == 1;
+                }))
                 {
-                    return $"FAIL p1 {BgmSnap(s1)}";
+                    return _bgmTimedOut ? $"FAIL p1 {BgmSnap(eng.LanesForTests)}" : "wait";
                 }
                 _bgmT0 = Time.GetTicksMsec();
                 _audio.PlayBgm(BgmTrack.Menu);
                 _bgmPhase = 2;
                 return "wait";
-            case 2: // 再 0.8s：menu 升满在播，game 淡完已停
-                if (!BgmWaited(800))
+            case 2: // menu 升满在播，game 淡完已停
+                if (!BgmWait(() =>
                 {
-                    return "wait";
-                }
-                var s2 = eng.LanesForTests;
-                var menu = s2.FirstOrDefault(l => l.Slot == "menu");
-                if (menu == null || !menu.Playing || menu.LinVolume < 0.9f
-                    || s2.Any(l => l.Slot == "game" && l.Playing))
+                    var m = eng.LanesForTests.FirstOrDefault(l => l.Slot == "menu");
+                    return m is { Playing: true } && m.LinVolume >= 0.9f
+                        && !eng.LanesForTests.Any(l => l.Slot == "game" && l.Playing);
+                }))
                 {
-                    return $"FAIL p2 {BgmSnap(s2)}";
+                    return _bgmTimedOut ? $"FAIL p2 {BgmSnap(eng.LanesForTests)}" : "wait";
                 }
                 _bgmT0 = Time.GetTicksMsec();
                 _audio.PlayBgm(BgmTrack.Game);
                 _bgmPhase = 3;
                 return "wait";
-            case 3: // 250ms：game 淡入中段
-                if (!BgmWaited(250))
+            case 3: // game 淡入**中段**（逐帧观察：必须经过中间音量 → 渐变而非硬切）
+                if (!BgmWait(() =>
                 {
-                    return "wait";
-                }
-                var g3 = eng.LanesForTests.FirstOrDefault(l => l.Slot == "game");
-                if (g3 == null || !g3.Playing || g3.LinVolume is < 0.15f or > 0.95f)
+                    var g = eng.LanesForTests.FirstOrDefault(l => l.Slot == "game");
+                    return g is { Playing: true } && g.LinVolume is > 0.05f and < 0.95f;
+                }))
                 {
-                    return $"FAIL p3 {BgmSnap(eng.LanesForTests)}";
+                    return _bgmTimedOut ? $"FAIL p3 {BgmSnap(eng.LanesForTests)}" : "wait";
                 }
                 _bgmT0 = Time.GetTicksMsec();
                 _audio.PlayBgm(BgmTrack.Menu);
                 _bgmPhase = 4;
                 return "wait";
-            case 4: // 100ms：menu 淡入中段、game 淡出中段（优雅回归前置态；窗口须短于 game 淡完）
-                if (!BgmWaited(100))
+            case 4: // game 淡出**已启动且仍在播**（优雅回归前置态：切回时它还在淡出中）
+                if (!BgmWait(() =>
                 {
-                    return "wait";
-                }
-                var s4 = eng.LanesForTests;
-                var g4 = s4.FirstOrDefault(l => l.Slot == "game");
-                if (g4 == null || !g4.Playing || g4.LinVolume < 0.15f || g4.TargetVolume != 0f)
+                    var g = eng.LanesForTests.FirstOrDefault(l => l.Slot == "game");
+                    return g is { Playing: true, TargetVolume: 0f } && g.LinVolume < 0.95f;
+                }))
                 {
-                    return $"FAIL p4 {BgmSnap(s4)}";
+                    return _bgmTimedOut ? $"FAIL p4 {BgmSnap(eng.LanesForTests)}" : "wait";
                 }
                 _bgmT0 = Time.GetTicksMsec();
                 _audio.PlayBgm(BgmTrack.Game); // A→B→A 快速切回
                 _bgmPhase = 5;
                 return "wait";
-            case 5: // 0.6s：game 优雅回归升满（原轨位继续），menu 淡完；随后守卫 no-op 校验
-                if (!BgmWaited(600))
+            case 5: // game 优雅回归升满（原轨位继续），menu 淡完；随后守卫 no-op 校验
+                if (!BgmWait(() =>
                 {
-                    return "wait";
+                    var g = eng.LanesForTests.FirstOrDefault(l => l.Slot == "game");
+                    return g is { Playing: true } && g.LinVolume >= 0.9f
+                        && !eng.LanesForTests.Any(l => l.Slot == "menu" && l.Playing);
+                }))
+                {
+                    return _bgmTimedOut ? $"FAIL p5 {BgmSnap(eng.LanesForTests)}" : "wait";
                 }
                 var s5 = eng.LanesForTests;
-                var g5 = s5.FirstOrDefault(l => l.Slot == "game");
-                if (g5 == null || !g5.Playing || g5.LinVolume < 0.9f
-                    || s5.Any(l => l.Slot == "menu" && l.Playing))
-                {
-                    return $"FAIL p5 {BgmSnap(s5)}";
-                }
                 _bgmT0 = Time.GetTicksMsec();
                 var before = s5.Select(l => (l.Slot, l.TargetVolume)).ToArray();
                 _audio.PlayBgm(BgmTrack.Game);
@@ -1642,14 +1656,13 @@ public partial class Main : Node
                 _bgmPhase = 6;
                 return "wait";
             case 6: // 守卫后仍在播；随后 P2 扩展：缺槽容忍 + 曲库池 + 槽位覆盖 off
-                if (!BgmWaited(100))
+                if (!BgmWait(() =>
                 {
-                    return "wait";
-                }
-                var g6 = eng.LanesForTests.FirstOrDefault(l => l.Slot == "game");
-                if (g6 == null || !g6.Playing || g6.LinVolume < 0.9f)
+                    var g = eng.LanesForTests.FirstOrDefault(l => l.Slot == "game");
+                    return g is { Playing: true } && g.LinVolume >= 0.9f;
+                }))
                 {
-                    return $"FAIL p6 {BgmSnap(eng.LanesForTests)}";
+                    return _bgmTimedOut ? $"FAIL p6 {BgmSnap(eng.LanesForTests)}" : "wait";
                 }
                 // ① 缺文件槽位：调用不炸、不打断当前播放
                 var pre6 = eng.LanesForTests.Select(l => (l.Slot, l.TrackId, l.TargetVolume)).ToArray();
@@ -1673,15 +1686,10 @@ public partial class Main : Node
                 _bgmT0 = Time.GetTicksMsec();
                 _bgmPhase = 7;
                 return "wait";
-            case 7: // 0.7s：off 覆盖淡出完成、无任何在播 → 恢复偏好收尾
-                if (!BgmWaited(700))
+            case 7: // off 覆盖淡出完成、无任何在播 → 恢复偏好收尾
+                if (!BgmWait(() => !eng.LanesForTests.Any(l => l.Playing)))
                 {
-                    return "wait";
-                }
-                var s7 = eng.LanesForTests;
-                if (s7.Any(l => l.Playing))
-                {
-                    return $"FAIL p7-off {BgmSnap(s7)}";
+                    return _bgmTimedOut ? $"FAIL p7-off {BgmSnap(eng.LanesForTests)}" : "wait";
                 }
                 SettingsStore.Set("music", "slot_game", _bgmSlotOvrBefore == "<absent>" ? "auto" : _bgmSlotOvrBefore);
                 _audio.StopBgm();
