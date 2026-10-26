@@ -75,6 +75,21 @@ public class KeymapTableTests
         });
     }
 
+    /// <summary>同一 action 登记多行时取「任一行允许」——confirm 同时登记标题行与引导行，
+    /// 首行命中即返回会让引导行永不可达（引导屏 Space/Enter 静默失效，F1 帮助屏却在广告该键位）。</summary>
+    [Theory]
+    [InlineData("confirm", GameState.Title, true)]
+    [InlineData("confirm", GameState.GuideFromTitle, true)]
+    [InlineData("confirm", GameState.GuideFromGame, true)]
+    [InlineData("confirm", GameState.Playing, false)]
+    [InlineData("confirm", GameState.Paused, false)]
+    [InlineData("confirm", GameState.GameOver, false)]
+    [InlineData("confirm", GameState.Replay, false)]
+    public void Allows_MultiRowSameAction_AnyMatchingRowSatisfies(string action, GameState state, bool expected)
+    {
+        Assert.Equal(expected, KeymapTable.Allows(action, state));
+    }
+
     [Fact]
     public void Allows_UnknownAction_PassesThrough()
     {

@@ -82,18 +82,26 @@ public static class KeymapTable
     ];
 
     /// <summary>§4.2.4：action 在 state 下是否激活。未登记 action 放行（由调用方自管，如 ui_cancel 分支）；
-    /// OverlayOnly 行不走状态路由（浮层作用域由 Main 的逐层冒泡分支处理）。</summary>
+    /// OverlayOnly 行不走状态路由（浮层作用域由 Main 的逐层冒泡分支处理）。
+    /// 同一 action 登记多行时取「任一行允许」——如 confirm 同时登记标题行（Contexts=[Title]）
+    /// 与引导行（Contexts=[GuideFromTitle,GuideFromGame]），首行命中即返回会让引导行永不可达
+    /// （引导屏 Space/Enter 静默失效，F1 帮助屏却在广告该键位）。</summary>
     public static bool Allows(string action, GameState state)
     {
+        bool registered = false;
         foreach (var entry in Entries)
         {
             if (entry.OverlayOnly || !entry.Actions.Contains(action))
             {
                 continue;
             }
-            return entry.Global || entry.Contexts.Contains(state);
+            registered = true;
+            if (entry.Global || entry.Contexts.Contains(state))
+            {
+                return true; // 任一登记行允许即允许
+            }
         }
-        return true;
+        return !registered; // 未登记 action 放行（§4.2.4）
     }
 
     /// <summary>浮层（帮助/存档菜单）打开时仍可用的 action（逐层冒泡：浮层只响应这些键）。
