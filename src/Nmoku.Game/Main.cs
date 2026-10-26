@@ -942,6 +942,79 @@ public partial class Main : Node
         _autotestSteps.Enqueue(("m5-save-legacy-migration", AutotestSaveLegacyMigration));
         _autotestSteps.Enqueue(("m5-viewport-level-fit", AutotestViewportLevelFit));
         _autotestSteps.Enqueue(("m5-window-mode-pref", AutotestWindowModePref));
+        _autotestSteps.Enqueue(("m5-overlay-scope", AutotestOverlayScope));
+    }
+
+    private int _ovScopePhase;
+    private bool _ovScopeDarkBefore;
+
+    /// <summary>
+    /// 浮层作用域数据驱动回归（修复批 ③-5）：①KeymapTable 声明为浮层可用的 action 必须都有处理器
+    /// （漂移检测：此前作用域硬编码三个 action 名，守卫 API 生产代码零引用）；
+    /// ②浮层打开时 T 键（AllowWhenOverlay）应生效（主题翻转）；③Esc 逐层冒泡关闭浮层。
+    /// </summary>
+    private string AutotestOverlayScope()
+    {
+        switch (_ovScopePhase)
+        {
+            case 0:
+            {
+                var missing = OverlayActionsWithoutHandler();
+                if (missing.Count > 0)
+                {
+                    return $"FAIL unhandled={string.Join(",", missing)}";
+                }
+                ToggleHelp();
+                if (!_router.IsOverlayOpen("help"))
+                {
+                    return "FAIL help-not-open";
+                }
+                _ovScopeDarkBefore = _store.IsDarkTheme;
+                _ovScopePhase = 1;
+                return "wait";
+            }
+            case 1:
+                Input.ParseInputEvent(new InputEventKey { PhysicalKeycode = Key.T, Pressed = true, Echo = false });
+                _ovScopePhase = 2;
+                return "wait";
+            case 2:
+            {
+                Input.ParseInputEvent(new InputEventKey { PhysicalKeycode = Key.T, Pressed = false });
+                if (_store.IsDarkTheme == _ovScopeDarkBefore)
+                {
+                    _ovScopePhase = 0;
+                    _router.PopOverlay("help");
+                    return "FAIL theme-not-toggled-in-overlay";
+                }
+                _store.ToggleTheme(); // 复原主题（不走输入路径，避免二次翻转）
+                // Esc：ui_cancel 是引擎内置 action（只登记 keycode）→ 合成事件须同时给 keycode，
+                // 否则 exactMatch 匹配不上（真实按键事件两者都有）
+                Input.ParseInputEvent(new InputEventKey
+                {
+                    Keycode = Key.Escape,
+                    PhysicalKeycode = Key.Escape,
+                    Pressed = true,
+                    Echo = false,
+                });
+                _ovScopePhase = 3;
+                return "wait";
+            }
+            case 3:
+            {
+                Input.ParseInputEvent(new InputEventKey
+                {
+                    Keycode = Key.Escape,
+                    PhysicalKeycode = Key.Escape,
+                    Pressed = false,
+                });
+                bool closed = !_router.IsOverlayOpen("help");
+                _ovScopePhase = 0;
+                return closed ? "ok" : "FAIL esc-did-not-close-overlay";
+            }
+            default:
+                _ovScopePhase = 0;
+                return "FAIL";
+        }
     }
 
     /// <summary>
@@ -2521,27 +2594,21 @@ public partial class Main : Node
         }
         if (_router.HasOverlay)
         {
-            // L2 浮层作用域：只响应 AllowWhenOverlay 键（KeymapTable）
-            if (InputMap.EventIsAction(key, "toggle_help", exactMatch: true))
+            // L2 浮层作用域：**作用域由 KeymapTable 决定**（AllowWhenOverlay），
+            // 本层只提供各 action 的处理器（修复批 ③-5：此前此处硬编码三个 action 名，
+            // KeymapTable.AllowsWhenOverlayOpen 守卫在生产代码零引用 → 新增浮层可用键要改两处，
+            // M4 的漂移机制未堵死）。
+            foreach (string action in OverlayAllowedActions())
             {
-                ToggleHelp();
-                return true;
-            }
-            // M/T 同为 KeymapTable 宣称的浮层可用键（AllowWhenOverlay）——此前漂移未接线，M5 补齐
-            if (InputMap.EventIsAction(key, "toggle_mute", exactMatch: true))
-            {
-                ToggleMute();
-                return true;
-            }
-            if (InputMap.EventIsAction(key, "toggle_theme", exactMatch: true))
-            {
-                _store.ToggleTheme();
-                return true;
-            }
-            if (InputMap.EventIsAction(key, "ui_cancel", exactMatch: true) && _router.TopOverlay is { } top)
-            {
-                _router.PopOverlay(top); // Esc 逐层冒泡：先关最顶浮层
-                return true;
+                if (!OverlayHandlers().TryGetValue(action, out var run))
+                {
+                    continue; // 无处理器（如仅文档行）→ 跳过
+                }
+                if (InputMap.EventIsAction(key, action, exactMatch: true))
+                {
+                    run();
+                    return true;
+                }
             }
             return false;
         }
@@ -3001,6 +3068,48 @@ public partial class Main : Node
         {
             _router.PushOverlay("help");
         }
+    }
+
+    // ---- 浮层作用域（修复批 ③-5）：作用域来自 KeymapTable，本层只提供处理器 ----
+
+    /// <summary>
+    /// KeymapTable 声明为「浮层打开时仍可用」的 action（去重、保声明顺序）。
+    /// 单一事实源=KeymapTable（04-contracts §4.2.3 的 AllowWhenOverlay 语义）。
+    /// </summary>
+    internal static IReadOnlyList<string> OverlayAllowedActions() =>
+        KeymapTable.Entries
+            .Where(e => e.AllowWhenOverlay)
+            .SelectMany(e => e.Actions)
+            .Where(a => !a.StartsWith('@')) // 纯文档行无 action
+            .Distinct()
+            .ToList();
+
+    /// <summary>浮层作用域各 action 的处理器（行为归本层；作用域归 KeymapTable）。</summary>
+    private Dictionary<string, Action> OverlayHandlers() => new()
+    {
+        ["toggle_help"] = ToggleHelp,
+        ["toggle_theme"] = () => _store.ToggleTheme(),
+        ["toggle_mute"] = ToggleMute,
+        ["ui_cancel"] = CloseTopOverlay,
+    };
+
+    /// <summary>Esc 逐层冒泡：关闭最顶浮层。</summary>
+    private void CloseTopOverlay()
+    {
+        if (_router.TopOverlay is { } top)
+        {
+            _router.PopOverlay(top);
+        }
+    }
+
+    /// <summary>
+    /// 漂移检测：KeymapTable 声明为浮层可用、但本层没有处理器的 action（空 = 无漂移）。
+    /// 出现即意味着「该键在浮层内被 F1 帮助屏广告着却不生效」——修复批 ③-5 的根因类别。
+    /// </summary>
+    internal IReadOnlyList<string> OverlayActionsWithoutHandler()
+    {
+        var handlers = OverlayHandlers();
+        return OverlayAllowedActions().Where(a => !handlers.ContainsKey(a)).ToList();
     }
 
     // ---- GameManager 事件 → 视图联动 ----
