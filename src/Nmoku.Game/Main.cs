@@ -1123,14 +1123,37 @@ public partial class Main : Node
         }
     }
 
-    /// <summary>标题屏布局容量锁（2026-09-26 根治回归）：最坏情况（继续对局按钮可见=7 按钮）
-    /// 内容最小高必须 ≤ 416——窗口最小尺寸保护下的最小逻辑面高。headless 可跑（纯布局计算）。</summary>
+    /// <summary>
+    /// 标题屏布局容量锁（修复批 ③-7：守卫对象错位——旧锁测「内容最小高 vs 416」，
+    /// 而布局是硬编码 432 高，真正会出界的类别（菜单列矩形越出逻辑面）根本没测到）。
+    /// <para>
+    /// 现改为测<b>实际布局矩形</b>：①内容最小高 ≤ 最小逻辑面高（原断言保留）；
+    /// ②菜单列在最小逻辑面（320×416 = 窗口 MinSize 800×1040 ÷ 内容缩放 2.5）内完整可见；
+    /// ③设计逻辑面（768×432）下保持设计几何（观感零变化）。
+    /// </para>
+    /// </summary>
     private string AutotestTitleFit()
     {
         _titleScreen.UpdateResumeButton(true);
         float minH = _titleScreen.GetCombinedMinimumSize().Y;
         _titleScreen.UpdateResumeButton(_store.HasLiveGame);
-        return minH <= 416f ? "ok" : $"FAIL title-min-height={minH:0.0} > 416";
+        if (minH > 416f)
+        {
+            return $"FAIL title-min-height={minH:0.0} > 416";
+        }
+
+        var minFace = new Vector2(320f, 416f);
+        Rect2 minRect = _titleScreen.ApplyMenuLayoutForTests(minFace);
+        bool minInside = new Rect2(Vector2.Zero, minFace).Encloses(minRect);
+
+        Rect2 designRect = _titleScreen.ApplyMenuLayoutForTests(new Vector2(768f, 432f));
+        bool designOk = Mathf.IsEqualApprox(designRect.Size.X, 360f)
+            && Mathf.IsEqualApprox(designRect.Size.Y, 432f);
+
+        _titleScreen.ApplyMenuLayoutForTests(_titleScreen.Size); // 复原真实布局
+        return minInside && designOk
+            ? "ok"
+            : $"FAIL min-rect={minRect} inside={minInside} design-rect={designRect} designOk={designOk}";
     }
 
     /// <summary>

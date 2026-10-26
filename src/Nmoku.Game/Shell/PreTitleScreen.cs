@@ -97,6 +97,26 @@ public sealed partial class PreTitleScreen : Control
 
     private sealed record StoneVisual(MeshInstance3D Node, int X, int Y, int Z);
 
+    // ---- 菜单列布局（修复批 ③-7：此前硬编码 432 高/360 宽，在最小逻辑面 320×416 下出界）----
+    /// <summary>设计基准逻辑面宽（1080p 窗口 @ 内容缩放 2.5 → 768 逻辑像素）。</summary>
+    private const float DesignFaceWidth = 768f;
+    /// <summary>设计菜单列宽（右锚定，右侧留白 <see cref="DesignRightMargin"/>）。</summary>
+    private const float DesignColumnWidth = 360f;
+    /// <summary>设计菜单列高（垂直居中；按钮按余量均分）。</summary>
+    private const float DesignColumnHeight = 432f;
+    /// <summary>设计右侧留白。</summary>
+    private const float DesignRightMargin = 60f;
+    /// <summary>设计按钮间距。</summary>
+    private const float DesignSeparation = 12f;
+    /// <summary>按钮高下限（再小就不可读）。</summary>
+    private const float MinButtonHeight = 24f;
+    /// <summary>菜单列按钮数（开始/继续/自定义/读档/引导/设置/退出）。</summary>
+    private const int MenuButtonCount = 7;
+
+    private readonly List<Button> _menuButtons = [];
+    private VBoxContainer _menuCol = null!;
+    private Rect2 _menuRect;
+
     public override void _Ready()
     {
         SetAnchorsAndOffsetsPreset(LayoutPreset.FullRect);
@@ -130,6 +150,50 @@ public sealed partial class PreTitleScreen : Control
             _resumeBtn.Visible = visible;
         }
     }
+
+    /// <summary>
+    /// 菜单列按当前逻辑面自适应（修复批 ③-7）。
+    /// <para>
+    /// 此前列的尺寸是硬编码的 432 高 × 360 宽（右锚定、垂直居中），而窗口最小尺寸
+    /// （800×1040 物理 @ 内容缩放 2.5）推出的**最小逻辑面只有 320×416**——
+    /// 最小窗口下菜单列左侧出界 100px、上下各出界 8px（M5「标题屏溢出」根治被新页重写推翻）。
+    /// 现按可用空间收缩：设计尺寸以上保持原样（观感零变化），以下按比例收缩。
+    /// </para>
+    /// </summary>
+    private void ApplyMenuLayout(Vector2 faceSize)
+    {
+        float marginX = Mathf.Clamp(faceSize.X * DesignRightMargin / DesignFaceWidth, 8f, DesignRightMargin);
+        float colW = Mathf.Clamp(faceSize.X - 2 * marginX, 120f, DesignColumnWidth);
+        // 列高：设计高 432（垂直居中，与原布局逐像素一致）；逻辑面更矮时收缩到面高
+        float boxH = Mathf.Min(DesignColumnHeight, Mathf.Max(120f, faceSize.Y));
+        int sep = (int)MathF.Round(Mathf.Clamp(DesignSeparation * (boxH / DesignColumnHeight), 4f, DesignSeparation));
+        float buttonH = Mathf.Max(MinButtonHeight, (boxH - 6 * sep) / MenuButtonCount);
+        float totalH = MenuButtonCount * buttonH + (MenuButtonCount - 1) * sep;
+
+        _menuCol.OffsetLeft = -(colW + marginX);
+        _menuCol.OffsetRight = -marginX;
+        _menuCol.OffsetTop = -totalH / 2f;
+        _menuCol.OffsetBottom = totalH / 2f;
+        _menuCol.AddThemeConstantOverride("separation", sep);
+        foreach (Button b in _menuButtons)
+        {
+            b.CustomMinimumSize = new Vector2(0, buttonH);
+        }
+        _menuRect = new Rect2(faceSize.X - marginX - colW, (faceSize.Y - totalH) / 2f, colW, totalH);
+    }
+
+    /// <summary>自测读取：菜单列的实际布局矩形（相对本屏左上角）。</summary>
+    public Rect2 MenuRectForTests => _menuRect;
+
+    /// <summary>自测：按给定逻辑面尺寸重排菜单列（模拟不同窗口尺寸），返回重排后的矩形。</summary>
+    public Rect2 ApplyMenuLayoutForTests(Vector2 faceSize)
+    {
+        ApplyMenuLayout(faceSize);
+        return _menuRect;
+    }
+
+    /// <summary>自测读取：菜单列内容的最小尺寸（按钮是否装得下列内）。</summary>
+    public Vector2 MenuContentMinSizeForTests => _menuCol.GetCombinedMinimumSize();
 
     // ================= 3D 场景 =================
 
@@ -349,7 +413,7 @@ public sealed partial class PreTitleScreen : Control
 
     private void BuildUi()
     {
-        // 菜单按钮列（右，45vh 高，字体对齐人类提案 25px）
+        // 菜单按钮列（右，设计尺寸 360×432；尺寸随逻辑面自适应，见 ApplyMenuLayout）
         var lxgw = GD.Load<FontFile>("res://assets/fonts/LXGWWenKaiLite-Regular.ttf");
         var times = new SystemFont { FontNames = new[] { "Times New Roman" } };
         var col = new VBoxContainer
@@ -357,7 +421,8 @@ public sealed partial class PreTitleScreen : Control
             AnchorLeft = 1f, AnchorRight = 1f, AnchorTop = 0.5f, AnchorBottom = 0.5f,
             OffsetLeft = -420, OffsetRight = -60, OffsetTop = -216, OffsetBottom = 216,
         };
-        col.AddThemeConstantOverride("separation", 12);
+        col.AddThemeConstantOverride("separation", (int)DesignSeparation);
+        _menuCol = col;
         _menuUi.Add(col);
         AddChild(col);
 
@@ -376,6 +441,7 @@ public sealed partial class PreTitleScreen : Control
                 new Color(0.086f, 0.29f, 0.31f, primary ? 0.4f : 0.20f)));
             b.AddThemeStyleboxOverride("hover", MakeBox(new Color(1, 1, 1, 0.98f), Palette.Active.Accent));
             b.AddThemeStyleboxOverride("pressed", MakeBox(new Color(0.86f, 0.93f, 0.93f, 1f), Palette.Active.Accent));
+            _menuButtons.Add(b);
             return b;
         }
 
@@ -447,6 +513,11 @@ public sealed partial class PreTitleScreen : Control
         _status.AddThemeFontSizeOverride("font_size", 15);
         _menuUi.Add(_status);
         AddChild(_status);
+
+        // 菜单列随逻辑面自适应（修复批 ③-7）：窗口尺寸变化即重排，
+        // 保证最小窗口（逻辑面 320×416）下菜单列完整可见。
+        Resized += () => ApplyMenuLayout(Size);
+        ApplyMenuLayout(Size);
 
         ShowMenuUi(false);
     }
