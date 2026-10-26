@@ -940,6 +940,73 @@ public partial class Main : Node
         _autotestSteps.Enqueue(("m5-settings-bugs", AutotestSettingsBugs));
         _autotestSteps.Enqueue(("m5-save-integrity", AutotestSaveIntegrity));
         _autotestSteps.Enqueue(("m5-save-legacy-migration", AutotestSaveLegacyMigration));
+        _autotestSteps.Enqueue(("m5-viewport-level-fit", AutotestViewportLevelFit));
+    }
+
+    private int _vpFitPhase;
+
+    /// <summary>
+    /// 视口变化跟随**当前关卡**（修复批 ③-3）：此前 <c>HandleViewportChange</c> 用命令行默认尺寸
+    /// （13×6）重算相机 → 非默认关卡后任何窗口缩放都跳回默认构图。
+    /// 断言三件事：①相机的盘尺寸=当前关卡尺寸；②距离=该关卡在窄视口下的**公式值**；
+    /// ③反证——若误用命令行默认尺寸，距离会是另一个值（否则此锁测不出回归）。
+    /// </summary>
+    private string AutotestViewportLevelFit()
+    {
+        switch (_vpFitPhase)
+        {
+            case 0:
+                if (_store.State != GameState.Title)
+                {
+                    _store.Pause();
+                    _store.ReturnToTitle();
+                    return "wait";
+                }
+                _spacing = 3.0; // 非默认层间距（与命令行默认 3.5 区分开）
+                _store.StartLevel(new LevelConfig
+                {
+                    Id = "vpfit",
+                    BoardSize = 9,
+                    Layers = 3,
+                    Rules = RuleSet.Gomoku,
+                }, false, AIDifficulty.Medium);
+                _vpFitPhase = 1;
+                return "wait";
+            case 1:
+            {
+                SyncCameraToViewport(new Vector2(400f, 800f)); // 窄高视口（宽高比 0.5）
+                double expected = CameraMath.ComputeDistance(
+                    CameraMath.ComputeTargetDiagonal(CameraMath.ComputeDiagonal(9, 3, _spacing)),
+                    CameraMath.ComputeFov(CameraMath.ComputeNormalizedAspect(9, 3, _spacing)),
+                    0.5);
+                double cmdlineDefault = CameraMath.ComputeDistance(
+                    CameraMath.ComputeTargetDiagonal(CameraMath.ComputeDiagonal(13, 6, _spacing)),
+                    CameraMath.ComputeFov(CameraMath.ComputeNormalizedAspect(13, 6, _spacing)),
+                    0.5);
+                bool sizeOk = _rig.Target.BoardSize == 9 && _rig.Target.Layers == 3;
+                bool distOk = Math.Abs(_rig.Target.Distance - expected) < 1e-9;
+                bool distinguishable = Math.Abs(expected - cmdlineDefault) > 1e-6;
+                _vpFitPhase = 2;
+                return sizeOk && distOk && distinguishable
+                    ? "ok"
+                    : $"FAIL sizeOk={sizeOk} distOk={distOk} dist={_rig.Target.Distance:0.000} " +
+                      $"exp={expected:0.000} cmdline={cmdlineDefault:0.000}";
+            }
+            default:
+                // 复原：默认关卡 + 默认层间距 + 回标题（后续步骤与人工复验都依赖默认上下文）
+                _spacing = GameConfig.DefaultLayerSpacing;
+                _store.StartLevel(new LevelConfig
+                {
+                    Id = "cmdline",
+                    BoardSize = GameConfig.DefaultBoardSize,
+                    Layers = GameConfig.DefaultLayerCount,
+                    Rules = RuleSet.Gomoku,
+                }, false, AIDifficulty.Medium);
+                _store.Pause();
+                _store.ReturnToTitle();
+                _vpFitPhase = 0;
+                return "ok";
+        }
     }
 
     /// <summary>标题屏布局容量锁（2026-09-26 根治回归）：最坏情况（继续对局按钮可见=7 按钮）
@@ -2569,9 +2636,20 @@ public partial class Main : Node
                 StartFadeIn();
             }
             _lastViewportSize = size;
-            _rig.Update(_boardSize, _layers, _spacing, size.X / size.Y, GameConfig.DefaultYaw);
+            SyncCameraToViewport(size);
         }
         SyncViewport3DResolution();
+    }
+
+    /// <summary>
+    /// 视口尺寸变化 → 相机按**当前关卡**尺寸重算公式态（修复批 ③-3）。
+    /// 此前用命令行默认尺寸（<c>_boardSize/_layers</c>）→ 非默认关卡（沙盒自定义、读档随档）
+    /// 之后任何窗口缩放都跳回 13×13×6 构图。
+    /// </summary>
+    private void SyncCameraToViewport(Vector2 size)
+    {
+        var board = _gm.Board;
+        _rig.Update(board.BoardSize, board.Layers, _spacing, size.X / size.Y, GameConfig.DefaultYaw);
     }
 
     /// <summary>
