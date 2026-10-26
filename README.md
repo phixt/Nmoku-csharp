@@ -10,7 +10,7 @@
 
 ## 下载与运行
 
-1. 从 [Releases](../../releases) 下载 `Nmoku-<版本>-win-x64.zip` 并解压。
+1. 从 [Releases](../../releases) 下载 `Nmoku-<版本>-win64.zip` 并解压。
 2. 双击 `Nmoku.exe` 运行。**自包含发布**：内嵌 .NET 运行时，目标机无需安装 .NET 或 Godot。
 3. 系统要求：Windows 10/11 x64；首次启动会创建存档目录（`%APPDATA%\Godot\app_userdata\Nmoku\`）。
 

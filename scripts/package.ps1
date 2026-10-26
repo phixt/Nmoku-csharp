@@ -1,4 +1,4 @@
-﻿﻿# Nmoku Windows 打包脚本（M5 预备）
+﻿# Nmoku Windows 打包脚本（M5 预备）
 # 用法：powershell -NoProfile -ExecutionPolicy Bypass -File scripts\package.ps1 [-Version 0.1.0-alpha]
 # 前提（一次性）：导出模板已安装——编辑器菜单「编辑器 → 管理导出模板 → 下载并安装」，
 #   mono 版约 1GB，装到 %APPDATA%\Godot\export_templates\4.6.2.stable.mono\
