@@ -56,6 +56,13 @@ public sealed partial class SampleMusicEngine : Node, IMusicEngine
                 lane.LinVolume = lane.TargetVolume > lane.LinVolume
                     ? Mathf.Min(lane.TargetVolume, lane.LinVolume + rate)
                     : Mathf.Max(lane.TargetVolume, lane.LinVolume - rate);
+                // 归零量化：淡出步进若落入 0~ε 残差区间（如 Lin=1e-6），下一帧的
+                // IsEqualApprox(Lin, Target) 判等早退会跳过步进，而停播判据要求 Lin<=0 严格成立
+                // → 轨位永挂 -80dB 静默循环。必须在产出残差的同一帧钳到精确 0。
+                if (lane.TargetVolume <= 0f && lane.LinVolume < 0.001f)
+                {
+                    lane.LinVolume = 0f;
+                }
                 lane.Player.VolumeDb = LinearToDb(lane.LinVolume);
             }
             // 停播检查不得放在音量相等早退之后：同帧「指派又转淡出」的轨位（Lin=Target=0 但在播）
