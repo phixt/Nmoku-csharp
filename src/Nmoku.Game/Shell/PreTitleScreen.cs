@@ -1,18 +1,25 @@
 using Godot;
 using Nmoku.Core;
+using Nmoku.Game.Audio;
 using Nmoku.Game.Theme;
 
 namespace Nmoku.Game.Shell;
 
 /// <summary>
-/// 预开始页（原型 R10 定稿的 Godot 原生实现，作为 Title 态壳屏替代旧 TitleScreen）：
-/// 单一 3D 世界——三根字干（压紧实的线格板）即三层棋盘的种子，点击 N 真形变展开成可游玩棋盘。
-/// 落子=Core.Board + Core.AuxScan 真实机制（13 方向×正反、首子即停、4 步上限；己深绿/敌红）。
-/// 旋转=拖拽阻力跟手 + 松手惯性 + 欠阻尼弹簧回弹（30° 槽位）；自转在用户接管后让位。
-/// 手感/构图常量集中在「可调参数」区，在引擎内继续调。与旧 TitleScreen 事件集一致（Main 接线零改动），
-/// Core/状态机/路由零改动。
+/// 开始界面（预开始封面 ↔ 流体形变 ↔ 交互菜单一体化）：
+/// <para>
+/// · 封面态（Letter）：三段精密斜接的雕塑级 3D 字母 N（微错层纵深 + 悬浮黑白双子 + 鼠标微视差），
+///   配右侧原生清晰 2D 标题排版（Nmoku / 立体五子棋 / 点击展开）。
+/// · 流体形变（Morph，可双向可逆）：雕塑 N 三笔画沿纵深分离、舒展并渐隐，同时三层 5×5×3 线格
+///   从中心波浪式逐层涟漪展开，悬浮双子沿弧线落入棋盘格位，透视相机沿曲线滑入 3/4 展示构图，
+///   左上品牌角标与右侧菜单列按错峰级联入场。
+/// · 菜单态（Menu）：左侧 5×5×3 真实 Core.Board + Core.AuxScan 可玩演示盘（柔和自转、拖拽惯性、
+///   点击落子弹跳、13 向辅助线跟随主题与色弱），右侧调色板驱动菜单列（含 hover 强调条与轻移反馈）。
+/// · 工程卫生：物理像素超采样 + MSAA 8×、隐藏时停渲染停进程、实现 <see cref="IKeepAliveRefreshable"/>
+///   原地换肤/换语言不重置阶段与演示棋子、全文本走 <see cref="I18n.T"/>。
+/// </para>
 /// </summary>
-public sealed partial class PreTitleScreen : Control
+public sealed partial class PreTitleScreen : Control, IKeepAliveRefreshable
 {
     public event Action? StartRequested;
     public event Action? ResumeRequested;
@@ -22,226 +29,453 @@ public sealed partial class PreTitleScreen : Control
     public event Action? SettingsRequested;
     public event Action? QuitRequested;
 
-    // ============ 可调参数（引擎内手感调参区） ============
-    private const float MorphDuration = 1.5f;      // 形变时长（秒）
-    private const float LetterYaw = -0.10f;        // 字形态偏航（rad）
-    private const float MenuYaw = 0.30f;           // 盘形态偏航
-    private const float CamXLetter = 3.80f;        // 字形态相机 X（锁排整体居中）
-    private const float CamXMenu = 3.30f;          // 盘形态相机 X（棋盘偏左）
-    private const float CamYLetter = 2.20f;        // 字形态相机 Y（锁排上移）
-    private const float CamYMenu = 2.60f;          // 盘形态相机 Y
-    private const float OrthoSize = 7.2f;          // 正交视口高（世界单位）
-    private const float BarK = 0.18f;              // 字干压缩系数（格线不可辨=实心）
-    private const float BarDx = 2.9f;              // 左右干中心距
-    private const float LineWLetter = 0.26f;       // 字形态线宽（世界单位，互相覆盖=实心）
-    private const float LineWBoard = 0.025f;       // 盘形态线宽
-    private const float StoneR = 0.36f;            // 棋子半径（格=1，真实比例）
-    private const float BallR = 0.30f;             // 预落子蓝球（比棋子略小）
-    private const float MarkerR = 0.13f;           // 辅助线标记球（0.12/0.34 比例）
-    private const float DragSense = 0.010f;        // 拖拽灵敏度（rad/px）
-    private const float DragFollow = 14f;          // 拖拽跟手阻尼（越大越跟手）
-    private const float InertiaFriction = 0.05f;   // 松手惯性摩擦（pow(base, dt)）
-    private const float SpringK = 60f;             // 回弹弹簧刚度
-    private const float SpringDamp = 7f;           // 回弹阻尼（欠阻尼=可见回弹）
-    private const float RestStep = Mathf.Pi / 6f;  // 回弹槽位（30°）
-    private const float AutoSpin = 0.66f;          // 接管前自转速度（rad/s）
-    // =====================================================
+    // ============ 视觉与动效参数 ============
+    private const float MorphDuration = 1.15f;
+    private const float BoardSpacing = 1.55f;       // 3 层 5×5 演示盘层间距（中心对称：+s, 0, -s）
+    private const float CellStep = 0.84f;           // 单格世界尺寸（总宽 4×0.84 = 3.36，紧凑精致）
+    private const float StoneRadius = 0.31f;
+    private const float HoverBallRadius = 0.25f;
+    private const float MarkerRadius = 0.105f;
+    private const float GridThickness = 0.028f;
+    private const float ConnectorThickness = 0.024f;
+    private const float ViewportSupersample = 1.5f;
+
+    // 透视相机起止构图（Cover：N 偏左居中留白舒展；Menu：棋盘稳居左 56%，与右侧菜单列零碰撞）
+    private static readonly Vector3 CoverTarget = new(1.12f, -0.02f, 0f);
+    private static readonly Vector3 MenuTarget = new(1.72f, -0.10f, 0f);
+    private const float CoverYaw = -0.30f;          // -17.2°：展现 N 三笔画的微错层纵深
+    private const float CoverPitch = 0.13f;         // +7.4°
+    private const float CoverDist = 9.4f;
+    private const float CoverFov = 32f;
+
+    private const float MenuYaw = 0.56f;            // +32.1°：经典立体 3/4 展示角
+    private const float MenuPitch = 0.35f;          // +20.1°
+    private const float MenuDist = 11.0f;
+    private const float MenuFov = 34f;
+
+    // 拖拽与惯性手感
+    private const float DragYawSense = 0.009f;
+    private const float DragPitchSense = 0.006f;
+    private const float DragFollow = 14f;
+    private const float InertiaDecay = 0.04f;
+    private const float AutoOrbitSpeed = 0.22f;     // 未接管时的舒缓自转速度（rad/s）
+    private const float MinMenuPitch = 0.08f;
+    private const float MaxMenuPitch = 0.78f;
+
+    // 菜单列设计基准（768×432 逻辑面：宽 248、右留白 44、上下余量充足；最小逻辑面 320×416 自适应不越界）
+    private const float DesignFaceWidth = 768f;
+    private const float DesignColumnWidth = 248f;
+    private const float DesignRightMargin = 44f;
+    private const float DesignButtonHeight = 36f;
+    private const float DesignSeparation = 8f;
+    private const float MinButtonHeight = 24f;
+    private const int MaxMenuButtons = 7;
 
     private enum Phase { Letter, Morph, Menu }
+
     private Phase _phase = Phase.Letter;
-    private float _morphE;                          // 形变进度 0..1
+    private float _morphT;              // 0 = 封面态，1 = 菜单态
     private int _morphDir = 1;
+    private float _clock;               // 呼吸 / 微浮 / 提示脉动时钟
 
-    private readonly Board _board = new(5, 3);      // 演示实例：5×5×3（规模不可成五，简单游玩）
+    // 演示棋盘（5×5×3，真实 Core 实例，独立于主对局）
+    private readonly Board _board = new(5, 3);
     private PlayerColor _turn = PlayerColor.Black;
+    private bool _colorblind;
+    private bool _hasLiveGame;
 
+    // 3D 场景节点
+    private ColorRect _backdrop = null!;
+    private ShaderMaterial _backdropMat = null!;
     private SubViewport _vp = null!;
-    private Node3D _root = null!;                   // 板根（旋转=偏航）
+    private ViewportHost _vpHost = null!;
+    private Node3D _sceneRoot = null!;
     private Camera3D _cam = null!;
-    private readonly List<MeshInstance3D> _lines = [];
+    private DirectionalLight3D _keyLight = null!;
+    private DirectionalLight3D _fillLight = null!;
+    private Godot.Environment _env = null!;
+
+    // 雕塑级 N 字标（三段精确斜接挤出体）
+    private Node3D _letterRoot = null!;
+    private MeshInstance3D _nLeft = null!;
+    private MeshInstance3D _nDiag = null!;
+    private MeshInstance3D _nRight = null!;
+    private StandardMaterial3D _nMatFront = null!;
+    private StandardMaterial3D _nMatMid = null!;
+    private StandardMaterial3D _nMatBack = null!;
+    private float _letterHoverGlow;
+    private bool _letterHovered;
+
+    // 3 层展开棋盘（每层独立容器 + 网格线 + 5 根层连接立柱）
+    private Node3D _boardRoot = null!;
+    private readonly Node3D[] _layerRoots = new Node3D[3];
+    private readonly StandardMaterial3D[] _layerGridMats = new StandardMaterial3D[3];
+    private readonly List<GridBar> _gridBars = [];
+    private readonly List<MeshInstance3D> _connectors = [];
+    private StandardMaterial3D _connectorMat = null!;
+
+    // 棋子（前 2 枚为封面悬浮双子，形变时沿弧线落入展示格位；后续为用户演示落子）
     private readonly List<StoneVisual> _stones = [];
-    private MeshInstance3D _ball = null!;
-    private MeshInstance3D _auxMesh = null!;
-    private readonly List<MeshInstance3D> _auxMarkers = [];
-    private readonly List<Label3D> _text3D = [];
-    private StandardMaterial3D _lineMat = null!;
+    private SphereMesh _stoneMesh = null!;
+    private StandardMaterial3D _stoneBlackMat = null!;
+    private StandardMaterial3D _stoneWhiteMat = null!;
+
+    // 辅助线（真实 Core.AuxScan + 节点池复用，零每帧分配）
+    private MeshInstance3D _hoverBall = null!;
+    private StandardMaterial3D _hoverBallMat = null!;
+    private MeshInstance3D _auxLinesNode = null!;
+    private ImmediateMesh _auxLinesMesh = null!;
     private StandardMaterial3D _auxLineMat = null!;
-
-    // 线段端点：src=字形态（压缩字干）/ dst=盘形态（展开线格），根局部坐标（Z=纵深）
-    private sealed record Seg(Vector3 A0, Vector3 B0, Vector3 A1, Vector3 B1, float W0, float W1);
-    private readonly List<Seg> _segs = [];
-
-    private float _yaw = LetterYaw;                 // 当前偏航（拖拽/弹簧修改）
-    private float _targetYaw;                       // 拖拽目标（阻力跟手）
-    private float _yawVel;                          // 松手角速度
-    private bool _dragging, _userTouched, _settling;
-    private float _restYaw, _lastX, _downX, _downY;
-    private long _lastInteract;
-    private long _downTime;
-    private (int X, int Y, int Z)? _hoverCell;
-    private string _lastHoverKey = "";
-    private Vector2 _downPos;
+    private SphereMesh _auxMarkerMesh = null!;
+    private StandardMaterial3D _auxMarkerSelfMat = null!;
+    private StandardMaterial3D _auxMarkerEnemyMat = null!;
+    private readonly List<MeshInstance3D> _auxMarkerPool = [];
+    private Coordinate3D? _hoverCell;
+    private Coordinate3D? _renderedHoverCell;
     private Vector2? _hoverScreen;
     private bool _auxDirty = true;
 
-    private Button? _resumeBtn;
-    private readonly List<CanvasItem> _menuUi = [];
-    private Label _status = null!;
-    private Control _cornerTitle = null!;
+    // 相机 / 交互态
+    private float _menuYaw = MenuYaw;
+    private float _menuPitch = MenuPitch;
+    private float _targetYaw = MenuYaw;
+    private float _targetPitch = MenuPitch;
+    private float _yawVel;
+    private float _pitchVel;
+    private bool _dragging;
+    private bool _userTouched;
+    private Vector2 _downPos;
+    private ulong _downTimeMs;
+    private Vector2 _parallaxTarget;
+    private Vector2 _parallaxCurrent;
 
-    private const float Spacing = 2.5f;
-    private const float BoardHalf = 2.5f;
-    private static float DOf(int z) => z * Spacing - Spacing;
-    private static readonly Color AuxSelf = new(0f, 0.55f, 0.25f);        // 浅色主题己方深绿（Palette.LineSelf）
-    private static readonly Color AuxEnemy = new(0.816f, 0.008f, 0.106f); // #D0021B 敌方（Palette.LineEnemy）
+    // 2D UI 节点（封面排版 / 左上品牌角标 / 右侧菜单列 / 左下迷你工具条）
+    private FontFile _fontLxgw = null!;
+    private SystemFont _fontSerif = null!;
 
-    private sealed record StoneVisual(MeshInstance3D Node, int X, int Y, int Z);
+    private Control _coverUi = null!;
+    private Label _coverBrand = null!;
+    private ColorRect _coverRule = null!;
+    private Label _coverCn = null!;
+    private Label _coverSub = null!;
+    private Button _coverPromptBtn = null!;
+    private StyleBoxFlat _coverPromptNormal = null!;
+    private StyleBoxFlat _coverPromptHover = null!;
 
-    // ---- 菜单列布局（修复批 ③-7：此前硬编码 432 高/360 宽，在最小逻辑面 320×416 下出界）----
-    /// <summary>设计基准逻辑面宽（1080p 窗口 @ 内容缩放 2.5 → 768 逻辑像素）。</summary>
-    private const float DesignFaceWidth = 768f;
-    /// <summary>设计菜单列宽（右锚定，右侧留白 <see cref="DesignRightMargin"/>）。</summary>
-    private const float DesignColumnWidth = 360f;
-    /// <summary>设计菜单列高（垂直居中；按钮按余量均分）。</summary>
-    private const float DesignColumnHeight = 432f;
-    /// <summary>设计右侧留白。</summary>
-    private const float DesignRightMargin = 60f;
-    /// <summary>设计按钮间距。</summary>
-    private const float DesignSeparation = 12f;
-    /// <summary>按钮高下限（再小就不可读）。</summary>
-    private const float MinButtonHeight = 24f;
-    /// <summary>菜单列按钮数（开始/继续/自定义/读档/引导/设置/退出）。</summary>
-    private const int MenuButtonCount = 7;
+    private Control _cornerUi = null!;
+    private Label _cornerBrand = null!;
+    private Label _cornerCn = null!;
 
-    private readonly List<Button> _menuButtons = [];
     private VBoxContainer _menuCol = null!;
+    private readonly List<MenuButtonItem> _menuItems = [];
+    private MenuButtonItem _resumeItem = null!;
+    private MenuButtonItem _startItem = null!;
+    private MenuButtonItem _customItem = null!;
+    private MenuButtonItem _loadItem = null!;
+    private MenuButtonItem _guideItem = null!;
+    private MenuButtonItem _settingsItem = null!;
+    private MenuButtonItem _quitItem = null!;
     private Rect2 _menuRect;
+
+    private HBoxContainer _bottomBar = null!;
+    private Button _backCoverBtn = null!;
+    private Button _clearDemoBtn = null!;
+    private Panel _turnDot = null!;
+    private StyleBoxFlat _turnDotBox = null!;
+    private Label _demoStatusLabel = null!;
+
+    private sealed record GridBar(
+        MeshInstance3D Node, int Layer, bool Horizontal, int Index,
+        Vector3 BasePos, float FullLength, float Stagger);
+
+    private sealed class StoneVisual
+    {
+        public required MeshInstance3D Node { get; init; }
+        public required int X { get; init; }
+        public required int Y { get; init; }
+        public required int Z { get; init; }
+        public required PlayerColor Color { get; init; }
+        public bool IsShowcase { get; init; }
+        public Vector3 CoverAnchor { get; init; }
+        public float PopProgress { get; set; } = 1f;
+    }
+
+    private sealed class MenuButtonItem
+    {
+        public required Control Slot { get; init; }
+        public required Button Button { get; init; }
+        public required ColorRect AccentBar { get; init; }
+        public required bool IsPrimary { get; init; }
+        public required Func<string> LabelProvider { get; init; }
+        public float HoverAnim { get; set; }
+        public bool Hovered { get; set; }
+    }
 
     public override void _Ready()
     {
         SetAnchorsAndOffsetsPreset(LayoutPreset.FullRect);
         MouseFilter = MouseFilterEnum.Stop;
 
-        BuildViewport();
-        BuildGeometry();
-        BuildStones();
-        BuildAux();
-        BuildText3D();
-        BuildUi();
+        _fontLxgw = GD.Load<FontFile>("res://assets/fonts/LXGWWenKaiLite-Regular.ttf");
+        _fontSerif = new SystemFont { FontNames = ["Georgia", "Times New Roman", "serif"] };
+
+        BuildBackdrop();
+        BuildViewport3D();
+        BuildSculptedN();
+        BuildDemoBoard3D();
+        BuildShowcaseStones();
+        BuildAuxPool();
+        BuildCoverUi();
+        BuildCornerUi();
+        BuildMenuUi();
+        BuildBottomBar();
+
         ApplyTheme();
-        UpdateLines(0f);
-        UpdateStatus();
+        RefreshLocale();
+        ApplyMorphVisuals(0f);
+        SyncLayout(Size);
+
+        Resized += () =>
+        {
+            SyncViewportSize();
+            SyncLayout(Size);
+        };
     }
 
-    /// <summary>标题态进入（Main 状态钩子调用）：重进直接菜单形态，不重播形变。</summary>
+    public override void _Notification(int what)
+    {
+        if (what == NotificationVisibilityChanged && _vp != null)
+        {
+            bool visible = IsVisibleInTree();
+            SetProcess(visible);
+            _vp.RenderTargetUpdateMode = visible
+                ? SubViewport.UpdateMode.Always
+                : SubViewport.UpdateMode.Disabled;
+            if (visible)
+            {
+                SyncViewportSize();
+            }
+        }
+        base._Notification(what);
+    }
+
+    /// <summary>标题态进入（Main 状态钩子调用）：若已是菜单态则保持菜单态，绝不破坏「继续对局」状态。</summary>
     public void OnEntered()
     {
+        SyncResumeVisibility();
+        SyncViewportSize();
         if (_phase == Phase.Menu)
         {
-            ShowMenuUi(true);
+            ApplyMorphVisuals(1f);
         }
     }
 
-    /// <summary>继续对局按钮可见性（与旧 TitleScreen 同接口，Main 状态钩子调用）。</summary>
+    /// <summary>继续对局按钮可见性（独立于阶段与 UI 显示开关，不再被 ShowMenuUi 覆盖）。</summary>
     public void UpdateResumeButton(bool visible)
     {
-        if (_resumeBtn != null)
-        {
-            _resumeBtn.Visible = visible;
-        }
+        _hasLiveGame = visible;
+        SyncResumeVisibility();
+        SyncLayout(Size);
     }
 
-    /// <summary>
-    /// 菜单列按当前逻辑面自适应（修复批 ③-7）。
-    /// <para>
-    /// 此前列的尺寸是硬编码的 432 高 × 360 宽（右锚定、垂直居中），而窗口最小尺寸
-    /// （800×1040 物理 @ 内容缩放 2.5）推出的**最小逻辑面只有 320×416**——
-    /// 最小窗口下菜单列左侧出界 100px、上下各出界 8px（M5「标题屏溢出」根治被新页重写推翻）。
-    /// 现按可用空间收缩：设计尺寸以上保持原样（观感零变化），以下按比例收缩。
-    /// </para>
-    /// </summary>
-    private void ApplyMenuLayout(Vector2 faceSize)
+    /// <summary>色弱开关同步（演示盘辅助线实时响应）。</summary>
+    public void SetColorblind(bool colorblind)
     {
-        float marginX = Mathf.Clamp(faceSize.X * DesignRightMargin / DesignFaceWidth, 8f, DesignRightMargin);
-        float colW = Mathf.Clamp(faceSize.X - 2 * marginX, 120f, DesignColumnWidth);
-        // 列高：设计高 432（垂直居中，与原布局逐像素一致）；逻辑面更矮时收缩到面高
-        float boxH = Mathf.Min(DesignColumnHeight, Mathf.Max(120f, faceSize.Y));
-        int sep = (int)MathF.Round(Mathf.Clamp(DesignSeparation * (boxH / DesignColumnHeight), 4f, DesignSeparation));
-        float buttonH = Mathf.Max(MinButtonHeight, (boxH - 6 * sep) / MenuButtonCount);
-        float totalH = MenuButtonCount * buttonH + (MenuButtonCount - 1) * sep;
-
-        _menuCol.OffsetLeft = -(colW + marginX);
-        _menuCol.OffsetRight = -marginX;
-        _menuCol.OffsetTop = -totalH / 2f;
-        _menuCol.OffsetBottom = totalH / 2f;
-        _menuCol.AddThemeConstantOverride("separation", sep);
-        foreach (Button b in _menuButtons)
+        if (_colorblind == colorblind)
         {
-            b.CustomMinimumSize = new Vector2(0, buttonH);
+            return;
         }
-        _menuRect = new Rect2(faceSize.X - marginX - colW, (faceSize.Y - totalH) / 2f, colW, totalH);
+        _colorblind = colorblind;
+        ApplyTheme();
     }
 
-    /// <summary>自测读取：菜单列的实际布局矩形（相对本屏左上角）。</summary>
+    // ---- IKeepAliveRefreshable：切主题 / 切语言原地刷新，保留当前阶段与演示落子 ----
+
+    public void RefreshTheme() => ApplyTheme();
+
+    public void RefreshLocale()
+    {
+        _coverCn.Text = I18n.T(Text.Title.GameName);
+        _coverSub.Text = I18n.T(Text.Title.Subtitle);
+        _coverPromptBtn.Text = I18n.T(Text.Title.ClickToEnter);
+        _cornerCn.Text = I18n.T(Text.Title.GameName);
+        foreach (var item in _menuItems)
+        {
+            item.Button.Text = item.LabelProvider();
+        }
+        _backCoverBtn.Text = $"↺ {I18n.T(Text.Title.BackToCover)}";
+        _clearDemoBtn.Text = I18n.T(Text.Title.ClearDemo);
+        UpdateDemoStatus();
+    }
+
+    // ---- 自测与可视化检查钩子 ----
+
+    /// <summary>自测读取：菜单列实际布局矩形（相对本屏左上角）。</summary>
     public Rect2 MenuRectForTests => _menuRect;
 
-    /// <summary>自测：按给定逻辑面尺寸重排菜单列（模拟不同窗口尺寸），返回重排后的矩形。</summary>
+    /// <summary>自测：按给定逻辑面重排菜单列并返回实际矩形。</summary>
     public Rect2 ApplyMenuLayoutForTests(Vector2 faceSize)
     {
         ApplyMenuLayout(faceSize);
         return _menuRect;
     }
 
-    /// <summary>自测读取：菜单列内容的最小尺寸（按钮是否装得下列内）。</summary>
+    /// <summary>自测读取：菜单列内容最小尺寸。</summary>
     public Vector2 MenuContentMinSizeForTests => _menuCol.GetCombinedMinimumSize();
 
-    // ================= 3D 场景 =================
+    /// <summary>自测读取：当前阶段（0=Letter, 1=Morph, 2=Menu）。</summary>
+    internal int PhaseForTests => (int)_phase;
 
-    private void BuildViewport()
+    /// <summary>自测读取：演示盘已落子数（含 2 枚初始展示子）。</summary>
+    internal int DemoStoneCountForTests => _board.MoveCount();
+
+    /// <summary>自测读取：继续对局按钮当前是否可见。</summary>
+    internal bool ResumeVisibleForTests => _resumeItem.Slot.Visible;
+
+    /// <summary>自测读取：视口渲染更新模式（隐藏时必须为 Disabled）。</summary>
+    internal SubViewport.UpdateMode ViewportUpdateModeForTests => _vp.RenderTargetUpdateMode;
+
+    /// <summary>自测 / 视觉抓帧：直接定位到指定形变进度（0=封面，0..1=形变中，1=菜单）。</summary>
+    internal void SetVisualProgressForCheck(float t, Coordinate3D? previewHover = null)
+    {
+        _morphT = Mathf.Clamp(t, 0f, 1f);
+        _phase = _morphT <= 0.001f ? Phase.Letter : _morphT >= 0.999f ? Phase.Menu : Phase.Morph;
+        if (previewHover.HasValue)
+        {
+            _hoverCell = previewHover;
+            _auxDirty = true;
+        }
+        else
+        {
+            _hoverCell = null;
+            _auxDirty = true;
+        }
+        ApplyMorphVisuals(_morphT);
+        if (_phase == Phase.Menu)
+        {
+            RebuildAux();
+        }
+    }
+
+    /// <summary>自测：在演示盘上落一子（验证切主题/切语言后演示盘不被清零）。</summary>
+    internal bool PlaceDemoStoneForTests(int x, int y, int z)
+    {
+        if (!_board.InBounds(x, y, z) || !_board.IsEmpty(x, y, z))
+        {
+            return false;
+        }
+        PlaceStone(new Coordinate3D(x, y, z), playAudio: false);
+        return true;
+    }
+
+    // ================= 1. 氛围径向渐变背景 =================
+
+    private void BuildBackdrop()
+    {
+        var shader = new Shader
+        {
+            Code = """
+shader_type canvas_item;
+uniform vec4 bg_base : source_color = vec4(0.10, 0.11, 0.13, 1.0);
+uniform vec4 bg_glow : source_color = vec4(0.16, 0.21, 0.26, 1.0);
+uniform vec4 bg_edge : source_color = vec4(0.06, 0.07, 0.09, 1.0);
+uniform vec2 glow_center = vec2(0.35, 0.50);
+uniform float aspect = 1.777;
+
+void fragment() {
+    vec2 d = UV - glow_center;
+    d.x *= aspect;
+    float dist = length(d);
+    float glow = exp(-dist * dist * 2.15);
+    float vig = smoothstep(0.35, 1.45, dist);
+    vec3 col = mix(bg_base.rgb, bg_edge.rgb, vig * 0.55);
+    col = mix(col, bg_glow.rgb, glow * 0.65);
+    COLOR = vec4(col, 1.0);
+}
+""",
+        };
+        _backdropMat = new ShaderMaterial { Shader = shader };
+        _backdrop = new ColorRect
+        {
+            Material = _backdropMat,
+            MouseFilter = MouseFilterEnum.Ignore,
+        };
+        _backdrop.SetAnchorsAndOffsetsPreset(LayoutPreset.FullRect);
+        AddChild(_backdrop);
+    }
+
+    // ================= 2. 物理像素超采样 3D 视口 =================
+
+    private void BuildViewport3D()
     {
         _vp = new SubViewport
         {
             OwnWorld3D = true,
-            Size = new Vector2I(1280, 960),
+            TransparentBg = true,
+            Msaa3D = Viewport.Msaa.Msaa8X,
+            Size = new Vector2I(1280, 720),
             RenderTargetUpdateMode = SubViewport.UpdateMode.Always,
         };
-        _vp.World3D = new World3D
+        _env = new Godot.Environment
         {
-            Environment = new Godot.Environment
-            {
-                BackgroundMode = Godot.Environment.BGMode.Color,
-                BackgroundColor = Palette.Active.Background,
-            },
+            BackgroundMode = Godot.Environment.BGMode.ClearColor,
+            AmbientLightSource = Godot.Environment.AmbientSource.Color,
+            AmbientLightColor = Colors.White,
+            AmbientLightEnergy = 0.62f,
         };
+        _vp.World3D = new World3D { Environment = _env };
+        AddChild(_vp);
 
-        AddChild(_vp);                               // 视口必须入树才会渲染
-        _root = new Node3D { Rotation = new Vector3(0, _yaw, 0) };
-        _vp.AddChild(_root);
+        _sceneRoot = new Node3D { Name = "PreTitleScene" };
+        _vp.AddChild(_sceneRoot);
 
         _cam = new Camera3D
         {
-            Projection = Camera3D.ProjectionType.Orthogonal,
-            Size = OrthoSize,
-            Position = new Vector3(CamXLetter, CamYLetter, 12f),
+            Projection = Camera3D.ProjectionType.Perspective,
+            KeepAspect = Camera3D.KeepAspectEnum.Height,
+            Fov = CoverFov,
+            Near = 0.2f,
+            Far = 80f,
+            Current = true,
         };
         _vp.AddChild(_cam);
 
-        var light = new DirectionalLight3D { Rotation = new Vector3(-0.9f, 0.6f, 0f), LightEnergy = 0.6f };
-        _vp.AddChild(light);
+        // 主光 + 柔和补光：让雕塑 N 与棋子具备温润的明暗体积感
+        _keyLight = new DirectionalLight3D
+        {
+            RotationDegrees = new Vector3(-42f, 34f, 0f),
+            LightEnergy = 0.88f,
+        };
+        _vp.AddChild(_keyLight);
 
-        var host = new ViewportHost { Viewport = _vp };
-        host.SetAnchorsAndOffsetsPreset(LayoutPreset.FullRect);
-        host.Resized += SyncViewportSize;
-        AddChild(host);
-        Resized += SyncViewportSize;
+        _fillLight = new DirectionalLight3D
+        {
+            RotationDegrees = new Vector3(28f, -138f, 0f),
+            LightEnergy = 0.36f,
+        };
+        _vp.AddChild(_fillLight);
+
+        _vpHost = new ViewportHost
+        {
+            Viewport = _vp,
+            MouseFilter = MouseFilterEnum.Ignore,
+        };
+        _vpHost.SetAnchorsAndOffsetsPreset(LayoutPreset.FullRect);
+        AddChild(_vpHost);
         SyncViewportSize();
     }
 
-    /// <summary>SubViewport 纹理宿主（B16 v4 同款：自绘拉伸，最小尺寸恒零，与布局解耦）。</summary>
+    /// <summary>SubViewport 纹理宿主（B16 v4 同款：最小尺寸恒零，与布局结构性解耦）。</summary>
     private sealed partial class ViewportHost : Control
     {
         public SubViewport? Viewport { get; set; }
-        public override void _Process(double delta) => QueueRedraw();
+        public override void _Process(double delta)
+        {
+            if (IsVisibleInTree())
+            {
+                QueueRedraw();
+            }
+        }
         public override void _Draw()
         {
             var tex = Viewport?.GetTexture();
@@ -252,93 +486,301 @@ public sealed partial class PreTitleScreen : Control
         }
     }
 
-    /// <summary>视口尺寸跟随宿主像素（防拉伸变形；窗口/dpr 变化每帧自愈）。</summary>
+    /// <summary>按宿主逻辑尺寸 × 窗口缩放 × 超采样率同步视口物理像素（根治 csf 2.5 发糊）。</summary>
     private void SyncViewportSize()
     {
-        var w = Mathf.Max(64, (int)(Size.X * devicePixelRatio));
-        var h = Mathf.Max(64, (int)(Size.Y * devicePixelRatio));
+        if (_vp == null || Size.X < 4f || Size.Y < 4f)
+        {
+            return;
+        }
+        float scale = 1f;
+        var win = GetWindow();
+        if (win != null && DisplayServer.GetName() != "headless")
+        {
+            var s = win.GetFinalTransform().Scale;
+            float f = MathF.Min(s.X, s.Y);
+            if (f > 0.1f)
+            {
+                scale = f * ViewportSupersample;
+            }
+        }
+        int w = Mathf.Clamp((int)MathF.Floor(Size.X * scale), 64, 4096);
+        int h = Mathf.Clamp((int)MathF.Floor(Size.Y * scale), 64, 4096);
         if (_vp.Size != new Vector2I(w, h))
         {
             _vp.Size = new Vector2I(w, h);
         }
+        _backdropMat.SetShaderParameter("aspect", Size.X / MathF.Max(1f, Size.Y));
     }
 
-    private float devicePixelRatio => 1f; // 宿主像素即最终像素（窗口内容缩放由根视口承担）
+    // ================= 3. 雕塑级 3D 字母 N（精确斜接挤出体） =================
 
-    private void BuildGeometry()
+    private void BuildSculptedN()
     {
-        _lineMat = new StandardMaterial3D
+        _letterRoot = new Node3D { Name = "SculptedN" };
+        _sceneRoot.AddChild(_letterRoot);
+
+        _nMatFront = CreateSculptMaterial();
+        _nMatMid = CreateSculptMaterial();
+        _nMatBack = CreateSculptMaterial();
+
+        const float halfH = 1.66f;
+        const float outerX = 1.28f;
+        const float innerX = 0.72f;
+        const float depth = 0.42f;
+
+        // 左竖干：[-outerX, -innerX] × [-halfH, +halfH]
+        _nLeft = new MeshInstance3D
+        {
+            Name = "NLeft",
+            Mesh = BuildExtrudedQuad(
+                new Vector2(-outerX, -halfH),
+                new Vector2(-innerX, -halfH),
+                new Vector2(-innerX, halfH),
+                new Vector2(-outerX, halfH),
+                depth),
+            MaterialOverride = _nMatFront,
+        };
+
+        // 斜干：上下水平边与左右竖干顶/底完全齐平（精确瑞士字体斜接，零突角！）
+        _nDiag = new MeshInstance3D
+        {
+            Name = "NDiag",
+            Mesh = BuildExtrudedQuad(
+                new Vector2(innerX, -halfH),
+                new Vector2(outerX, -halfH),
+                new Vector2(-innerX, halfH),
+                new Vector2(-outerX, halfH),
+                depth * 0.92f),
+            MaterialOverride = _nMatMid,
+        };
+
+        // 右竖干：[+innerX, +outerX] × [-halfH, +halfH]
+        _nRight = new MeshInstance3D
+        {
+            Name = "NRight",
+            Mesh = BuildExtrudedQuad(
+                new Vector2(innerX, -halfH),
+                new Vector2(outerX, -halfH),
+                new Vector2(outerX, halfH),
+                new Vector2(innerX, halfH),
+                depth),
+            MaterialOverride = _nMatBack,
+        };
+
+        _letterRoot.AddChild(_nLeft);
+        _letterRoot.AddChild(_nDiag);
+        _letterRoot.AddChild(_nRight);
+    }
+
+    private static StandardMaterial3D CreateSculptMaterial() => new()
+    {
+        Roughness = 0.34f,
+        Metallic = 0.08f,
+        Transparency = BaseMaterial3D.TransparencyEnum.Alpha,
+    };
+
+    /// <summary>由逆时针 4 顶点构造带精确平面法线的挤出 3D 棱柱（前/后/四侧 6 面共 12 三角形）。</summary>
+    private static ArrayMesh BuildExtrudedQuad(Vector2 p0, Vector2 p1, Vector2 p2, Vector2 p3, float depth)
+    {
+        float hz = depth * 0.5f;
+        var verts = new List<Vector3>(36);
+        var norms = new List<Vector3>(36);
+
+        void AddTri(Vector3 a, Vector3 b, Vector3 c, Vector3 n)
+        {
+            verts.Add(a); verts.Add(b); verts.Add(c);
+            norms.Add(n); norms.Add(n); norms.Add(n);
+        }
+
+        void AddQuad(Vector3 a, Vector3 b, Vector3 c, Vector3 d, Vector3 n)
+        {
+            AddTri(a, b, c, n);
+            AddTri(a, c, d, n);
+        }
+
+        var f0 = new Vector3(p0.X, p0.Y, hz);
+        var f1 = new Vector3(p1.X, p1.Y, hz);
+        var f2 = new Vector3(p2.X, p2.Y, hz);
+        var f3 = new Vector3(p3.X, p3.Y, hz);
+
+        var b0 = new Vector3(p0.X, p0.Y, -hz);
+        var b1 = new Vector3(p1.X, p1.Y, -hz);
+        var b2 = new Vector3(p2.X, p2.Y, -hz);
+        var b3 = new Vector3(p3.X, p3.Y, -hz);
+
+        // 前面 (+Z) & 背面 (-Z)（Godot 正面顺时针/右手绕序：外法向由 (c-a)×(b-a) 决定，用前后双向稳妥构造）
+        AddQuad(f0, f3, f2, f1, Vector3.Back);
+        AddQuad(b0, b1, b2, b3, Vector3.Forward);
+
+        // 四侧面
+        Vector2[] pts = [p0, p1, p2, p3];
+        Vector3[] front = [f0, f1, f2, f3];
+        Vector3[] back = [b0, b1, b2, b3];
+        for (int i = 0; i < 4; i++)
+        {
+            int next = (i + 1) % 4;
+            Vector2 edge = pts[next] - pts[i];
+            Vector3 sideNorm = new Vector3(edge.Y, -edge.X, 0f).Normalized();
+            AddQuad(front[i], front[next], back[next], back[i], sideNorm);
+        }
+
+        var arrays = new Godot.Collections.Array();
+        arrays.Resize((int)Mesh.ArrayType.Max);
+        arrays[(int)Mesh.ArrayType.Vertex] = verts.ToArray();
+        arrays[(int)Mesh.ArrayType.Normal] = norms.ToArray();
+        var mesh = new ArrayMesh();
+        mesh.AddSurfaceFromArrays(Mesh.PrimitiveType.Triangles, arrays);
+        return mesh;
+    }
+
+    // ================= 4. 3 层 5×5×3 演示棋盘 =================
+
+    private void BuildDemoBoard3D()
+    {
+        _boardRoot = new Node3D { Name = "DemoBoard" };
+        _sceneRoot.AddChild(_boardRoot);
+
+        float fullLen = 4f * CellStep;
+        var unitBox = new BoxMesh { Size = Vector3.One };
+
+        for (int z = 0; z < 3; z++)
+        {
+            var layerNode = new Node3D { Name = $"Layer_{z}" };
+            _boardRoot.AddChild(layerNode);
+            _layerRoots[z] = layerNode;
+
+            var mat = new StandardMaterial3D
+            {
+                ShadingMode = BaseMaterial3D.ShadingModeEnum.Unshaded,
+                Transparency = BaseMaterial3D.TransparencyEnum.Alpha,
+            };
+            _layerGridMats[z] = mat;
+
+            for (int i = 0; i < 5; i++)
+            {
+                float offset = (i - 2f) * CellStep;
+                float stagger = MathF.Abs(i - 2f) * 0.045f;
+
+                // 水平线（沿 X）
+                var hLine = new MeshInstance3D
+                {
+                    Mesh = unitBox,
+                    MaterialOverride = mat,
+                    CastShadow = GeometryInstance3D.ShadowCastingSetting.Off,
+                };
+                layerNode.AddChild(hLine);
+                _gridBars.Add(new GridBar(hLine, z, true, i, new Vector3(0f, offset, 0f), fullLen, stagger));
+
+                // 竖直线（沿 Y）
+                var vLine = new MeshInstance3D
+                {
+                    Mesh = unitBox,
+                    MaterialOverride = mat,
+                    CastShadow = GeometryInstance3D.ShadowCastingSetting.Off,
+                };
+                layerNode.AddChild(vLine);
+                _gridBars.Add(new GridBar(vLine, z, false, i, new Vector3(offset, 0f, 0f), fullLen, stagger));
+            }
+        }
+
+        // 5 根立体连接立柱（四角 + 天元，呼应正式对局 Board3DView 锚点）
+        _connectorMat = new StandardMaterial3D
         {
             ShadingMode = BaseMaterial3D.ShadingModeEnum.Unshaded,
             Transparency = BaseMaterial3D.TransparencyEnum.Alpha,
-            AlbedoColor = new Color(0.353f, 0.478f, 0.494f, 0.85f), // 源次级字色（青灰），叠压成实心字干
         };
-
-        var barRot = Mathf.Atan2(BarDx - BarK, 5f);   // 对角干摆正：左右干内缘连线的真实方位角
-        var bars = new (float Bx, float Rot, int Z)[]
+        float halfSpan = 2f * CellStep;
+        (float rx, float ry)[] rails =
+        [
+            (-halfSpan, -halfSpan), (halfSpan, -halfSpan),
+            (-halfSpan, halfSpan), (halfSpan, halfSpan),
+            (0f, 0f),
+        ];
+        foreach (var (rx, ry) in rails)
         {
-            (2.5f - BarDx / 2, 0f, 0),
-            (2.5f, barRot, 1),
-            (2.5f + BarDx / 2, 0f, 2),
-        };
-        foreach (var (bx, rot, z) in bars)
-        {
-            var d = DOf(z);
-            var cs = Mathf.Cos(rot);
-            var sn = Mathf.Sin(rot);
-            for (var i = 0; i <= 5; i++)
+            var rail = new MeshInstance3D
             {
-                var du = (i - 2.5f) * BarK;
-                // 列线：字形态=实心笔画（宽线互相覆盖），盘形态=该层竖线
-                _segs.Add(new Seg(
-                    new Vector3(bx + du * cs + 2.5f * sn, 2.5f + du * sn - 2.5f * cs, Spacing),
-                    new Vector3(bx + du * cs - 2.5f * sn, 2.5f + du * sn + 2.5f * cs, Spacing),
-                    new Vector3(i, 0, d), new Vector3(i, 5, d),
-                    LineWLetter, LineWBoard));
-                // 行线：字形态宽 0（几何消失），盘形态=该层横线
-                var vs = 2.5f + (i - 2.5f) * 0.04f;
-                _segs.Add(new Seg(
-                    new Vector3(bx - 2.5f * BarK * cs - (vs - 2.5f) * sn, 2.5f - 2.5f * BarK * sn + (vs - 2.5f) * cs, Spacing),
-                    new Vector3(bx + 2.5f * BarK * cs - (vs - 2.5f) * sn, 2.5f + 2.5f * BarK * sn + (vs - 2.5f) * cs, Spacing),
-                    new Vector3(0, i, d), new Vector3(5, i, d),
-                    0f, LineWBoard));
-            }
-        }
-        foreach (var s in _segs)
-        {
-            var mi = new MeshInstance3D
-            {
-                Mesh = new BoxMesh { Size = Vector3.One },
-                MaterialOverride = _lineMat,
+                Mesh = unitBox,
+                MaterialOverride = _connectorMat,
+                Position = new Vector3(rx, ry, 0f),
+                CastShadow = GeometryInstance3D.ShadowCastingSetting.Off,
             };
-            _lines.Add(mi);
-            _root.AddChild(mi);
+            _boardRoot.AddChild(rail);
+            _connectors.Add(rail);
         }
     }
 
-    private void BuildStones()
+    private static Vector3 CellToBoardLocal(int x, int y, int z) =>
+        new((x - 2f) * CellStep, (y - 2f) * CellStep, (1 - z) * BoardSpacing);
+
+    // ================= 5. 展示棋子与演示落子 =================
+
+    private void BuildShowcaseStones()
     {
-        var stoneMesh = new SphereMesh { Radius = 1f, Height = 2f, RadialSegments = 24, Rings = 12 };
-        foreach (var (x, y, z, kind) in new (int, int, int, PlayerColor)[]
-                 {
-                     (2, 0, 1, PlayerColor.Black),   // 原图标黑子
-                     (2, 1, 0, PlayerColor.White),   // 原图标白子
-                 })
+        _stoneMesh = new SphereMesh { Radius = 1f, Height = 2f, RadialSegments = 28, Rings = 14 };
+        _stoneBlackMat = new StandardMaterial3D { Roughness = 0.28f, Metallic = 0.10f };
+        _stoneWhiteMat = new StandardMaterial3D { Roughness = 0.32f, Metallic = 0.04f };
+        SeedShowcaseStones();
+    }
+
+    private void SeedShowcaseStones()
+    {
+        foreach (var s in _stones)
         {
-            _board.Set(x, y, z, kind);
-            var mi = new MeshInstance3D
-            {
-                Mesh = stoneMesh,
-                Position = new Vector3(x + .5f, y + .5f, DOf(z)),
-                Scale = Vector3.Zero,   // 字形态隐藏；形变中滑入格位并长成
-            };
-            ApplyStoneMaterial(mi, kind);
-            _root.AddChild(mi);
-            _stones.Add(new StoneVisual(mi, x, y, z));
+            _boardRoot.RemoveChild(s.Node);
+            s.Node.QueueFree();
+        }
+        _stones.Clear();
+        _board.Reset();
+        _turn = PlayerColor.Black;
+
+        // 2 枚经典展示子：在封面态轻悬于 N 字标负空间，形变时沿流畅弧线落入斜对角互不遮挡格位
+        AddStoneInternal(1, 1, 0, PlayerColor.Black, isShowcase: true, new Vector3(-0.34f, -0.78f, 0.36f));
+        AddStoneInternal(3, 3, 1, PlayerColor.White, isShowcase: true, new Vector3(0.36f, 0.82f, -0.28f));
+        _auxDirty = true;
+        UpdateDemoStatus();
+    }
+
+    private void AddStoneInternal(int x, int y, int z, PlayerColor color, bool isShowcase, Vector3 coverAnchor)
+    {
+        _board.Set(x, y, z, color);
+        var mi = new MeshInstance3D
+        {
+            Mesh = _stoneMesh,
+            MaterialOverride = color == PlayerColor.Black ? _stoneBlackMat : _stoneWhiteMat,
+            Position = CellToBoardLocal(x, y, z),
+            Scale = Vector3.One * (isShowcase ? StoneRadius : 0.001f),
+        };
+        _boardRoot.AddChild(mi);
+        _stones.Add(new StoneVisual
+        {
+            Node = mi,
+            X = x,
+            Y = y,
+            Z = z,
+            Color = color,
+            IsShowcase = isShowcase,
+            CoverAnchor = coverAnchor,
+            PopProgress = isShowcase ? 1f : 0f,
+        });
+    }
+
+    private void PlaceStone(Coordinate3D cell, bool playAudio)
+    {
+        AddStoneInternal(cell.X, cell.Y, cell.Z, _turn, isShowcase: false, Vector3.Zero);
+        _turn = _turn.Opponent();
+        UpdateDemoStatus();
+        _auxDirty = true;
+        if (playAudio)
+        {
+            AudioManager.Instance?.PlaySfx(SfxKind.Click);
         }
     }
 
-    private void BuildAux()
+    // ================= 6. 辅助线对象池（零每帧分配） =================
+
+    private void BuildAuxPool()
     {
         _auxLineMat = new StandardMaterial3D
         {
@@ -346,588 +788,1090 @@ public sealed partial class PreTitleScreen : Control
             VertexColorUseAsAlbedo = true,
             Transparency = BaseMaterial3D.TransparencyEnum.Alpha,
         };
-        _auxMesh = new MeshInstance3D { Visible = false };
-        _auxMesh.MaterialOverride = _auxLineMat;
-        _root.AddChild(_auxMesh);
-
-        for (var i = 0; i < 26; i++)
+        _auxLinesMesh = new ImmediateMesh();
+        _auxLinesNode = new MeshInstance3D
         {
-            var mat = new StandardMaterial3D
-            {
-                ShadingMode = BaseMaterial3D.ShadingModeEnum.Unshaded,
-                Transparency = BaseMaterial3D.TransparencyEnum.Alpha,
-                NoDepthTest = true,   // 标记画在棋子之上（原图标「子心彩点」来源）
-                RenderPriority = 10,
-            };
-            var m = new MeshInstance3D
-            {
-                Mesh = new SphereMesh { Radius = MarkerR, Height = MarkerR * 2, RadialSegments = 10, Rings = 6 },
-                MaterialOverride = mat,
-                Visible = false,
-            };
-            _auxMarkers.Add(m);
-            _root.AddChild(m);
-        }
-
-        _ball = new MeshInstance3D
-        {
-            Mesh = new SphereMesh { Radius = BallR, Height = BallR * 2, RadialSegments = 20, Rings = 10 },
-            MaterialOverride = new StandardMaterial3D
-            {
-                AlbedoColor = new Color(0.184f, 0.525f, 0.91f),
-                ShadingMode = BaseMaterial3D.ShadingModeEnum.Unshaded,
-            },
+            Name = "AuxLines",
+            Mesh = _auxLinesMesh,
+            MaterialOverride = _auxLineMat,
+            CastShadow = GeometryInstance3D.ShadowCastingSetting.Off,
             Visible = false,
         };
-        _root.AddChild(_ball);
-    }
+        _boardRoot.AddChild(_auxLinesNode);
 
-    private void BuildText3D()
-    {
-        var lxgw = GD.Load<FontFile>("res://assets/fonts/LXGWWenKaiLite-Regular.ttf");
-        var times = new SystemFont { FontNames = new[] { "Times New Roman" } };
-        var z = Spacing + 0.15f;
-        _text3D.Add(new Label3D
+        _auxMarkerMesh = new SphereMesh { Radius = MarkerRadius, Height = MarkerRadius * 2f, RadialSegments = 12, Rings = 6 };
+        _auxMarkerSelfMat = new StandardMaterial3D
         {
-            Text = "moku", Font = times, FontSize = 230, PixelSize = 0.005f, Rotation = new Vector3(0, 0, -0.42f),
-            Modulate = Palette.Active.TextPrimary, HorizontalAlignment = HorizontalAlignment.Left,
-            Position = new Vector3(4.95f, 4.30f, z),
-        });
-        _text3D.Add(new Label3D
-        {
-            Text = I18n.T(Text.Title.GameName), Font = lxgw, FontSize = 140, PixelSize = 0.005f, Rotation = new Vector3(0, 0, -0.42f),
-            Modulate = Palette.Active.TextPrimary, HorizontalAlignment = HorizontalAlignment.Left,
-            Position = new Vector3(4.95f, 3.50f, z),
-        });
-        _text3D.Add(new Label3D
-        {
-            Text = I18n.T(Text.Title.Subtitle), Font = lxgw, FontSize = 52, PixelSize = 0.005f, Rotation = new Vector3(0, 0, -0.42f),
-            Modulate = Palette.Active.TextDim, HorizontalAlignment = HorizontalAlignment.Left,
-            Position = new Vector3(4.95f, 2.80f, z),
-        });
-        foreach (var l in _text3D)
-        {
-            _root.AddChild(l);
-        }
-    }
-
-    private void BuildUi()
-    {
-        // 菜单按钮列（右，设计尺寸 360×432；尺寸随逻辑面自适应，见 ApplyMenuLayout）
-        var lxgw = GD.Load<FontFile>("res://assets/fonts/LXGWWenKaiLite-Regular.ttf");
-        var times = new SystemFont { FontNames = new[] { "Times New Roman" } };
-        var col = new VBoxContainer
-        {
-            AnchorLeft = 1f, AnchorRight = 1f, AnchorTop = 0.5f, AnchorBottom = 0.5f,
-            OffsetLeft = -420, OffsetRight = -60, OffsetTop = -216, OffsetBottom = 216,
+            ShadingMode = BaseMaterial3D.ShadingModeEnum.Unshaded,
+            Transparency = BaseMaterial3D.TransparencyEnum.Alpha,
+            NoDepthTest = true,
+            RenderPriority = 10,
         };
-        col.AddThemeConstantOverride("separation", (int)DesignSeparation);
-        _menuCol = col;
-        _menuUi.Add(col);
-        AddChild(col);
-
-        Button MakeButton(string text, bool primary)
+        _auxMarkerEnemyMat = new StandardMaterial3D
         {
-            var b = new Button
-            {
-                Text = text,
-                CustomMinimumSize = new Vector2(0, 46),
-                SizeFlagsVertical = SizeFlags.ExpandFill,
-                FocusMode = FocusModeEnum.None,
-            };
-            b.AddThemeFontSizeOverride("font_size", 25);
-            b.AddThemeStyleboxOverride("normal", MakeBox(
-                primary ? new Color(0.44f, 0.55f, 0.57f, 0.35f) : new Color(1, 1, 1, 0.72f),
-                new Color(0.086f, 0.29f, 0.31f, primary ? 0.4f : 0.20f)));
-            b.AddThemeStyleboxOverride("hover", MakeBox(new Color(1, 1, 1, 0.98f), Palette.Active.Accent));
-            b.AddThemeStyleboxOverride("pressed", MakeBox(new Color(0.86f, 0.93f, 0.93f, 1f), Palette.Active.Accent));
-            _menuButtons.Add(b);
-            return b;
-        }
-
-        var start = MakeButton(I18n.T(Text.Title.Start), true);
-        start.Pressed += () => StartRequested?.Invoke();
-        col.AddChild(start);
-        _menuUi.Add(start);
-
-        _resumeBtn = MakeButton(I18n.T(Text.Title.ContinueGame), false);
-        _resumeBtn.Pressed += () => ResumeRequested?.Invoke();
-        _resumeBtn.Visible = false;
-        col.AddChild(_resumeBtn);
-        _menuUi.Add(_resumeBtn);
-
-        foreach (var (text, ev) in new (string, Action?)[]
-                 {
-                     (I18n.T(Text.Title.CustomGame), CustomGameRequested),
-                     (I18n.T(Text.Title.LoadGame), LoadRequested),
-                     (I18n.T(Text.Title.Guide), GuideRequested),
-                     (I18n.T(Text.Settings.Title), SettingsRequested),
-                     (I18n.T(Text.Title.Quit), QuitRequested),
-                 })
-        {
-            var b = MakeButton(text, false);
-            if (ev != null)
-            {
-                b.Pressed += ev;
-            }
-            col.AddChild(b);
-            _menuUi.Add(b);
-        }
-
-        // 左上角标题（菜单形态；从屏左滑入接续 Label3D 锁排）
-        var corner = new VBoxContainer { Position = new Vector2(-320, 18), MouseFilter = MouseFilterEnum.Ignore };
-        var nmLabel = new Label { Text = "Nmoku" };
-        nmLabel.AddThemeFontOverride("font", times);
-        nmLabel.AddThemeFontSizeOverride("font_size", 46);
-        nmLabel.AddThemeColorOverride("font_color", Palette.Active.Accent);
-        var cnLabel = new Label { Text = I18n.T(Text.Title.GameName) };
-        cnLabel.AddThemeFontOverride("font", lxgw);
-        cnLabel.AddThemeFontSizeOverride("font_size", 26);
-        corner.AddChild(nmLabel);
-        corner.AddChild(cnLabel);
-        _cornerTitle = corner;
-        _menuUi.Add(corner);
-        AddChild(corner);
-
-        // 左下重置
-        var reset = new Button
-        {
-            Text = "↺ 返回字形",
-            AnchorTop = 1f, AnchorBottom = 1f,
-            OffsetLeft = 16, OffsetTop = -52, OffsetRight = 130, OffsetBottom = -18,
-            FocusMode = FocusModeEnum.None,
+            ShadingMode = BaseMaterial3D.ShadingModeEnum.Unshaded,
+            Transparency = BaseMaterial3D.TransparencyEnum.Alpha,
+            NoDepthTest = true,
+            RenderPriority = 10,
         };
-        reset.AddThemeFontSizeOverride("font_size", 14);
-        reset.Pressed += StartMorphBack;
-        _menuUi.Add(reset);
-        AddChild(reset);
 
-        // 状态行（底部，右移避开重置按钮）
-        _status = new Label
+        _hoverBallMat = new StandardMaterial3D
         {
-            AnchorTop = 1f, AnchorBottom = 1f,
-            OffsetLeft = 175, OffsetTop = -44,
-            MouseFilter = MouseFilterEnum.Ignore,
+            ShadingMode = BaseMaterial3D.ShadingModeEnum.Unshaded,
+            Transparency = BaseMaterial3D.TransparencyEnum.Alpha,
         };
-        _status.AddThemeColorOverride("font_color", Palette.Active.TextDim);
-        _status.AddThemeFontSizeOverride("font_size", 15);
-        _menuUi.Add(_status);
-        AddChild(_status);
-
-        // 菜单列随逻辑面自适应（修复批 ③-7）：窗口尺寸变化即重排，
-        // 保证最小窗口（逻辑面 320×416）下菜单列完整可见。
-        Resized += () => ApplyMenuLayout(Size);
-        ApplyMenuLayout(Size);
-
-        ShowMenuUi(false);
-    }
-
-    private static StyleBoxFlat MakeBox(Color bg, Color border) => new()
-    {
-        BgColor = bg,
-        BorderColor = border,
-        BorderWidthBottom = 1, BorderWidthLeft = 1, BorderWidthRight = 1, BorderWidthTop = 1,
-        CornerRadiusBottomLeft = 8, CornerRadiusBottomRight = 8, CornerRadiusTopLeft = 8, CornerRadiusTopRight = 8,
-    };
-
-    private void ShowMenuUi(bool on)
-    {
-        foreach (var c in _menuUi)
+        _hoverBall = new MeshInstance3D
         {
-            c.Visible = on;
-        }
-        if (on)
-        {
-            _cornerTitle.Position = new Vector2(-320, 18);   // 滑入起点（视觉连续）
-        }
+            Name = "HoverBall",
+            Mesh = new SphereMesh { Radius = HoverBallRadius, Height = HoverBallRadius * 2f, RadialSegments = 20, Rings = 10 },
+            MaterialOverride = _hoverBallMat,
+            CastShadow = GeometryInstance3D.ShadowCastingSetting.Off,
+            Visible = false,
+        };
+        _boardRoot.AddChild(_hoverBall);
     }
-
-    // ================= 形变与线格 =================
-
-    /// <summary>逐线段端点/宽度插值 → 盒体变换（字形态压紧实=实心字干；盘形态=展开线格）。</summary>
-    private void UpdateLines(float e)
-    {
-        foreach (var (seg, mi) in _segs.Zip(_lines, (s, m) => (s, m)))
-        {
-            var a = seg.A0.Lerp(seg.A1, e);
-            var b = seg.B0.Lerp(seg.B1, e);
-            var w = Mathf.Lerp(seg.W0, seg.W1, e);
-            var dir = b - a;
-            var len = dir.Length();
-            if (len < 0.01f || w < 0.005f)
-            {
-                mi.Scale = Vector3.Zero;
-                continue;
-            }
-            mi.Position = (a + b) / 2f;
-            mi.Scale = new Vector3(w, len, w);
-            mi.Rotation = new Vector3(0, 0, Mathf.Atan2(dir.Y, dir.X) - Mathf.Pi / 2f);
-        }
-    }
-
-    // ================= 辅助线（真实 AuxScan） =================
 
     private void RebuildAux()
     {
-        var show = _hoverCell is { } h && _board.IsEmpty(h.X, h.Y, h.Z);
-        _auxMesh.Visible = show;
-        foreach (var m in _auxMarkers)
+        var pal = Palette.For(_colorblind);
+        bool show = _phase == Phase.Menu && _hoverCell is { } h && _board.InBounds(h) && _board.IsEmpty(h.X, h.Y, h.Z);
+        _auxLinesMesh.ClearSurfaces();
+        _auxLinesNode.Visible = false;
+        _hoverBall.Visible = show;
+        foreach (var m in _auxMarkerPool)
         {
             m.Visible = false;
         }
-        _ball.Visible = show;
         if (!show || _hoverCell is not { } cell)
         {
+            _renderedHoverCell = null;
             return;
         }
 
-        var res = AuxScan.Scan(_board, _turn, new Coordinate3D(cell.X, cell.Y, cell.Z), false, true);
-        var im = new ImmediateMesh();
-        im.SurfaceBegin(Mesh.PrimitiveType.Lines, _auxLineMat);
-        foreach (var line in res.SpaceLines)
-        {
-            var c = line.Role == AuxRole.Self ? AuxSelf : AuxEnemy;
-            im.SurfaceSetColor(c);
-            im.SurfaceAddVertex(new Vector3(line.Start.X + .5f, line.Start.Y + .5f, DOf(line.Start.Z)));
-            im.SurfaceSetColor(c);
-            im.SurfaceAddVertex(new Vector3(line.End.X + .5f, line.End.Y + .5f, DOf(line.End.Z)));
-        }
-        im.SurfaceEnd();
-        _auxMesh.Mesh = im;
+        _renderedHoverCell = cell;
+        _hoverBall.Position = CellToBoardLocal(cell.X, cell.Y, cell.Z);
 
-        var idx = 0;
+        var res = AuxScan.Scan(_board, _turn, cell, includePlanar: false, includeSpace: true);
+        if (res.SpaceLines.Count > 0)
+        {
+            _auxLinesMesh.SurfaceBegin(Mesh.PrimitiveType.Lines, _auxLineMat);
+            foreach (var line in res.SpaceLines)
+            {
+                var c = line.Role == AuxRole.Self ? pal.LineSelf : pal.LineEnemy;
+                var vc = new Color(c.R, c.G, c.B, 0.92f);
+                _auxLinesMesh.SurfaceSetColor(vc);
+                _auxLinesMesh.SurfaceAddVertex(CellToBoardLocal(line.Start.X, line.Start.Y, line.Start.Z));
+                _auxLinesMesh.SurfaceSetColor(vc);
+                _auxLinesMesh.SurfaceAddVertex(CellToBoardLocal(line.End.X, line.End.Y, line.End.Z));
+            }
+            _auxLinesMesh.SurfaceEnd();
+            _auxLinesNode.Visible = true;
+        }
+
+        int used = 0;
         foreach (var m in res.SpaceMarkers)
         {
-            if (idx >= _auxMarkers.Count)
+            if (used >= _auxMarkerPool.Count)
             {
-                break;
+                var node = new MeshInstance3D
+                {
+                    Mesh = _auxMarkerMesh,
+                    CastShadow = GeometryInstance3D.ShadowCastingSetting.Off,
+                };
+                _boardRoot.AddChild(node);
+                _auxMarkerPool.Add(node);
             }
-            var mi = _auxMarkers[idx++];
-            mi.Position = new Vector3(m.Position.X + .5f, m.Position.Y + .5f, DOf(m.Position.Z));
-            ((StandardMaterial3D)mi.MaterialOverride).AlbedoColor =
-                m.Role == AuxRole.Self ? AuxSelf : AuxEnemy;
+            var mi = _auxMarkerPool[used++];
+            mi.Position = CellToBoardLocal(m.Position.X, m.Position.Y, m.Position.Z);
+            mi.MaterialOverride = m.Role == AuxRole.Self ? _auxMarkerSelfMat : _auxMarkerEnemyMat;
             mi.Visible = true;
         }
-
-        _ball.Position = new Vector3(cell.X + .5f, cell.Y + .5f, DOf(cell.Z));
     }
 
-    // ================= 交互 =================
+    // ================= 7. 原生清晰 2D UI 层 =================
 
-    public override void _GuiInput(InputEvent @event)
+    private void BuildCoverUi()
     {
-        if (_phase == Phase.Letter)
-        {
-            if (@event is InputEventMouseButton mb && mb.Pressed && mb.ButtonIndex == MouseButton.Left
-                && InLetterZone(mb.Position))
-            {
-                StartMorph();
-            }
-            return;
-        }
-        if (_phase != Phase.Menu)
-        {
-            return;
-        }
-        if (@event is InputEventMouseButton mb2 && mb2.ButtonIndex == MouseButton.Left)
-        {
-            if (mb2.Pressed)
-            {
-                _dragging = true;
-                _settling = false;
-                _lastX = mb2.Position.X;
-                _downPos = mb2.Position;
-                _downTime = (long)Time.GetTicksMsec();
-                _targetYaw = _yaw;
-                _yawVel = 0;
-                _userTouched = true;
-            }
-            else if (_dragging)
-            {
-                _dragging = false;
-                var moved = (mb2.Position - _downPos).Length();
-                if (moved < 6f && Time.GetTicksMsec() - (ulong)_downTime < 500 &&
-                    _hoverCell is { } cell && _board.IsEmpty(cell.X, cell.Y, cell.Z))
-                {
-                    PlaceStone(cell);
-                }
-                else
-                {
-                    _yawVel = Mathf.Clamp(_yawVel, -2.5f, 2.5f);   // 松手惯性
-                }
-                _lastInteract = (long)Time.GetTicksMsec();
-            }
-        }
-        else if (@event is InputEventMouseMotion mm)
-        {
-            if (_dragging)
-            {
-                _targetYaw += mm.Relative.X * DragSense;
-            }
-            _hoverScreen = mm.Position;
-            _lastInteract = (long)Time.GetTicksMsec();
-        }
-    }
+        _coverUi = new Control { MouseFilter = MouseFilterEnum.Ignore };
+        _coverUi.SetAnchorsAndOffsetsPreset(LayoutPreset.FullRect);
+        AddChild(_coverUi);
 
-    private bool InLetterZone(Vector2 pos)
-    {
-        var minX = float.MaxValue; var maxX = float.MinValue;
-        var minY = float.MaxValue; var maxY = float.MinValue;
-        foreach (var s in _segs)
-        {
-            foreach (var p in new[] { s.A0, s.B0 })
-            {
-                var q = ToScreen(_root.ToGlobal(p));
-                minX = Mathf.Min(minX, q.X); maxX = Mathf.Max(maxX, q.X);
-                minY = Mathf.Min(minY, q.Y); maxY = Mathf.Max(maxY, q.Y);
-            }
-        }
-        return pos.X > minX - 30 && pos.X < maxX + 30 && pos.Y > minY - 30 && pos.Y < maxY + 30;
-    }
+        var stack = new VBoxContainer { Name = "CoverStack", MouseFilter = MouseFilterEnum.Ignore };
+        stack.AddThemeConstantOverride("separation", 8);
+        _coverUi.AddChild(stack);
 
-    /// <summary>世界 → 屏幕像素（正交相机线性换算）。</summary>
-    private Vector2 ToScreen(Vector3 globalPos)
-    {
-        var vpSize = (Vector2)_vp.Size;
-        var local = _cam.ToLocal(globalPos);
-        var halfH = OrthoSize / 2f;
-        var halfW = halfH * vpSize.X / vpSize.Y;
-        var x = (local.X + halfW) / (halfW * 2f) * vpSize.X;
-        var y = (halfH - local.Y) / (halfH * 2f) * vpSize.Y;
-        return new Vector2(x, y) / vpSize * Size;
-    }
-
-    private (int X, int Y, int Z)? PickCell(Vector2 screenPos)
-    {
-        var vpPos = screenPos / Size * (Vector2)_vp.Size;
-        var from = _cam.ProjectRayOrigin(vpPos);
-        var dir = _cam.ProjectRayNormal(vpPos);
-        var normal = _root.GlobalTransform.Basis.Z;
-        (int, int, int)? best = null;
-        var bestT = float.MaxValue;
-        for (var z = 0; z < 3; z++)
+        _coverBrand = new Label
         {
-            var plane = new Plane(normal, _root.ToGlobal(new Vector3(2.5f, 2.5f, DOf(z))));
-            var hit = plane.IntersectsRay(from, dir);
-            if (hit == null)
-            {
-                continue;
-            }
-            var local = _root.ToLocal(hit.Value);
-            var cx = (int)Mathf.Floor(local.X);
-            var cy = (int)Mathf.Floor(local.Y);
-            if (cx < 0 || cx >= 5 || cy < 0 || cy >= 5)
-            {
-                continue;
-            }
-            var t = (hit.Value - from).Length();
-            if (t < bestT)
-            {
-                bestT = t;
-                best = (cx, cy, z);
-            }
-        }
-        return best;
-    }
-
-    private void PlaceStone((int X, int Y, int Z) cell)
-    {
-        _board.Set(cell.X, cell.Y, cell.Z, _turn);
-        var mi = new MeshInstance3D
-        {
-            Mesh = new SphereMesh { Radius = 1f, Height = 2f, RadialSegments = 24, Rings = 12 },
-            Position = new Vector3(cell.X + .5f, cell.Y + .5f, DOf(cell.Z)),
-            Scale = Vector3.Zero,
+            Text = "Nmoku",
+            MouseFilter = MouseFilterEnum.Ignore,
         };
-        ApplyStoneMaterial(mi, _turn);
-        _root.AddChild(mi);
-        _stones.Add(new StoneVisual(mi, cell.X, cell.Y, cell.Z));
-        var tw = CreateTween();
-        tw.TweenProperty(mi, "scale", Vector3.One * StoneR, 0.26).SetEase(Tween.EaseType.Out);
-        _turn = _turn == PlayerColor.Black ? PlayerColor.White : PlayerColor.Black;
-        UpdateStatus();
+        _coverBrand.AddThemeFontOverride("font", _fontSerif);
+        _coverBrand.AddThemeFontSizeOverride("font_size", 50);
+        stack.AddChild(_coverBrand);
+
+        _coverRule = new ColorRect
+        {
+            CustomMinimumSize = new Vector2(40f, 2f),
+            SizeFlagsHorizontal = SizeFlags.ShrinkBegin,
+            MouseFilter = MouseFilterEnum.Ignore,
+        };
+        stack.AddChild(_coverRule);
+
+        _coverCn = new Label { MouseFilter = MouseFilterEnum.Ignore };
+        _coverCn.AddThemeFontOverride("font", _fontLxgw);
+        _coverCn.AddThemeFontSizeOverride("font_size", 22);
+        stack.AddChild(_coverCn);
+
+        _coverSub = new Label { MouseFilter = MouseFilterEnum.Ignore };
+        _coverSub.AddThemeFontOverride("font", _fontLxgw);
+        _coverSub.AddThemeFontSizeOverride("font_size", 11);
+        stack.AddChild(_coverSub);
+
+        var spacer = new Control { CustomMinimumSize = new Vector2(0, 10), MouseFilter = MouseFilterEnum.Ignore };
+        stack.AddChild(spacer);
+
+        _coverPromptNormal = CreatePillStyle(Colors.Transparent, Colors.White, 16);
+        _coverPromptHover = CreatePillStyle(Colors.Transparent, Colors.White, 16);
+        _coverPromptBtn = new Button
+        {
+            FocusMode = FocusModeEnum.None,
+            SizeFlagsHorizontal = SizeFlags.ShrinkBegin,
+            CustomMinimumSize = new Vector2(138f, 32f),
+            MouseDefaultCursorShape = CursorShape.PointingHand,
+        };
+        _coverPromptBtn.AddThemeFontOverride("font", _fontLxgw);
+        _coverPromptBtn.AddThemeFontSizeOverride("font_size", 13);
+        _coverPromptBtn.AddThemeStyleboxOverride("normal", _coverPromptNormal);
+        _coverPromptBtn.AddThemeStyleboxOverride("hover", _coverPromptHover);
+        _coverPromptBtn.AddThemeStyleboxOverride("pressed", _coverPromptHover);
+        _coverPromptBtn.Pressed += StartMorphForward;
+        stack.AddChild(_coverPromptBtn);
+    }
+
+    private void BuildCornerUi()
+    {
+        _cornerUi = new VBoxContainer
+        {
+            Position = new Vector2(22f, 14f),
+            MouseFilter = MouseFilterEnum.Ignore,
+        };
+        ((VBoxContainer)_cornerUi).AddThemeConstantOverride("separation", 0);
+
+        _cornerBrand = new Label
+        {
+            Text = "Nmoku",
+            MouseFilter = MouseFilterEnum.Ignore,
+        };
+        _cornerBrand.AddThemeFontOverride("font", _fontSerif);
+        _cornerBrand.AddThemeFontSizeOverride("font_size", 26);
+        _cornerUi.AddChild(_cornerBrand);
+
+        _cornerCn = new Label { MouseFilter = MouseFilterEnum.Ignore };
+        _cornerCn.AddThemeFontOverride("font", _fontLxgw);
+        _cornerCn.AddThemeFontSizeOverride("font_size", 12);
+        _cornerUi.AddChild(_cornerCn);
+
+        AddChild(_cornerUi);
+    }
+
+    private void BuildMenuUi()
+    {
+        _menuCol = new VBoxContainer
+        {
+            AnchorLeft = 1f,
+            AnchorRight = 1f,
+            AnchorTop = 0.5f,
+            AnchorBottom = 0.5f,
+            MouseFilter = MouseFilterEnum.Ignore,
+        };
+        _menuCol.AddThemeConstantOverride("separation", (int)DesignSeparation);
+        AddChild(_menuCol);
+
+        _startItem = AddMenuButton(true, () => I18n.T(Text.Title.Start), () => StartRequested?.Invoke());
+        _resumeItem = AddMenuButton(false, () => I18n.T(Text.Title.ContinueGame), () => ResumeRequested?.Invoke());
+        _customItem = AddMenuButton(false, () => I18n.T(Text.Title.CustomGame), () => CustomGameRequested?.Invoke());
+        _loadItem = AddMenuButton(false, () => I18n.T(Text.Title.LoadGame), () => LoadRequested?.Invoke());
+        _guideItem = AddMenuButton(false, () => I18n.T(Text.Title.Guide), () => GuideRequested?.Invoke());
+        _settingsItem = AddMenuButton(false, () => I18n.T(Text.Settings.Title), () => SettingsRequested?.Invoke());
+        _quitItem = AddMenuButton(false, () => I18n.T(Text.Title.Quit), () => QuitRequested?.Invoke());
+
+        SyncResumeVisibility();
+    }
+
+    private MenuButtonItem AddMenuButton(bool isPrimary, Func<string> labelProvider, Action onPressed)
+    {
+        var slot = new Control
+        {
+            CustomMinimumSize = new Vector2(0, DesignButtonHeight),
+            SizeFlagsHorizontal = SizeFlags.ExpandFill,
+            MouseFilter = MouseFilterEnum.Ignore,
+        };
+
+        var btn = new Button
+        {
+            FocusMode = FocusModeEnum.None,
+            Alignment = HorizontalAlignment.Left,
+            MouseDefaultCursorShape = CursorShape.PointingHand,
+        };
+        btn.SetAnchorsAndOffsetsPreset(LayoutPreset.FullRect);
+        btn.AddThemeFontOverride("font", _fontLxgw);
+        btn.AddThemeFontSizeOverride("font_size", 14);
+        btn.Pressed += onPressed;
+        slot.AddChild(btn);
+
+        var accentBar = new ColorRect
+        {
+            MouseFilter = MouseFilterEnum.Ignore,
+            AnchorLeft = 0f,
+            AnchorRight = 0f,
+            AnchorTop = 0.24f,
+            AnchorBottom = 0.76f,
+            OffsetLeft = 5f,
+            OffsetRight = 8f,
+            Visible = !isPrimary,
+        };
+        btn.AddChild(accentBar);
+
+        var item = new MenuButtonItem
+        {
+            Slot = slot,
+            Button = btn,
+            AccentBar = accentBar,
+            IsPrimary = isPrimary,
+            LabelProvider = labelProvider,
+        };
+        btn.MouseEntered += () => item.Hovered = true;
+        btn.MouseExited += () => item.Hovered = false;
+
+        _menuCol.AddChild(slot);
+        _menuItems.Add(item);
+        return item;
+    }
+
+    private void BuildBottomBar()
+    {
+        _bottomBar = new HBoxContainer
+        {
+            AnchorLeft = 0f,
+            AnchorRight = 0f,
+            AnchorTop = 1f,
+            AnchorBottom = 1f,
+            OffsetLeft = 20f,
+            OffsetTop = -40f,
+            OffsetRight = 460f,
+            OffsetBottom = -14f,
+            MouseFilter = MouseFilterEnum.Ignore,
+        };
+        _bottomBar.AddThemeConstantOverride("separation", 8);
+        AddChild(_bottomBar);
+
+        _backCoverBtn = CreateMiniButton();
+        _backCoverBtn.Pressed += StartMorphBack;
+        _bottomBar.AddChild(_backCoverBtn);
+
+        _clearDemoBtn = CreateMiniButton();
+        _clearDemoBtn.Pressed += SeedShowcaseStones;
+        _bottomBar.AddChild(_clearDemoBtn);
+
+        var statusWrap = new HBoxContainer
+        {
+            SizeFlagsVertical = SizeFlags.ShrinkCenter,
+            MouseFilter = MouseFilterEnum.Ignore,
+        };
+        statusWrap.AddThemeConstantOverride("separation", 5);
+        _bottomBar.AddChild(statusWrap);
+
+        _turnDotBox = new StyleBoxFlat
+        {
+            CornerRadiusTopLeft = 5,
+            CornerRadiusTopRight = 5,
+            CornerRadiusBottomLeft = 5,
+            CornerRadiusBottomRight = 5,
+            BorderWidthLeft = 1,
+            BorderWidthRight = 1,
+            BorderWidthTop = 1,
+            BorderWidthBottom = 1,
+        };
+        _turnDot = new Panel
+        {
+            CustomMinimumSize = new Vector2(9f, 9f),
+            SizeFlagsVertical = SizeFlags.ShrinkCenter,
+            MouseFilter = MouseFilterEnum.Ignore,
+        };
+        _turnDot.AddThemeStyleboxOverride("panel", _turnDotBox);
+        statusWrap.AddChild(_turnDot);
+
+        _demoStatusLabel = new Label
+        {
+            MouseFilter = MouseFilterEnum.Ignore,
+        };
+        _demoStatusLabel.AddThemeFontOverride("font", _fontLxgw);
+        _demoStatusLabel.AddThemeFontSizeOverride("font_size", 11);
+        statusWrap.AddChild(_demoStatusLabel);
+    }
+
+    private Button CreateMiniButton()
+    {
+        var b = new Button
+        {
+            FocusMode = FocusModeEnum.None,
+            CustomMinimumSize = new Vector2(0, 24f),
+            MouseDefaultCursorShape = CursorShape.PointingHand,
+        };
+        b.AddThemeFontOverride("font", _fontLxgw);
+        b.AddThemeFontSizeOverride("font_size", 11);
+        return b;
+    }
+
+    private static StyleBoxFlat CreatePillStyle(Color bg, Color border, int radius, int padH = 14, int padV = 4) => new()
+    {
+        BgColor = bg,
+        BorderColor = border,
+        BorderWidthLeft = 1,
+        BorderWidthRight = 1,
+        BorderWidthTop = 1,
+        BorderWidthBottom = 1,
+        CornerRadiusTopLeft = radius,
+        CornerRadiusTopRight = radius,
+        CornerRadiusBottomLeft = radius,
+        CornerRadiusBottomRight = radius,
+        ContentMarginLeft = padH,
+        ContentMarginRight = padH,
+        ContentMarginTop = padV,
+        ContentMarginBottom = padV,
+    };
+
+    private void SyncResumeVisibility()
+    {
+        if (_resumeItem != null)
+        {
+            _resumeItem.Slot.Visible = _hasLiveGame;
+        }
+    }
+
+    private void UpdateDemoStatus()
+    {
+        if (_demoStatusLabel == null)
+        {
+            return;
+        }
+        string turnName = _turn == PlayerColor.Black
+            ? I18n.T(Text.Turn.BlackTurn)
+            : I18n.T(Text.Turn.WhiteTurn);
+        _demoStatusLabel.Text = I18n.T(Text.Title.DemoHint, turnName);
+
+        var pal = Palette.Active;
+        bool isDark = pal.Background.Luminance < 0.4f;
+        _turnDotBox.BgColor = _turn == PlayerColor.Black
+            ? (isDark ? new Color(0.15f, 0.16f, 0.19f) : pal.StoneBlack)
+            : pal.StoneWhite;
+        _turnDotBox.BorderColor = _turn == PlayerColor.Black && isDark
+            ? pal.TextDim
+            : pal.PanelBorder;
+    }
+
+    // ================= 8. 自适应布局 =================
+
+    private void SyncLayout(Vector2 faceSize)
+    {
+        if (faceSize.X < 10f || faceSize.Y < 10f)
+        {
+            return;
+        }
+        ApplyCoverLayout(faceSize);
+        ApplyMenuLayout(faceSize);
+    }
+
+    private void ApplyCoverLayout(Vector2 faceSize)
+    {
+        if (_coverUi.GetNodeOrNull<Control>("CoverStack") is not { } stack)
+        {
+            return;
+        }
+        // 右侧黄金区域居中排版：与左侧雕塑 N 形成舒展平衡的非对称封面构图
+        float leftX = Mathf.Clamp(faceSize.X * 0.54f, 16f, faceSize.X - 240f);
+        float topY = Mathf.Max(28f, (faceSize.Y - 175f) * 0.48f);
+        stack.Position = new Vector2(leftX, topY);
+    }
+
+    /// <summary>菜单列随逻辑面自适应：设计面（768×432）以上保持舒展比例，最小窗口（320×416）完整落界内。</summary>
+    private void ApplyMenuLayout(Vector2 faceSize)
+    {
+        float marginX = Mathf.Clamp(faceSize.X * DesignRightMargin / DesignFaceWidth, 12f, DesignRightMargin);
+        float colW = Mathf.Clamp(faceSize.X - 2f * marginX, 140f, DesignColumnWidth);
+
+        int count = MaxMenuButtons;
+        float maxAvailH = Mathf.Max(160f, faceSize.Y - 32f);
+        float designTotalH = count * DesignButtonHeight + (count - 1) * DesignSeparation;
+        float targetH = Mathf.Min(designTotalH, maxAvailH);
+        int sep = (int)MathF.Round(Mathf.Clamp(DesignSeparation * (targetH / designTotalH), 4f, DesignSeparation));
+        float buttonH = Mathf.Max(MinButtonHeight, (targetH - (count - 1) * sep) / count);
+
+        int visibleCount = _menuItems.Count(m => m.Slot.Visible);
+        if (visibleCount == 0)
+        {
+            visibleCount = count;
+        }
+        float visibleTotalH = visibleCount * buttonH + (visibleCount - 1) * sep;
+
+        _menuCol.OffsetLeft = -(colW + marginX);
+        _menuCol.OffsetRight = -marginX;
+        _menuCol.OffsetTop = -visibleTotalH * 0.5f;
+        _menuCol.OffsetBottom = visibleTotalH * 0.5f;
+        _menuCol.AddThemeConstantOverride("separation", sep);
+
+        int fontSize = buttonH < 30f ? 12 : 14;
+        foreach (var item in _menuItems)
+        {
+            item.Slot.CustomMinimumSize = new Vector2(0f, buttonH);
+            item.Button.AddThemeFontSizeOverride("font_size", fontSize);
+        }
+
+        _menuRect = new Rect2(
+            faceSize.X - marginX - colW,
+            (faceSize.Y - visibleTotalH) * 0.5f,
+            colW,
+            visibleTotalH);
+    }
+
+    // ================= 9. 全量主题 / 色弱适配（原地刷新） =================
+
+    private void ApplyTheme()
+    {
+        var pal = Palette.For(_colorblind);
+        bool isDark = pal.Background.Luminance < 0.4f;
+
+        // 1) 氛围径向背景
+        Color glow = isDark
+            ? pal.Background.Lightened(0.11f).Lerp(pal.Accent, 0.14f)
+            : pal.Background.Lightened(0.06f);
+        Color edge = isDark
+            ? pal.Background.Darkened(0.32f)
+            : pal.Background.Darkened(0.08f);
+        _backdropMat.SetShaderParameter("bg_base", pal.Background);
+        _backdropMat.SetShaderParameter("bg_glow", glow);
+        _backdropMat.SetShaderParameter("bg_edge", edge);
+
+        // 2) 3D 灯光与雕塑 N 材质（微明暗层次凸显三笔画纵深）
+        _env.AmbientLightColor = pal.AmbientLight;
+        _env.AmbientLightEnergy = isDark ? 0.55f : 0.72f;
+        _keyLight.LightEnergy = isDark ? 0.92f : 0.78f;
+        _fillLight.LightEnergy = isDark ? 0.34f : 0.42f;
+
+        Color nCore = isDark
+            ? pal.TextPrimary.Lerp(pal.Accent, 0.24f)
+            : pal.Accent;
+        _nMatFront.AlbedoColor = new Color(nCore.Lightened(isDark ? 0.08f : 0.06f), _nMatFront.AlbedoColor.A);
+        _nMatMid.AlbedoColor = new Color(nCore, _nMatMid.AlbedoColor.A);
+        _nMatBack.AlbedoColor = new Color(nCore.Darkened(isDark ? 0.16f : 0.14f), _nMatBack.AlbedoColor.A);
+
+        // 3) 棋子 / 辅助线 / 悬停球
+        _stoneBlackMat.AlbedoColor = pal.StoneBlack;
+        _stoneWhiteMat.AlbedoColor = pal.StoneWhite;
+        _hoverBallMat.AlbedoColor = new Color(pal.HoverHighlight.R, pal.HoverHighlight.G, pal.HoverHighlight.B, 0.78f);
+        _auxMarkerSelfMat.AlbedoColor = new Color(pal.LineSelf.R, pal.LineSelf.G, pal.LineSelf.B, 0.90f);
+        _auxMarkerEnemyMat.AlbedoColor = new Color(pal.LineEnemy.R, pal.LineEnemy.G, pal.LineEnemy.B, 0.90f);
+
+        // 4) 封面 & 角标排版
+        _coverBrand.AddThemeColorOverride("font_color", pal.TextPrimary);
+        _coverRule.Color = pal.Accent;
+        _coverCn.AddThemeColorOverride("font_color", pal.TextPrimary);
+        _coverSub.AddThemeColorOverride("font_color", pal.TextDim);
+
+        _coverPromptNormal.BgColor = isDark
+            ? new Color(pal.ButtonBg.R, pal.ButtonBg.G, pal.ButtonBg.B, 0.55f)
+            : new Color(pal.PanelBg.R, pal.PanelBg.G, pal.PanelBg.B, 0.78f);
+        _coverPromptNormal.BorderColor = new Color(pal.Accent.R, pal.Accent.G, pal.Accent.B, 0.55f);
+        _coverPromptHover.BgColor = pal.Accent;
+        _coverPromptHover.BorderColor = pal.Accent;
+        _coverPromptBtn.AddThemeColorOverride("font_color", pal.TextPrimary);
+        _coverPromptBtn.AddThemeColorOverride("font_hover_color", Colors.White);
+        _coverPromptBtn.AddThemeColorOverride("font_pressed_color", Colors.White);
+
+        _cornerBrand.AddThemeColorOverride("font_color", pal.Accent);
+        _cornerCn.AddThemeColorOverride("font_color", pal.TextDim);
+
+        // 5) 菜单按钮样式（主按钮醒目强调，次按钮温润通透卡片）
+        foreach (var item in _menuItems)
+        {
+            StyleBoxFlat normal;
+            StyleBoxFlat hover;
+            StyleBoxFlat pressed;
+
+            if (item.IsPrimary)
+            {
+                normal = CreatePillStyle(pal.Accent, pal.Accent.Lightened(0.12f), 7, padH: 16, padV: 4);
+                hover = CreatePillStyle(pal.Accent.Lightened(0.08f), pal.Accent.Lightened(0.22f), 7, padH: 16, padV: 4);
+                pressed = CreatePillStyle(pal.Accent.Darkened(0.10f), pal.Accent, 7, padH: 16, padV: 4);
+                item.Button.AddThemeColorOverride("font_color", Colors.White);
+                item.Button.AddThemeColorOverride("font_hover_color", Colors.White);
+                item.Button.AddThemeColorOverride("font_pressed_color", Colors.White);
+                item.AccentBar.Color = new Color(1f, 1f, 1f, 0.85f);
+            }
+            else
+            {
+                Color cardBg = isDark
+                    ? new Color(pal.PanelBg.R, pal.PanelBg.G, pal.PanelBg.B, 0.78f)
+                    : new Color(pal.PanelBg.R, pal.PanelBg.G, pal.PanelBg.B, 0.82f);
+                Color cardHover = isDark
+                    ? new Color(pal.ButtonHover.R, pal.ButtonHover.G, pal.ButtonHover.B, 0.94f)
+                    : new Color(pal.ButtonHover.R, pal.ButtonHover.G, pal.ButtonHover.B, 0.92f);
+                Color cardBorder = new Color(pal.PanelBorder.R, pal.PanelBorder.G, pal.PanelBorder.B, isDark ? 0.36f : 0.55f);
+
+                normal = CreatePillStyle(cardBg, cardBorder, 7, padH: 16, padV: 4);
+                hover = CreatePillStyle(cardHover, pal.Accent, 7, padH: 16, padV: 4);
+                pressed = CreatePillStyle(cardHover.Darkened(0.08f), pal.Accent, 7, padH: 16, padV: 4);
+                item.Button.AddThemeColorOverride("font_color", pal.TextPrimary);
+                item.Button.AddThemeColorOverride("font_hover_color", pal.TextPrimary);
+                item.Button.AddThemeColorOverride("font_pressed_color", pal.TextPrimary);
+                item.AccentBar.Color = pal.Accent;
+            }
+
+            item.Button.AddThemeStyleboxOverride("normal", normal);
+            item.Button.AddThemeStyleboxOverride("hover", hover);
+            item.Button.AddThemeStyleboxOverride("pressed", pressed);
+        }
+
+        // 6) 底部工具条
+        Color miniBg = new Color(pal.PanelBg.R, pal.PanelBg.G, pal.PanelBg.B, 0.70f);
+        Color miniBorder = new Color(pal.PanelBorder.R, pal.PanelBorder.G, pal.PanelBorder.B, 0.45f);
+        var miniNormal = CreatePillStyle(miniBg, miniBorder, 6, padH: 10, padV: 2);
+        var miniHover = CreatePillStyle(pal.ButtonHover, pal.Accent, 6, padH: 10, padV: 2);
+        foreach (var b in new[] { _backCoverBtn, _clearDemoBtn })
+        {
+            b.AddThemeStyleboxOverride("normal", miniNormal);
+            b.AddThemeStyleboxOverride("hover", miniHover);
+            b.AddThemeStyleboxOverride("pressed", miniHover);
+            b.AddThemeColorOverride("font_color", pal.TextDim);
+            b.AddThemeColorOverride("font_hover_color", pal.TextPrimary);
+            b.AddThemeColorOverride("font_pressed_color", pal.TextPrimary);
+        }
+        _demoStatusLabel.AddThemeColorOverride("font_color", pal.TextDim);
+        UpdateDemoStatus();
+
+        // 重刷当前阶段网格与辅助线颜色
+        ApplyMorphVisuals(_morphT);
         _auxDirty = true;
     }
 
-    private void ApplyStoneMaterial(MeshInstance3D mi, PlayerColor kind)
+    // ================= 10. 流体形变驱动（完全可逆） =================
+
+    private void ApplyMorphVisuals(float t)
     {
-        mi.MaterialOverride = new StandardMaterial3D
+        var pal = Palette.For(_colorblind);
+        float smooth = SmoothStep(0f, 1f, t);
+
+        // 背景光晕中心随构图轻柔漂移
+        _backdropMat.SetShaderParameter("glow_center", new Vector2(
+            Mathf.Lerp(0.35f, 0.30f, smooth),
+            Mathf.Lerp(0.50f, 0.52f, smooth)));
+
+        // --- Stage 1: 雕塑 N 三笔画沿纵深分离成三层薄片并流体融入棋盘 (t: 0.00 -> 0.68) ---
+        float nOut = SmoothStep(0.00f, 0.64f, t);
+        float nEase = EaseInOutCubic(nOut);
+        float nAlpha = 1f - SmoothStep(0.24f, 0.66f, t);
+        bool nVisible = nAlpha > 0.01f;
+        _letterRoot.Visible = nVisible;
+        if (nVisible)
         {
-            AlbedoColor = kind == PlayerColor.Black ? new Color(0.13f, 0.13f, 0.15f) : new Color(0.94f, 0.92f, 0.88f),
-            Roughness = 0.55f,
-            Metallic = 0.1f,
-        };
+            float breatheY = Mathf.Sin(_clock * 1.25f) * 0.042f * (1f - nOut);
+            _letterRoot.Position = new Vector3(0f, breatheY, 0f);
+            float hoverLift = 1f + _letterHoverGlow * 0.030f * (1f - nOut);
+            _letterRoot.Scale = Vector3.One * hoverLift;
+
+            // 微浮雕错层（+0.05/0/-0.05）保持封面斜接精密利落，形变时流体展开至前/中/后三层纵深并薄化融散
+            float thin = Mathf.Lerp(1f, 0.12f, nEase);
+            float spreadY = Mathf.Lerp(1f, 0.92f, nEase);
+            float spreadX = Mathf.Lerp(1f, 1.18f, nEase);
+
+            _nLeft.Position = new Vector3(
+                Mathf.Lerp(0f, 0.92f, nEase),
+                0f,
+                Mathf.Lerp(0.05f, BoardSpacing, nEase));
+            _nLeft.Scale = new Vector3(spreadX, spreadY, thin);
+
+            _nDiag.Position = new Vector3(0f, 0f, 0f);
+            _nDiag.Rotation = new Vector3(0f, 0f, Mathf.Lerp(0f, 0.46f, nEase));
+            _nDiag.Scale = new Vector3(Mathf.Lerp(1f, 0.72f, nEase), spreadY, thin);
+
+            _nRight.Position = new Vector3(
+                Mathf.Lerp(0f, -0.92f, nEase),
+                0f,
+                Mathf.Lerp(-0.05f, -BoardSpacing, nEase));
+            _nRight.Scale = new Vector3(spreadX, spreadY, thin);
+
+            ApplySculptAlpha(_nMatFront, nAlpha, _letterHoverGlow * (1f - nOut));
+            ApplySculptAlpha(_nMatMid, nAlpha, _letterHoverGlow * 0.85f * (1f - nOut));
+            ApplySculptAlpha(_nMatBack, nAlpha, _letterHoverGlow * 0.7f * (1f - nOut));
+        }
+
+        // --- Stage 2: 三层 5×5 棋盘波浪涟漪展开 (t: 0.16 -> 0.86) ---
+        bool boardVisible = t > 0.14f;
+        _boardRoot.Visible = boardVisible || _stones.Count > 0;
+        float[] layerBaseAlpha = [0.82f, 0.58f, 0.36f]; // 前层最清晰、后层柔和通透
+        for (int z = 0; z < 3; z++)
+        {
+            float lz = SmoothStep(0.16f + z * 0.08f, 0.66f + z * 0.08f, t);
+            float zPos = Mathf.Lerp((1 - z) * 0.32f, (1 - z) * BoardSpacing, EaseOutQuint(lz));
+            _layerRoots[z].Position = new Vector3(0f, 0f, zPos);
+            _layerRoots[z].Visible = lz > 0.005f;
+            _layerGridMats[z].AlbedoColor = new Color(pal.GridLine.R, pal.GridLine.G, pal.GridLine.B, layerBaseAlpha[z] * lz);
+        }
+
+        foreach (var bar in _gridBars)
+        {
+            float start = 0.14f + bar.Layer * 0.08f + bar.Stagger;
+            float end = 0.62f + bar.Layer * 0.08f + bar.Stagger;
+            float p = EaseOutQuint(SmoothStep(start, end, t));
+            if (p <= 0.005f)
+            {
+                bar.Node.Visible = false;
+                continue;
+            }
+            bar.Node.Visible = true;
+            bar.Node.Position = bar.BasePos;
+            float len = bar.FullLength * p;
+            float thick = GridThickness * Mathf.Lerp(0.35f, 1f, p);
+            bar.Node.Scale = bar.Horizontal
+                ? new Vector3(len, thick, thick)
+                : new Vector3(thick, len, thick);
+        }
+
+        // 5 根层连接立柱柔和伸展 (t: 0.42 -> 0.86)
+        float connP = EaseOutQuint(SmoothStep(0.42f, 0.86f, t));
+        float connLen = 2f * BoardSpacing * connP;
+        _connectorMat.AlbedoColor = new Color(pal.ConnectorLine.R, pal.ConnectorLine.G, pal.ConnectorLine.B, 0.42f * connP);
+        foreach (var rail in _connectors)
+        {
+            rail.Visible = connP > 0.01f;
+            rail.Scale = new Vector3(ConnectorThickness, ConnectorThickness, Mathf.Max(0.001f, connLen));
+        }
+
+        // --- Stage 3: 棋子沿流畅弧线落位 / 弹性盛放 ---
+        float stoneFlight = SmoothStep(0.30f, 0.90f, t);
+        float stoneEase = EaseInOutCubic(stoneFlight);
+        for (int i = 0; i < _stones.Count; i++)
+        {
+            var s = _stones[i];
+            Vector3 dst = CellToBoardLocal(s.X, s.Y, s.Z);
+            if (s.IsShowcase)
+            {
+                // 封面态轻盈悬浮于 N 负空间，形变时沿温和弧线滑入棋盘格位
+                float floatY = Mathf.Sin(_clock * 1.6f + i * 2.4f) * 0.07f * (1f - stoneFlight);
+                Vector3 src = s.CoverAnchor + new Vector3(0f, floatY, 0f);
+                float arc = Mathf.Sin(stoneEase * Mathf.Pi) * 0.45f * (i == 0 ? 1f : -1f);
+                Vector3 pos = src.Lerp(dst, stoneEase) + new Vector3(arc * 0.35f, MathF.Abs(arc) * 0.28f, 0f);
+                float r = Mathf.Lerp(0.22f, StoneRadius, stoneEase);
+                s.Node.Visible = true;
+                s.Node.Position = pos;
+                s.Node.Scale = Vector3.One * r;
+            }
+            else
+            {
+                float p = EaseOutBack(SmoothStep(0.56f, 0.94f, t)) * EaseOutBack(s.PopProgress);
+                s.Node.Visible = p > 0.01f;
+                s.Node.Position = dst;
+                s.Node.Scale = Vector3.One * (StoneRadius * Mathf.Max(0.001f, p));
+            }
+        }
+
+        // --- Stage 4: 透视相机曲线滑行 + 微视差 ---
+        float camE = EaseInOutCubic(t);
+        float swirl = Mathf.Sin(camE * Mathf.Pi);
+        float yaw = Mathf.Lerp(CoverYaw, _menuYaw, camE) + 0.16f * swirl;
+        float pitch = Mathf.Lerp(CoverPitch, _menuPitch, camE) + 0.04f * swirl;
+        float dist = Mathf.Lerp(CoverDist, MenuDist, camE) + 0.85f * swirl;
+        float fov = Mathf.Lerp(CoverFov, MenuFov, camE);
+        Vector3 target = CoverTarget.Lerp(MenuTarget, camE);
+
+        // 封面态叠加鼠标柔和视差，菜单态自动淡出避免干扰落子瞄准
+        float parallaxWeight = 1f - SmoothStep(0f, 0.45f, t);
+        yaw += _parallaxCurrent.X * 0.14f * parallaxWeight;
+        pitch += _parallaxCurrent.Y * 0.09f * parallaxWeight;
+
+        Vector3 offset = new(
+            dist * Mathf.Cos(pitch) * Mathf.Sin(yaw),
+            dist * Mathf.Sin(pitch),
+            dist * Mathf.Cos(pitch) * Mathf.Cos(yaw));
+        _cam.Fov = fov;
+        _cam.Position = target + offset;
+        _cam.LookAt(target, Vector3.Up);
+
+        // --- Stage 5: 2D UI 错峰编排 ---
+        // 封面排版：0.00 -> 0.34 轻柔上滑淡出
+        float coverAlpha = 1f - SmoothStep(0.00f, 0.34f, t);
+        _coverUi.Visible = coverAlpha > 0.01f;
+        _coverUi.Modulate = new Color(1f, 1f, 1f, coverAlpha);
+        _coverUi.Position = new Vector2(-14f * (1f - coverAlpha), -6f * (1f - coverAlpha));
+        _coverPromptBtn.Disabled = t > 0.20f;
+
+        // 左上品牌角标：0.56 -> 0.92 平滑滑入（真正位于 (22, 14) 清晰可见！）
+        float cornerP = EaseOutQuint(SmoothStep(0.56f, 0.92f, t));
+        _cornerUi.Visible = cornerP > 0.01f;
+        _cornerUi.Modulate = new Color(1f, 1f, 1f, cornerP);
+        _cornerUi.Position = new Vector2(22f - 14f * (1f - cornerP), 14f);
+
+        // 右侧菜单列：0.48 -> 1.00 逐按钮错峰滑入（用 MouseFilter 控交互，避免 Disabled 变灰破坏级联观感）
+        bool menuActive = t > 0.46f;
+        _menuCol.Visible = menuActive;
+        if (menuActive)
+        {
+            int visIdx = 0;
+            foreach (var item in _menuItems)
+            {
+                if (!item.Slot.Visible)
+                {
+                    continue;
+                }
+                float bStart = 0.48f + visIdx * 0.045f;
+                float bEnd = MathF.Min(1f, bStart + 0.24f);
+                float bp = EaseOutQuint(SmoothStep(bStart, bEnd, t));
+                item.Button.Modulate = new Color(1f, 1f, 1f, bp);
+                item.Button.MouseFilter = t < 0.82f ? MouseFilterEnum.Ignore : MouseFilterEnum.Stop;
+                float slideX = 16f * (1f - bp) - item.HoverAnim * 4f;
+                item.Button.OffsetLeft = slideX;
+                item.Button.OffsetRight = slideX;
+                if (!item.IsPrimary)
+                {
+                    item.AccentBar.Modulate = new Color(1f, 1f, 1f, item.HoverAnim);
+                }
+                visIdx++;
+            }
+        }
+
+        // 左下演示控制条：0.66 -> 1.00 柔和上浮显现
+        float barP = EaseOutQuint(SmoothStep(0.66f, 1.00f, t));
+        _bottomBar.Visible = barP > 0.01f;
+        _bottomBar.Modulate = new Color(1f, 1f, 1f, barP);
+        _bottomBar.OffsetTop = -40f + 10f * (1f - barP);
+        _bottomBar.OffsetBottom = -14f + 10f * (1f - barP);
+
+        if (_phase != Phase.Menu)
+        {
+            _hoverBall.Visible = false;
+            _auxLinesNode.Visible = false;
+            foreach (var m in _auxMarkerPool)
+            {
+                m.Visible = false;
+            }
+        }
     }
 
-    private void UpdateStatus()
+    private void ApplySculptAlpha(StandardMaterial3D mat, float alpha, float glow)
     {
-        _status.Text = $"回合：{(_turn == PlayerColor.Black ? "黑" : "白")} · 点击空格落子 · 拖拽旋转";
+        var c = mat.AlbedoColor;
+        mat.AlbedoColor = new Color(c.R, c.G, c.B, alpha);
+        mat.EmissionEnabled = glow > 0.01f;
+        if (mat.EmissionEnabled)
+        {
+            mat.Emission = Palette.Active.Accent;
+            mat.EmissionEnergyMultiplier = glow * 0.35f;
+        }
     }
 
-    // ================= 主循环 =================
+    // ================= 11. 主循环与交互 =================
 
     public override void _Process(double delta)
     {
-        var dt = (float)Mathf.Min(delta, 0.05);
+        float dt = (float)Mathf.Min(delta, 0.05);
+        _clock += dt;
         SyncViewportSize();
+
+        // 鼠标微视差阻尼
+        float pFactor = 1f - MathF.Exp(-8f * dt);
+        _parallaxCurrent = _parallaxCurrent.Lerp(_parallaxTarget, pFactor);
+
+        // 封面态 N 悬停柔光与提示呼吸
+        float targetGlow = _phase == Phase.Letter && _letterHovered ? 1f : 0f;
+        _letterHoverGlow = Mathf.Lerp(_letterHoverGlow, targetGlow, 1f - MathF.Exp(-10f * dt));
+        if (_phase == Phase.Letter)
+        {
+            float pulse = 0.84f + 0.16f * Mathf.Sin(_clock * 2.4f);
+            _coverPromptBtn.Modulate = new Color(1f, 1f, 1f, pulse);
+        }
+
+        // 按钮 hover 微交互阻尼（左移 4px + 强调竖条显现）
+        float hoverFactor = 1f - MathF.Exp(-16f * dt);
+        foreach (var item in _menuItems)
+        {
+            float targetH = item.Hovered ? 1f : 0f;
+            item.HoverAnim = Mathf.Lerp(item.HoverAnim, targetH, hoverFactor);
+        }
+
+        // 新落演示子弹性缩放推进
+        foreach (var s in _stones)
+        {
+            if (s.PopProgress < 1f)
+            {
+                s.PopProgress = Mathf.Min(1f, s.PopProgress + dt / 0.28f);
+            }
+        }
 
         if (_phase == Phase.Morph)
         {
-            _morphE += dt / MorphDuration * _morphDir;
-            if (_morphE >= 1)
+            _morphT += dt / MorphDuration * _morphDir;
+            if (_morphT >= 1f)
             {
-                _morphE = 1;
+                _morphT = 1f;
                 _phase = Phase.Menu;
-                ShowMenuUi(true);
+                _auxDirty = true;
             }
-            if (_morphE <= 0)
+            else if (_morphT <= 0f)
             {
-                _morphE = 0;
+                _morphT = 0f;
                 _phase = Phase.Letter;
-                ShowMenuUi(false);
+                _dragging = false;
+                _hoverCell = null;
             }
-            var e = EaseInOut(Mathf.Clamp(_morphE, 0, 1));
-            _yaw = Mathf.Lerp(LetterYaw, MenuYaw, e);
-            _root.Rotation = new Vector3(0, _yaw, 0);
-            _cam.Position = new Vector3(Mathf.Lerp(CamXLetter, CamXMenu, e),
-                Mathf.Lerp(CamYLetter, CamYMenu, e), 12f);
-            DriveText3D(e);
-            UpdateLines(e);
-            UpdateMorphStones(e);
         }
-        else if (_phase == Phase.Letter)
+        else if (_phase == Phase.Menu)
         {
-            _yaw = LetterYaw;
-            _root.Rotation = new Vector3(0, _yaw, 0);
-            _cam.Position = new Vector3(CamXLetter, CamYLetter, 12f);
-            DriveText3D(0f);
-            UpdateLines(0f);
-            UpdateMorphStones(0f);
-        }
-        else
-        {
-            // 菜单：拖拽（阻力跟手）→ 惯性 → 弹簧回弹（30° 槽位）；自转让位
             if (_dragging)
             {
-                _yaw += (_targetYaw - _yaw) * Math.Min(1f, dt * DragFollow);
-                _yawVel = (_targetYaw - _yaw) * DragFollow * 0.35f;
+                float follow = 1f - MathF.Exp(-DragFollow * dt);
+                float nextYaw = Mathf.Lerp(_menuYaw, _targetYaw, follow);
+                float nextPitch = Mathf.Lerp(_menuPitch, _targetPitch, follow);
+                _yawVel = (nextYaw - _menuYaw) / MathF.Max(0.001f, dt) * 0.45f;
+                _pitchVel = (nextPitch - _menuPitch) / MathF.Max(0.001f, dt) * 0.45f;
+                _menuYaw = nextYaw;
+                _menuPitch = nextPitch;
             }
-            else if (Mathf.Abs(_yawVel) > 0.02f)
+            else if (MathF.Abs(_yawVel) > 0.015f || MathF.Abs(_pitchVel) > 0.015f)
             {
-                _yaw += _yawVel * dt;
-                _yawVel *= Mathf.Pow(InertiaFriction, dt);
-            }
-            else if (Time.GetTicksMsec() - (ulong)_lastInteract > 350)
-            {
-                if (!_settling)
-                {
-                    _settling = true;
-                    _restYaw = Mathf.Round(_yaw / RestStep) * RestStep;
-                }
-                var acc = -SpringK * (_yaw - _restYaw) - SpringDamp * _yawVel;
-                _yawVel += acc * dt;
-                _yaw += _yawVel * dt;
-                if (Mathf.Abs(_yaw - _restYaw) < 0.002f && Math.Abs(_yawVel) < 0.02f)
-                {
-                    _yaw = _restYaw;
-                    _yawVel = 0;
-                }
+                _menuYaw += _yawVel * dt;
+                _menuPitch = Mathf.Clamp(_menuPitch + _pitchVel * dt, MinMenuPitch, MaxMenuPitch);
+                float damp = MathF.Pow(InertiaDecay, dt);
+                _yawVel *= damp;
+                _pitchVel *= damp;
             }
             else if (!_userTouched)
             {
-                _yaw += AutoSpin * dt;   // 未接管前缓慢自转
+                // 修复原自转死代码：未拖拽接管前柔和连续自转
+                _menuYaw += AutoOrbitSpeed * dt;
             }
-            _root.Rotation = new Vector3(0, _yaw, 0);
 
-            if (_hoverScreen.HasValue)
+            if (_hoverScreen.HasValue && !_dragging)
             {
                 _hoverCell = PickCell(_hoverScreen.Value);
             }
-            if (_auxDirty || _hoverCell.HasValue)
+            if (_auxDirty || !Nullable.Equals(_hoverCell, _renderedHoverCell))
             {
                 RebuildAux();
                 _auxDirty = false;
             }
         }
+
+        ApplyMorphVisuals(_morphT);
     }
 
-
-    private void UpdateMorphStones(float e)
+    public override void _GuiInput(InputEvent @event)
     {
-        var me = EaseInOut(Mathf.Clamp(e * 1.3f - 0.3f, 0, 1));
-        foreach (var s in _stones)
+        if (@event is InputEventMouseMotion mmAny && Size.X > 1f && Size.Y > 1f)
         {
-            var src = s.Z == 1
-                ? new Vector3(2.5f - BarDx / 2, 5.4f, Spacing)
-                : new Vector3(2.5f + BarDx / 2, -0.4f, Spacing);
-            var dst = new Vector3(s.X + .5f, s.Y + .5f, DOf(s.Z));
-            s.Node.Position = src.Lerp(dst, me);
-            s.Node.Scale = Vector3.One * (StoneR * me);
+            _parallaxTarget = new Vector2(
+                Mathf.Clamp((mmAny.Position.X / Size.X - 0.5f) * 2f, -1f, 1f),
+                Mathf.Clamp((mmAny.Position.Y / Size.Y - 0.5f) * 2f, -1f, 1f));
         }
-    }
 
-    private void DriveText3D(float e)
-    {
-        // 文字锁排：随形变从近层平面滑向左上（3D 连续），菜单后由 2D 角标标题接续
-        var me = EaseInOut(Mathf.Clamp(e, 0, 1));
-        var tx = Mathf.Lerp(3.75f, 1.15f, me);
-        var tyTop = Mathf.Lerp(4.35f, 4.05f, me);
-        var z = Spacing + 0.15f - 0.5f * me;
-        var sc = Mathf.Lerp(1f, 0.45f, me);
-        _text3D[0].Position = new Vector3(tx, tyTop, z);
-        _text3D[1].Position = new Vector3(tx, tyTop - 1.05f * (1 - 0.55f * me), z);
-        _text3D[2].Position = new Vector3(tx, tyTop - 1.85f * (1 - 0.6f * me), z);
-        foreach (var l in _text3D)
+        if (_phase == Phase.Letter)
         {
-            l.Scale = new Vector3(sc, sc, 1f);
+            if (@event is InputEventMouseMotion mm)
+            {
+                _letterHovered = InLetterZone(mm.Position);
+                MouseDefaultCursorShape = _letterHovered ? CursorShape.PointingHand : CursorShape.Arrow;
+            }
+            else if (@event is InputEventMouseButton { ButtonIndex: MouseButton.Left, Pressed: true } mb
+                     && InLetterZone(mb.Position))
+            {
+                StartMorphForward();
+            }
+            return;
+        }
+
+        if (_phase != Phase.Menu)
+        {
+            return;
+        }
+
+        if (@event is InputEventMouseButton { ButtonIndex: MouseButton.Left } mb2)
+        {
+            if (mb2.Pressed)
+            {
+                // 避免在右侧菜单区触发拖拽
+                if (_menuRect.Grow(8f).HasPoint(mb2.Position))
+                {
+                    return;
+                }
+                _dragging = true;
+                _userTouched = true;
+                _downPos = mb2.Position;
+                _downTimeMs = Time.GetTicksMsec();
+                _targetYaw = _menuYaw;
+                _targetPitch = _menuPitch;
+                _yawVel = 0f;
+                _pitchVel = 0f;
+            }
+            else if (_dragging)
+            {
+                _dragging = false;
+                float moved = (mb2.Position - _downPos).Length();
+                if (moved < 6f && Time.GetTicksMsec() - _downTimeMs < 450)
+                {
+                    var picked = PickCell(mb2.Position);
+                    if (picked is { } cell && _board.InBounds(cell) && _board.IsEmpty(cell.X, cell.Y, cell.Z))
+                    {
+                        PlaceStone(cell, playAudio: true);
+                    }
+                }
+                else
+                {
+                    _yawVel = Mathf.Clamp(_yawVel, -2.6f, 2.6f);
+                    _pitchVel = Mathf.Clamp(_pitchVel, -1.6f, 1.6f);
+                }
+            }
+        }
+        else if (@event is InputEventMouseMotion mm2)
+        {
+            if (_dragging)
+            {
+                _targetYaw -= mm2.Relative.X * DragYawSense;
+                _targetPitch = Mathf.Clamp(_targetPitch + mm2.Relative.Y * DragPitchSense, MinMenuPitch, MaxMenuPitch);
+            }
+            else
+            {
+                _hoverScreen = mm2.Position;
+                var picked = PickCell(mm2.Position);
+                MouseDefaultCursorShape = picked is { } c && _board.IsEmpty(c.X, c.Y, c.Z)
+                    ? CursorShape.PointingHand
+                    : CursorShape.Arrow;
+            }
         }
     }
 
     public override void _UnhandledInput(InputEvent @event)
     {
-        // 悬停拾取走 _GuiInput；这里兜底鼠标移出控件区的情况
         if (@event is InputEventMouseMotion mm && _phase == Phase.Menu && !_dragging)
         {
             _hoverScreen = mm.Position;
         }
     }
 
-    private void StartMorph()
+    private bool InLetterZone(Vector2 screenPos)
     {
-        if (_phase != Phase.Letter)
+        if (Size.X < 10f || Size.Y < 10f)
+        {
+            return false;
+        }
+        // 以雕塑 N 包围盒投影到屏幕并留适当交互边距
+        Vector3[] corners =
+        [
+            new(-1.4f, -1.8f, -0.4f), new(1.4f, -1.8f, -0.4f),
+            new(-1.4f, 1.8f, 0.4f), new(1.4f, 1.8f, 0.4f),
+        ];
+        float minX = float.MaxValue, maxX = float.MinValue;
+        float minY = float.MaxValue, maxY = float.MinValue;
+        Vector2 vpSize = _vp.Size;
+        foreach (var c in corners)
+        {
+            Vector2 p = _cam.UnprojectPosition(_letterRoot.ToGlobal(c)) / vpSize * Size;
+            minX = MathF.Min(minX, p.X);
+            maxX = MathF.Max(maxX, p.X);
+            minY = MathF.Min(minY, p.Y);
+            maxY = MathF.Max(maxY, p.Y);
+        }
+        return screenPos.X >= minX - 24f && screenPos.X <= maxX + 24f
+            && screenPos.Y >= minY - 24f && screenPos.Y <= maxY + 24f;
+    }
+
+    private Coordinate3D? PickCell(Vector2 screenPos)
+    {
+        if (Size.X < 4f || Size.Y < 4f || _menuRect.Grow(4f).HasPoint(screenPos))
+        {
+            return null;
+        }
+        Vector2 vpPos = screenPos / Size * (Vector2)_vp.Size;
+        Vector3 origin = _cam.ProjectRayOrigin(vpPos);
+        Vector3 dir = _cam.ProjectRayNormal(vpPos);
+
+        Coordinate3D? best = null;
+        float bestDist = float.MaxValue;
+        Vector3 normal = _boardRoot.GlobalTransform.Basis.Z;
+
+        for (int z = 0; z < 3; z++)
+        {
+            float layerZ = (1 - z) * BoardSpacing;
+            var plane = new Plane(normal, _boardRoot.ToGlobal(new Vector3(0f, 0f, layerZ)));
+            var hit = plane.IntersectsRay(origin, dir);
+            if (hit == null)
+            {
+                continue;
+            }
+            Vector3 local = _boardRoot.ToLocal(hit.Value);
+            float fx = local.X / CellStep + 2f;
+            float fy = local.Y / CellStep + 2f;
+            int gx = (int)MathF.Round(fx);
+            int gy = (int)MathF.Round(fy);
+            if (gx < 0 || gx >= 5 || gy < 0 || gy >= 5)
+            {
+                continue;
+            }
+            if (MathF.Abs(fx - gx) > 0.44f || MathF.Abs(fy - gy) > 0.44f)
+            {
+                continue;
+            }
+            float d = (hit.Value - origin).Length();
+            if (d < bestDist)
+            {
+                bestDist = d;
+                best = new Coordinate3D(gx, gy, z);
+            }
+        }
+        return best;
+    }
+
+    private void StartMorphForward()
+    {
+        if (_phase == Phase.Menu)
         {
             return;
         }
         _phase = Phase.Morph;
         _morphDir = 1;
-        _morphE = 0;
-        ShowMenuUi(false);
+        MouseDefaultCursorShape = CursorShape.Arrow;
     }
 
     private void StartMorphBack()
     {
-        if (_phase != Phase.Menu)
+        if (_phase == Phase.Letter)
         {
             return;
         }
         _phase = Phase.Morph;
         _morphDir = -1;
-        ShowMenuUi(false);
+        _dragging = false;
+        _hoverCell = null;
+        MouseDefaultCursorShape = CursorShape.Arrow;
     }
 
-    private void ApplyTheme()
+    // ================= 缓动函数 =================
+
+    private static float SmoothStep(float edge0, float edge1, float x)
     {
-        var pal = Palette.Active;
-        if (_vp?.World3D?.Environment is Godot.Environment env)
-        {
-            env.BackgroundColor = pal.Background;
-        }
-        foreach (var l in _text3D)
-        {
-            l.Modulate = ReferenceEquals(l, _text3D[2]) ? pal.TextDim : pal.TextPrimary;
-        }
-        _status.AddThemeColorOverride("font_color", pal.TextDim);
+        float t = Mathf.Clamp((x - edge0) / MathF.Max(1e-5f, edge1 - edge0), 0f, 1f);
+        return t * t * (3f - 2f * t);
     }
 
-    private static float EaseInOut(float t) => t < 0.5f ? 4 * t * t * t : 1 - Mathf.Pow(-2 * t + 2, 3) / 2;
+    private static float EaseInOutCubic(float t) =>
+        t < 0.5f ? 4f * t * t * t : 1f - MathF.Pow(-2f * t + 2f, 3f) * 0.5f;
+
+    private static float EaseOutQuint(float t) =>
+        1f - MathF.Pow(1f - Mathf.Clamp(t, 0f, 1f), 5f);
+
+    private static float EaseOutBack(float t)
+    {
+        float x = Mathf.Clamp(t, 0f, 1f);
+        const float c1 = 1.70158f;
+        const float c3 = c1 + 1f;
+        return 1f + c3 * MathF.Pow(x - 1f, 3f) + c1 * MathF.Pow(x - 1f, 2f);
+    }
 }

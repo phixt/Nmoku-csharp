@@ -49,6 +49,10 @@ Nmoku 存档文件,Nmoku 存档文件,Nmoku 存檔檔案,Nmoku save file,Nmoku �
 退出,退出,退出,Quit,終了
 13×13×6 三维连珠 · Nmoku,13×13×6 三维连珠 · Nmoku,13×13×6 三維連珠 · Nmoku,13×13×6 3D Renju · Nmoku,13×13×6 立体連珠 · Nmoku
 当前有进行中的对局，开始新局将覆盖保留现场。确定？,当前有进行中的对局，开始新局将覆盖保留现场。确定？,目前有進行中的對局，開始新局將覆蓋保留現場。確定？,A game is in progress. Starting a new one will discard it. Continue?,進行中の対局があります。新規開始すると破棄されます。よろしいですか？
+点击展开棋盘,点击展开棋盘,點擊展開棋盤,Click to unfold,クリックして展開
+返回封面,返回封面,返回封面,Cover,表紙へ
+重置演示,重置演示,重設演示,Reset,リセット
+{0} · 点击落子 · 拖拽旋转,{0} · 点击落子 · 拖拽旋转,{0} · 點擊落子 · 拖曳旋轉,{0} · Click to place · Drag to orbit,{0} · クリックで着子 · ドラッグで回転
 已暂停,已暂停,已暫停,Paused,一時停止
 继续游戏,继续游戏,繼續遊戲,Resume,続ける
 重新开始,重新开始,重新開始,Restart,再開始

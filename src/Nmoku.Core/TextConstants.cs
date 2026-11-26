@@ -78,6 +78,10 @@ public static class Text
         public const string Quit = "退出";
         public const string Subtitle = "13×13×6 三维连珠 · Nmoku";
         public const string NewGameConfirm = "当前有进行中的对局，开始新局将覆盖保留现场。确定？";
+        public const string ClickToEnter = "点击展开棋盘";
+        public const string BackToCover = "返回封面";
+        public const string ClearDemo = "重置演示";
+        public const string DemoHint = "{0} · 点击落子 · 拖拽旋转";
     }
 
     public static class Menu

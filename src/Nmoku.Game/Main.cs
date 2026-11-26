@@ -1160,9 +1160,12 @@ public partial class Main : Node
         Rect2 minRect = _titleScreen.ApplyMenuLayoutForTests(minFace);
         bool minInside = new Rect2(Vector2.Zero, minFace).Encloses(minRect);
 
-        Rect2 designRect = _titleScreen.ApplyMenuLayoutForTests(new Vector2(768f, 432f));
-        bool designOk = Mathf.IsEqualApprox(designRect.Size.X, 360f)
-            && Mathf.IsEqualApprox(designRect.Size.Y, 432f);
+        var designFace = new Vector2(768f, 432f);
+        Rect2 designRect = _titleScreen.ApplyMenuLayoutForTests(designFace);
+        bool designInside = new Rect2(Vector2.Zero, designFace).Encloses(designRect);
+        bool designOk = designInside
+            && Mathf.IsEqualApprox(designRect.Size.X, 248f)
+            && designRect.Size.Y > 200f && designRect.Size.Y <= 340f;
 
         _titleScreen.ApplyMenuLayoutForTests(_titleScreen.Size); // 复原真实布局
         return minInside && designOk
@@ -3185,6 +3188,10 @@ public partial class Main : Node
         _board3D.SetLastMove(_gm.LastVisibleMove?.Coordinate); // 批10：随游标的可见最后一手（0 手=无）
         _board2D.Aux = aux; // 一份数据、两个渲染器（避免 2D 面板重复扫描）
         _board2D.QueueRedraw();
+        if (GodotObject.IsInstanceValid(_titleScreen))
+        {
+            _titleScreen.SetColorblind(_gm.Colorblind);
+        }
         UpdateStatus();
         // 复盘条同步须等路由挂载：GM.StateChanged（BeginReplay/SetReplayIndex）先于 _store.SetState 触发，
         // 首次进复盘时 replay-hud 尚未入树、再次进入时旧实例已销毁——两窗口都不得触碰（NRE 崩溃根因）
