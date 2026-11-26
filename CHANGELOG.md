@@ -3,6 +3,19 @@
 > 维护规则见 `AGENTS.md`：只记"当前场景"相关事实；总量 ≤300 行，旧条目按里程碑压缩合并，但关键教训（踩坑结论）不删。
 > 提交级细节看 `git log`，这里只留人读的里程碑叙事。
 
+## M5 修复批 4 + 开始界面重做（2026-11-26）
+
+- **触发**：人类评估开始界面动效不自然/字母不像字母，决定保留核心创意并按新审美重做；同时按推荐口径清掉 10-26 审查报告的剩余遗留 bug（UI 缩放体系重构暂缓）。共 5 个功能提交 + 1 个交接提交。
+- **① Core 防御与相机元数据同步**：`Rules.Directions` 改 `ImmutableArray` 防篡改；`Board`/`Rules`/规则引擎补非正尺寸/非正连珠/非法 `CellState` 校验并新增 `Board.Clone()`；`CoordMapper.WorldToLogical` 改四舍五入+防 `spacing=0` 除零；`CameraMath.ComputeDistance` 防非正/NaN 宽高比；`CameraRig.Advance` 同步非插值元数据（修 `ComputeOpacity` 陈旧读）；`AuxScan.Scan` 验悬停界内、`KeycapParser.Parse(null)` 不抛 NRE（+16 例单测）。
+- **② AI 行为修复与线程隔离（§10 B28–B30，人类拍板）**：①己方即胜绝对优先于防守（修 B4 战术送死）；②`PatternScore` 按 `WinLength` 4–9 泛化（wl=5 逐值不变）；③Easy 恢复邻近已有子落点档；④`GameManager` 向 AI 线程池传 `Board.Clone()` 独立快照并释放 CTS（+3 例单测）。
+- **③ 视图与壳层卫生**：`Board2DView` 改消费 `Main` 推送的同一份 `AuxScanResult` 快照；`Board3DView` 辅助线改单份 `ImmediateMesh` + 标记球节点池并按坐标去重；`Main`/`GameStore`/`AudioManager` 补 `_ExitTree` 退订与停播；`SaveMenu`/`KeymapContent` 补 `RemoveChild` 防同帧残留；`SettingsStore` 增内存缓存+`SetMany` 合并落盘+退出释放；`SceneRouter.Rebuild` 保护 `game` 并支持 `IKeepAliveRefreshable` 原地刷新；`I18nCsvTests` 新增四语言 `{n}` 占位符一致性守卫（+1 例单测）。
+- **④ 开始界面重做（`PreTitleScreen.cs`，真实窗口 3 轮截帧调优）**：
+  - 封面态：三段精密斜接挤出 3D 雕塑字母 `N`（微浮雕错层 + 鼠标微视差 + 悬浮黑白双子）配原生清晰 2D 排版（`Nmoku` + 强调线 + 副标题 + 呼吸入口按钮）。
+  - 流体形变（可双向可逆）：N 三笔画沿纵深分离成三层薄片并流体渐隐，5×5×3 棋盘从中心波浪涟漪展开，双子沿弧线落入斜对角无遮挡格位，透视相机沿曲线滑入 3/4 构图，左上品牌角标与右侧菜单列错峰级联入场。
+  - 菜单态与 7 处历史遗留根治：物理像素 1.5× 超采样 + MSAA 8× 根治 csf 2.5 发糊；左上角标就位；「继续对局」独立管理不被覆盖；`IKeepAliveRefreshable` 原地换肤/换语不重置演示盘；柔和自转生效+拖拽惯性；隐藏时停进程并置视口 `Disabled`；全量 `I18n.T` 零硬编码中文；按钮全走 `Palette.Active` 并配 hover 轻移与强调条。
+- **⑤ 架构拆解与自测补盲**：将 2000 行自测拆入 `Autotest/Main.Autotest.cs`，取消 `Main._Process` 自测早退（四条生产路径正式进入自测覆盖），新增 `m5-pretitle-redesign` 回归锁，补提交 `KeymapAudit.cs.uid`。
+- **门禁**：build 0 警告 0 错误 / **382 单测全绿**（362→382，+20 例）/ 无头 `--quit` + `--autotest` ALL PASS（含新回归锁，内存平稳 ~133MB）/ 真实窗口暗亮两套 × 封面·形变·菜单三阶段截帧复验通过。未 push（铁律 9）。
+
 ## M5 修复批 3 — 真实缺陷（2026-10-27）
 
 - **触发**：接 2026-10-26 全面代码审查的批次路线图 ③（真实缺陷），7 个条目逐条根治 + 3 项顺带
@@ -240,61 +253,13 @@
 - **教训**：§3.4 Any→REPLAY 七态全可达（穷举测试抓漏）；缺 using 报错被 lambda 级联噪音吞；
   manifest 键序 camelCase（TestFirst 抓住）。
 
-## M3 — 2D 右面板 + 落子闭环 + 辅助线（2026-09-19，✅ 验收通过 tag `m3`）
+## M0–M3 基线与关键教训（2026-09-18/19，已压缩，详情见 git log 与 §10）
 
-- **R4 流程**（铁律 2）：通读源 RightPanel/LeftPanel/main 输入段，行为清单 + D1–D4 决策落计划 §10.5，人类确认后实现。
-- **Core**：`AuxScan` 悬停扫描（首子即停/敌停/落点与截断标记/角色与配色解耦）+ `Board` 增 Coordinate3D 重载；
-  PatternCollector（整层模式）与 AuxScan（悬停战术线）并存，对应源两套机制。
-- **Game**：`GameManager`（回合/合法性/胜负/判和/悔棋/SWAP2 双分支/AI 异步应答+防串代，事件驱动视图）；
-  `Board2DView` 自绘（星位/悬停 ghost/最后手环/镜像/辅助线）；`Board3DView` 焦点层强制实体 + 3D 蓝点跟随
-  2D 悬停 + 辅助线渲染；分屏 SubViewport（OwnWorld3D + MSAA）。
-- **键位**：A/D 循环换层、F 镜像、H 辅助线 ALL↔NONE、V 色弱、Ctrl+Z 悔棋（PvE 自动回退人类回合）。
-- **验收反馈三轮**：①（B9）辅助线改首子即停（弃源跳空续走/己方连走——跨层斜线视觉穿透中间层的根因），
-  棋子六桶显隐 + 网格材质补 Alpha 混合、显隐曲线改反比例雾化 `alpha=1/(1+d)`、**O 键**全亮、3D 最后手标记；
-  ②（B10）**整盘绕 Y 轴旋转 180°**（CoordMapper 单点）+ 2D 棋子改三层绘制修「方形色块」；③分屏子视口塌缩到
-  2px（`SizeFlags.Expand` 只分配空间不填充，须 `ExpandFill`）。
-  **教训**：无头冒烟不渲染，布局类 bug 必须真实窗口跑诊断；Core 手写 using 警惕误引 Godot（红线，构建即暴露）。
-  **人类验收通过，tag `m3` 已打**。
-
-## M2 — 3D 左视图 + 相机（2026-09-19，✅ 验收通过 tag `m2`）
-
-- **Core 相机层**：`CoordMapper`（逻辑→世界，镜像收敛单点）+ `CameraMath` 八步管道纯函数 + `CameraRig`
-  （§8.1 增量缓存 + 决策 #9 自由交互：无级旋转、视角平移限幅、Zoom、指数阻尼 `Advance`、Reset）。
-- **决策 #9**（人类 2026-09-19）：相机超越源项目（无级旋转/平移/平滑阻尼，源因 bug 移除平移）；§10 登记
-  B7（源 `LeftPanel.ts` 相机五处缺陷/简化，实现以文档为准）。
-- **Game 侧**：`Board3DView`（MultiMesh 实体 + 逐层 ghost 连续透明度 + 网格线 + 悬停蓝点）+ `Main` 接线
-  （Q/E ±90°、W/S 缩放、滚轮锚点缩放、左键旋转、中键平移、Z/C 层间距、X 复位）；三组标定配置无头数值自检通过。
-- **验收反馈两轮**：①滚轮回退径向缩放、悬停改略小蓝色小球+射线连续边界判定、拖拽上下翻转、新增
-  Shift+WASD 平移（exact match 防与缩放串线）、网格线薄盒 MultiMesh + MSAA 4×；②「Z/C 导致视角初始化」
-  → CameraRig 增用户缩放覆盖（X 复位清除）、**B8** 世界朝向对齐源（行=世界Y 竖直、层=世界Z 纵深）。
-- **奠基**：`Game/Theme/Palette.cs` 语义调色板（视图零颜色字面量，为色弱/明暗/主题奠基）。
-  **人类验收通过，tag `m2`**。
-
-## M1.5 — review 修复批（2026-09-19）
-
-- 契约文档化：`IRuleEngine.GetNextTurnState`/`TurnState` XML doc 写死"currentPlayer=刚行棋方、swap 决策期指针不动"；
-  存档健壮性：`SaveValidator` 行宽逐行校验（原只查每层首行）、`SaveManager` 载入路径对 v2 直通档补 `Validate`；
-  规则层收敛：`RuleEngineFactory.Create`（Renju 未实装即抛）、`Board.IsFull()` 判和原语（+8 回归用例）。
-- 测试清理：死字段/恒等三元/名不副实用例改名；§10 修 B1 措辞、登记 B6（AI 等分策略差异）。
-- 验收：build 0 警告、测试 121 例全绿。
-
-## M1 — 纯逻辑层（2026-09-18）
-
-- 落地 `Nmoku.Core`：Board（扁平 byte[]，越界读 0/写忽略）、Rules（13 方向、winLength 4–9 可配）、Standard/SWAP2 规则引擎、存档 v2.0.0 兼容层（校验/v1 迁移/Base64/槽位门面+mock 适配器测试）、启发式 AI（评分表 + 半径候选 + 可取消异步）、EventBus、TextConstants(zh-CN)、PatternCollector。验收方式：AI vs AI 100 手并入 xUnit（固定种子可复现）。
-- **关键教训（读源 TS 核实，全文见 migration-plan §10）**：
-  - B1 SWAP2 的 `getNextTurnState` 收到的 `currentPlayer` 是**刚行棋方**；决策期 shell 不改指针 → 黑连下 2、3 手才是官方节奏。
-  - B3 旧单体档里 null 和缺 `id` 的条目都跳过，但**数组下标照常递增**（下标即槽位号）。
-  - B4 `attack+1.1*defense` 忠实实现后，AI 在"成五点不同格"时会先堵不胜——源项目同式，M3 后如体感弱再议。
-  - B5 辅助线"4 格上限"是渲染端裁剪，不是数据端；`GameConfig.HelperLineMaxCells`。
-
-## M0 — 环境与脚手架（2026-09-18）
-
-- 三项目解决方案（Core/Game/Tests）+ InputMap 26 动作 + 4 音频总线 + `.gitattributes`/`Directory.Build.props` + 霞鹜文楷 Lite TTF（源 woff2 本地无损转换，OFL）+ 存档夹具 10 件 + CI workflow。
-- **关键教训（环境）**：Godot 控制台壳按"去掉 `_console` 的同名 exe"定位主程序（重命名要成对）；SDK 10 的
-  `dotnet new sln` 生成 **`Nmoku.slnx`**（XML 新格式），SDK 8 解析不了 → CI `setup-dotnet` 钉 10.0.x，TFM 仍 net8.0；
-  用户 PATH 改动不会进入已启动的 shell 会话（agent 用全路径 `/d/Tools/Godot/Godot_console.exe`）；
-  `--headless --import` 会回写 `project.godot`（改前先 read 再合并）。
+- **M0 脚手架**：Core/Game/Tests 三项目 + `Nmoku.slnx`（SDK 10 新格式，TFM 仍 net8.0）+ InputMap + 霞鹜文楷 TTF + CI。教训：`--headless --import` 会回写 `project.godot`；Godot 控制台壳须与主 exe 成对。
+- **M1/M1.5 纯逻辑层**（121 测试全绿）：Board/Rules(13向)/Standard+Swap2/存档 v2/AI/EventBus/PatternCollector。教训（§10）：B1 SWAP2 决策期指针不动；B3 旧单体档空条目下标照常递增；B5 辅助线 4 格上限在渲染端。
+- **M2 3D 视图+相机**（tag `m2`）：`CoordMapper` 单点收敛 + `CameraMath`/`CameraRig` 八步管道 + 决策 #9 自由相机 + `Palette` 语义调色板；B8 世界朝向（行=Y、层=Z）。
+- **M3 2D 面板+辅助线**（tag `m3`）：`Board2DView` 自绘 + `AuxScan` 悬停扫描 + `GameManager`。教训：B9 辅助线首子即停 + 网格反比例雾化 `1/(1+d)` + O 键全亮；B10 整盘绕 Y 转 180°；`SizeFlags.Expand` 只分配不填充（须 `ExpandFill`）。
 
 ## 更早
 
-- 计划与决策：见 `docs/migration-plan.md` §0（8 项人类决策）与 §5（M0–M5 里程碑）。
+- 计划与决策：见 `docs/migration-plan.md` §0（9 项人类决策）与 §5（M0–M5 里程碑）。
