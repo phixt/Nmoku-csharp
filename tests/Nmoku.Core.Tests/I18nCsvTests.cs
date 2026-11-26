@@ -132,4 +132,24 @@ public class I18nCsvTests
             Assert.False(pseudoKey.IsMatch(row[0]), $"键应为 zh-CN 文本: {row[0]}");
         }
     }
+
+    [Fact]
+    public void Csv_FormatPlaceholders_MatchAcrossAllLocales()
+    {
+        // 防运行期 FormatException：四语言译文的 {0}/{1}/... 占位符索引集合必须与源键逐一对齐
+        var placeholder = new System.Text.RegularExpressions.Regex(@"\{(\d+)\}");
+        static string Signature(string s, System.Text.RegularExpressions.Regex rx) =>
+            string.Join(",", rx.Matches(s).Select(m => m.Groups[1].Value).Distinct().OrderBy(x => x));
+
+        foreach (string[] row in ReadCsv().Skip(1))
+        {
+            string expected = Signature(row[0], placeholder);
+            for (int col = 1; col < row.Length; col++)
+            {
+                string actual = Signature(row[col], placeholder);
+                Assert.True(expected == actual,
+                    $"占位符失配 [{LocaleColumns[col - 1]}] 键={row[0]} 期望={{{expected}}} 实际={{{actual}}}");
+            }
+        }
+    }
 }

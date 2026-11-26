@@ -78,6 +78,7 @@ public sealed partial class KeymapContent : VBoxContainer
     {
         foreach (var child in _indicatorRow.GetChildren())
         {
+            _indicatorRow.RemoveChild(child);
             child.QueueFree();
         }
         var lead = new Control { SizeFlagsHorizontal = SizeFlags.Expand };
@@ -145,6 +146,7 @@ public sealed partial class KeymapContent : VBoxContainer
     {
         foreach (var child in _keyboardHost.GetChildren())
         {
+            _keyboardHost.RemoveChild(child);
             child.QueueFree();
         }
         // 宿主自身定尺寸：普通 Control 不传播子节点最小尺寸，塌缩会让说明网格叠上键盘
@@ -200,6 +202,7 @@ public sealed partial class KeymapContent : VBoxContainer
     {
         foreach (var child in _descHost.GetChildren())
         {
+            _descHost.RemoveChild(child);
             child.QueueFree();
         }
         var entries = PageEntries(scope);

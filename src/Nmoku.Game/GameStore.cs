@@ -66,13 +66,30 @@ public sealed partial class GameStore : Node
         Saves = new SaveManager(adapter ?? new FileSystemStorageAdapter());
     }
 
+    private bool _saveEventSubscribed;
+
     public override void _Ready() => AddChild(GM); // GM 与壳同生命周期，入树后 CallDeferred 可用
+
+    public override void _ExitTree()
+    {
+        if (_saveEventSubscribed)
+        {
+            EventBus.SaveUpdated -= OnSaveUpdated;
+            _saveEventSubscribed = false;
+        }
+    }
+
+    private void OnSaveUpdated(IReadOnlyList<SaveData?> _) => SavesChanged?.Invoke();
 
     /// <summary>启动时装载槽位（小文件同步可接受，保证 Title 界面 L 键即刻可用）。</summary>
     public void InitializeSaves()
     {
         Saves.InitAsync().GetAwaiter().GetResult();
-        EventBus.SaveUpdated += _ => SavesChanged?.Invoke();
+        if (!_saveEventSubscribed)
+        {
+            EventBus.SaveUpdated += OnSaveUpdated;
+            _saveEventSubscribed = true;
+        }
     }
 
     // ---- 转移执行：机器把关拓扑合法性，这里补条件与副作用 ----

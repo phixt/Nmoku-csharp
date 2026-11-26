@@ -200,6 +200,20 @@ public partial class Main : Node
                  $"rules={_rules}, mode={(_pve ? "pve" : "pvp")}, distance={_rig.Current.Distance:0.00})");
     }
 
+    public override void _ExitTree()
+    {
+        EventBus.ThemeToggled -= ApplyTheme;
+        EventBus.LanguageChanged -= OnLanguageChanged;
+        if (DisplayServer.GetName() != "headless")
+        {
+            var win = GetWindow();
+            if (win != null)
+            {
+                win.SizeChanged -= SyncWindowModeToPrefs;
+            }
+        }
+    }
+
     /// <summary>
     /// UI 缩放（人类拍板 2026-09-25）：窗口固定项目默认 1920×1080，内容缩放=2.5 绝对值
     /// （等效设计基准 768×432）。不再随 DPI/工作区调整——那是"UI 过小"首版的方案，
@@ -3039,7 +3053,7 @@ public partial class Main : Node
         TranslationServer.SetLocale(lang);
         foreach (string id in _router.Mounted.Where(id => id != "game").ToList())
         {
-            _router.Rebuild(id);
+            _router.Rebuild(id, localeChanged: true);
         }
         Refresh();
     }

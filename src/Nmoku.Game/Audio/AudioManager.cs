@@ -49,14 +49,35 @@ public sealed partial class AudioManager : Node
         ApplyVolumes();
     }
 
+    public override void _ExitTree()
+    {
+        StopAllPlayback();
+        if (Instance == this)
+        {
+            Instance = null;
+        }
+    }
+
     public override void _Notification(int what)
     {
         if (what == NotificationPredelete)
         {
-            // 退出前停播：播放中的 AudioStreamPlayer 会让 OGG playback 对象残留到进程退出（泄露警告）
-            _music.Stop();
+            // 退出前停播：播放中的 AudioStreamPlayer 会让 OGG/WAV playback 对象残留到进程退出（泄露警告）
+            StopAllPlayback();
         }
         base._Notification(what);
+    }
+
+    private void StopAllPlayback()
+    {
+        _music?.Stop();
+        foreach (var player in _sfx.Values)
+        {
+            if (GodotObject.IsInstanceValid(player))
+            {
+                player.Stop();
+            }
+        }
     }
 
     public void PlayBgm(BgmTrack track) => PlayBgm(track.ToString().ToLowerInvariant());
@@ -118,8 +139,9 @@ public sealed partial class AudioManager : Node
 
     private void SaveSettings()
     {
-        SettingsStore.Set("audio", "volume_sfx", SfxVolume);
-        SettingsStore.Set("audio", "volume_bgm", BgmVolume);
-        SettingsStore.Set("audio", "muted", Muted);
+        SettingsStore.SetMany("audio",
+            ("volume_sfx", SfxVolume),
+            ("volume_bgm", BgmVolume),
+            ("muted", Muted));
     }
 }

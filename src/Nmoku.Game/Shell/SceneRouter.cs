@@ -21,6 +21,13 @@ public enum BackdropKind
     Opaque,
 }
 
+/// <summary>KeepAlive 基座屏原地刷新协议：切主题/切语言时不销毁重建，保留当前交互态。</summary>
+public interface IKeepAliveRefreshable
+{
+    void RefreshTheme();
+    void RefreshLocale();
+}
+
 /// <summary>
 /// 路由定义（声明式，类 vue-router routes + keep-alive）：改表即改行为，无需动逻辑。
 /// KeepAlive 仅用于 L0 基座（game=保留现场为人类拍板 2026-09-19）；模态/浮层一律销毁重建。
@@ -117,11 +124,33 @@ public sealed partial class SceneRouter : Node
     /// <summary>当前在树内的路由（含隐藏的 KeepAlive 基座）。</summary>
     public IReadOnlyList<string> Mounted => _inTree;
 
-    /// <summary>重建路由实例（工厂重跑、事件重接线）：主题切换等需要壳屏整体换肤时用。</summary>
-    public void Rebuild(string id)
+    /// <summary>重建路由实例（工厂重跑、事件重接线）：主题切换等需要壳屏整体换肤时用；
+    /// KeepAlive 路由优先走原地刷新（<see cref="IKeepAliveRefreshable"/>），禁止销毁 "game" 基座。</summary>
+    public void Rebuild(string id, bool localeChanged = false)
     {
         if (!_inTree.Contains(id) || !_content.TryGetValue(id, out var content))
         {
+            return;
+        }
+        if (id == "game")
+        {
+            return; // 保护对局基座现场，永不销毁
+        }
+        if (_defs.TryGetValue(id, out var def) && def.KeepAlive && content is IKeepAliveRefreshable refreshable)
+        {
+            // 背板色若为 Opaque 同步更新
+            if (_backdrops.TryGetValue(id, out var backdrop) && def.Backdrop == BackdropKind.Opaque && backdrop is ColorRect rect)
+            {
+                rect.Color = Palette.Active.Background;
+            }
+            if (localeChanged)
+            {
+                refreshable.RefreshLocale();
+            }
+            else
+            {
+                refreshable.RefreshTheme();
+            }
             return;
         }
         bool wasVisible = content.Visible;

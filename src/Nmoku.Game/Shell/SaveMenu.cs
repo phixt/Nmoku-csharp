@@ -84,6 +84,7 @@ public sealed partial class SaveMenu : Control
     {
         foreach (var child in _rows.GetChildren())
         {
+            _rows.RemoveChild(child);
             child.QueueFree();
         }
         for (int i = 0; i < GameConfig.SaveSlotCount; i++)
