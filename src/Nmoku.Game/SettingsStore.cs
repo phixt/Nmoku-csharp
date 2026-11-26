@@ -44,4 +44,11 @@ public static class SettingsStore
         }
         cfg.Save(SettingsPath);
     }
+
+    /// <summary>释放内存中的 Godot ConfigFile 引用（进程退出前调用，避免 RefCounted 静态持留告警）。</summary>
+    public static void ReleaseCache()
+    {
+        _cache?.Dispose();
+        _cache = null;
+    }
 }
