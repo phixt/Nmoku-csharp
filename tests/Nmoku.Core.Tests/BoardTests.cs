@@ -140,4 +140,35 @@ public class BoardTests
         Assert.Equal(2, jagged[1][4][3]);
         Assert.Equal(2, jagged.SelectMany(l => l.SelectMany(r => r)).Count(v => v != 0));
     }
+
+    [Theory]
+    [InlineData(0, 1)]
+    [InlineData(-3, 2)]
+    [InlineData(5, 0)]
+    [InlineData(5, -1)]
+    public void Constructor_NonPositiveDimensions_Throws(int size, int layers)
+    {
+        Assert.Throws<ArgumentOutOfRangeException>(() => new Board(size, layers));
+    }
+
+    [Fact]
+    public void Set_InvalidCellState_Throws()
+    {
+        var board = new Board(5, 1);
+        Assert.Throws<ArgumentOutOfRangeException>(() => board.Set(0, 0, 0, (CellState)99));
+    }
+
+    [Fact]
+    public void Clone_ProducesIndependentCopy()
+    {
+        var board = new Board(7, 2);
+        board.Set(2, 3, 1, CellState.Black);
+
+        var copy = board.Clone();
+        board.Set(2, 3, 1, CellState.White);
+        board.Set(0, 0, 0, CellState.Black);
+
+        Assert.Equal(CellState.Black, copy.Get(2, 3, 1));
+        Assert.Equal(CellState.Empty, copy.Get(0, 0, 0));
+    }
 }

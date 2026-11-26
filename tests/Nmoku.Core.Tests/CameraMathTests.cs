@@ -220,4 +220,26 @@ public class CameraMathTests
         Assert.True(state.Position.X > state.Center.X);
         Assert.Equal(state.Position.X - state.Center.X, state.Position.Z - state.Center.Z, 9);
     }
+
+    [Theory]
+    [InlineData(0.0)]
+    [InlineData(-1.5)]
+    [InlineData(double.NaN)]
+    [InlineData(double.PositiveInfinity)]
+    public void ComputeDistance_InvalidAspect_ReturnsFinitePositive(double aspect)
+    {
+        double dist = CameraMath.ComputeDistance(DefaultDiagonal, 60, aspect);
+        Assert.True(double.IsFinite(dist) && dist > 0, $"非法 aspect={aspect} 产出非有限距离: {dist}");
+    }
+
+    [Fact]
+    public void WorldToLogical_RoundsXYAndGuardsZeroSpacing()
+    {
+        // (x=2, y=4, z=1) 在 13×6 spacing=3.5 → world=(10, 4, 14)
+        var rounded = CoordMapper.WorldToLogical(new WorldPoint(9.8, 3.7, 13.9), 3.5, 13, 6);
+        Assert.Equal((2, 4, 1), rounded);
+
+        var zeroSpacing = CoordMapper.WorldToLogical(new WorldPoint(10.0, 4.0, 0.0), 0.0, 13, 1);
+        Assert.Equal((2, 4, 0), zeroSpacing);
+    }
 }

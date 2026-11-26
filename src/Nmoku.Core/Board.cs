@@ -13,9 +13,19 @@ public sealed class Board
 
     public Board(int boardSize = GameConfig.DefaultBoardSize, int layers = GameConfig.DefaultLayerCount)
     {
+        ArgumentOutOfRangeException.ThrowIfLessThan(boardSize, 1);
+        ArgumentOutOfRangeException.ThrowIfLessThan(layers, 1);
         BoardSize = boardSize;
         Layers = layers;
         _data = new byte[boardSize * boardSize * layers];
+    }
+
+    /// <summary>浅隔离深拷贝（AI 异步线程池求解快照，避免与主线程读竞态）。</summary>
+    public Board Clone()
+    {
+        var copy = new Board(BoardSize, Layers);
+        Buffer.BlockCopy(_data, 0, copy._data, 0, _data.Length);
+        return copy;
     }
 
     public bool InBounds(int x, int y, int z) =>
@@ -33,9 +43,13 @@ public sealed class Board
     /// <summary>坐标对象便捷重载。</summary>
     public CellState Get(Coordinate3D c) => Get(c.X, c.Y, c.Z);
 
-    /// <summary>越界写入被静默忽略（01-core §1.3 Set 伪代码）。</summary>
+    /// <summary>越界写入被静默忽略（01-core §1.3 Set 伪代码）；非法格值拒绝写入以防僵尸格破坏 IsFull。</summary>
     public void Set(int x, int y, int z, CellState state)
     {
+        if (state is not (CellState.Empty or CellState.Black or CellState.White))
+        {
+            throw new ArgumentOutOfRangeException(nameof(state), state, "Invalid CellState.");
+        }
         if (InBounds(x, y, z))
         {
             _data[Index(x, y, z)] = (byte)state;

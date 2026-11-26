@@ -8,7 +8,11 @@ public sealed class SwapEngine : IRuleEngine
 {
     private readonly int _winLength;
 
-    public SwapEngine(int winLength = GameConfig.WinLength) => _winLength = winLength;
+    public SwapEngine(int winLength = GameConfig.WinLength)
+    {
+        ArgumentOutOfRangeException.ThrowIfLessThan(winLength, 1);
+        _winLength = winLength;
+    }
 
     public bool CheckWin(int x, int y, int z, PlayerColor player, Board board) =>
         Rules.CheckWinner(board, x, y, z, _winLength) == player.ToCell();
@@ -46,6 +50,8 @@ public sealed class SwapEngine : IRuleEngine
     /// </summary>
     public static void ApplySwap(IList<Move> history, Board board)
     {
+        ArgumentNullException.ThrowIfNull(history);
+        ArgumentNullException.ThrowIfNull(board);
         foreach (Move move in history)
         {
             move.Player = move.Player.Opponent();

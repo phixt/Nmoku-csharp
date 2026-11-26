@@ -43,6 +43,11 @@ public static class AuxScan
     public static AuxScanResult Scan(Board board, PlayerColor player, Coordinate3D hover,
         bool includePlanar, bool includeSpace)
     {
+        ArgumentNullException.ThrowIfNull(board);
+        if (!board.InBounds(hover))
+        {
+            return AuxScanResult.Empty;
+        }
         var planarLines = new List<AuxLine>();
         var planarMarkers = new List<AuxMarker>();
         var spaceLines = new List<AuxLine>();

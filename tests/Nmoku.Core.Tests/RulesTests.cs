@@ -203,4 +203,32 @@ public class RulesTests
         Assert.Equal(2, count);
         Assert.Equal(1, openEnds);
     }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(-2)]
+    public void CheckWinner_NonPositiveWinLength_Throws(int winLength)
+    {
+        var board = BoardWith((0, 0, 0, CellState.Black));
+        Assert.Throws<ArgumentOutOfRangeException>(() => Rules.CheckWinner(board, 0, 0, 0, winLength));
+        Assert.Throws<ArgumentOutOfRangeException>(() => new StandardEngine(winLength));
+        Assert.Throws<ArgumentOutOfRangeException>(() => new SwapEngine(winLength));
+    }
+
+    [Fact]
+    public void AuxScan_OutOfBoundsHover_ReturnsEmpty()
+    {
+        var board = new Board(5, 2);
+        board.Set(0, 0, 0, CellState.Black);
+        var res = AuxScan.Scan(board, PlayerColor.Black, new Coordinate3D(-1, 0, 0), true, true);
+        Assert.Empty(res.PlanarLines);
+        Assert.Empty(res.SpaceLines);
+    }
+
+    [Fact]
+    public void KeycapParser_NullOrEmpty_ReturnsEmpty()
+    {
+        Assert.Empty(KeycapParser.Parse(null));
+        Assert.Empty(KeycapParser.Parse(""));
+    }
 }

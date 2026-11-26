@@ -188,6 +188,13 @@ public sealed class CameraRig
         var (near, far) = CameraMath.ComputeClipPlanes(distance);
         _current = _current with
         {
+            BoardSize = _target.BoardSize,
+            Layers = _target.Layers,
+            LayerSpacing = _target.LayerSpacing,
+            AspectRatio = _target.AspectRatio,
+            Diagonal = _target.Diagonal,
+            TargetDiagonal = _target.TargetDiagonal,
+            NormalizedAspect = _target.NormalizedAspect,
             Yaw = yaw,
             Pitch = pitch,
             Distance = distance,

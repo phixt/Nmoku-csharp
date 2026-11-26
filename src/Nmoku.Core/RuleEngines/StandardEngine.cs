@@ -5,7 +5,11 @@ public sealed class StandardEngine : IRuleEngine
 {
     private readonly int _winLength;
 
-    public StandardEngine(int winLength = GameConfig.WinLength) => _winLength = winLength;
+    public StandardEngine(int winLength = GameConfig.WinLength)
+    {
+        ArgumentOutOfRangeException.ThrowIfLessThan(winLength, 1);
+        _winLength = winLength;
+    }
 
     public bool CheckWin(int x, int y, int z, PlayerColor player, Board board) =>
         Rules.CheckWinner(board, x, y, z, _winLength) == player.ToCell();

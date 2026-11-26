@@ -1,3 +1,5 @@
+using System.Collections.Immutable;
+
 namespace Nmoku.Core;
 
 /// <summary>
@@ -5,8 +7,8 @@ namespace Nmoku.Core;
 /// </summary>
 public static class Rules
 {
-    /// <summary>13 个独立方向向量，顺序与 02-rules §1.2 一致（测试依赖顺序语义前先保数值）。</summary>
-    public static readonly Coordinate3D[] Directions =
+    /// <summary>13 个独立方向向量，顺序与 02-rules §1.2 一致（不可变，防调用方误改全局规则表）。</summary>
+    public static readonly ImmutableArray<Coordinate3D> Directions =
     [
         new(1, 0, 0), new(0, 1, 0), new(0, 0, 1),                      // 轴向
         new(1, 1, 0), new(1, -1, 0),                                   // 面-diagonal XY
@@ -22,6 +24,8 @@ public static class Rules
     public static CellState CheckWinner(Board board, int x, int y, int z,
         int winLength = GameConfig.WinLength)
     {
+        ArgumentNullException.ThrowIfNull(board);
+        ArgumentOutOfRangeException.ThrowIfLessThan(winLength, 1);
         if (!board.InBounds(x, y, z))
         {
             return CellState.Empty;

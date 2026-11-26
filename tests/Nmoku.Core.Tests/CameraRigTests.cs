@@ -359,4 +359,17 @@ public class CameraRigTests
         }
         Assert.Equal(rig.Target.Yaw, rig.Current.Yaw, 6);
     }
+
+    [Fact]
+    public void Advance_SyncsBoardMetadataAndOpacityAfterSpacingChange()
+    {
+        var rig = NewRig();
+        rig.Update(9, 4, 2.0, Aspect, 45);
+        rig.Advance(1.0 / 60);
+
+        Assert.Equal(9, rig.Current.BoardSize);
+        Assert.Equal(4, rig.Current.Layers);
+        Assert.Equal(2.0, rig.Current.LayerSpacing, 9);
+        Assert.Equal(CameraMath.ComputeOpacity(3.0, 4, 2.0), rig.ComputeOpacity(3.0), 9);
+    }
 }

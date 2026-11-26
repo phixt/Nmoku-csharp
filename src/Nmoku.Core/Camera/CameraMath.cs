@@ -42,11 +42,13 @@ public static class CameraMath
         return Math.Clamp(diagonal, baseDiagonal * GameConfig.MinVisualScale, baseDiagonal * GameConfig.MaxVisualScale);
     }
 
-    /// <summary>STEP 5 最优距离（§4.2）：受垂直/水平 FOV 较小者限制，×安全边距 1.3。</summary>
+    /// <summary>STEP 5 最优距离（§4.2）：受垂直/水平 FOV 较小者限制，×安全边距 1.3；非法 aspect/fov 防护。</summary>
     public static double ComputeDistance(double targetDiagonal, double fovDeg, double aspect)
     {
-        double fovV = ToRadians(fovDeg);
-        double fovH = 2 * Math.Atan(Math.Tan(fovV / 2) * aspect);
+        double safeFovDeg = double.IsFinite(fovDeg) ? Math.Clamp(fovDeg, 1.0, 179.0) : GameConfig.MaxFov;
+        double safeAspect = double.IsFinite(aspect) && aspect > 0 ? Math.Max(aspect, 1e-3) : 1.0;
+        double fovV = ToRadians(safeFovDeg);
+        double fovH = 2 * Math.Atan(Math.Tan(fovV / 2) * safeAspect);
         double fovLimit = Math.Min(fovV, fovH);
         return targetDiagonal / 2 / Math.Sin(fovLimit / 2) * GameConfig.SafetyMargin;
     }

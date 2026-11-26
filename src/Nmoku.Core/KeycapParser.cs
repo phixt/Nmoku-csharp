@@ -21,9 +21,13 @@ public static class KeycapParser
         ["方向键"] = ["↑", "↓", "←", "→"],
     };
 
-    public static List<CapGroup> Parse(string keys)
+    public static List<CapGroup> Parse(string? keys)
     {
         var groups = new List<CapGroup>();
+        if (string.IsNullOrWhiteSpace(keys))
+        {
+            return groups;
+        }
         foreach (var alternative in keys.Split(" 或 ", StringSplitOptions.TrimEntries))
         {
             foreach (var segment in alternative.Split('/', StringSplitOptions.TrimEntries))

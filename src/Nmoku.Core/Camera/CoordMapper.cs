@@ -13,7 +13,14 @@ public static class CoordMapper
     public static WorldPoint LogicalToWorld(int x, int y, int z, double layerSpacing, int boardSize, int layers) =>
         new(boardSize - 1 - x, y, (layers - 1 - z) * layerSpacing);
 
-    /// <summary>逆映射：层深 worldZ/layerSpacing 四舍五入回层号（同样翻转）。</summary>
-    public static (int X, int Y, int Z) WorldToLogical(WorldPoint world, double layerSpacing, int boardSize, int layers) =>
-        (boardSize - 1 - (int)world.X, (int)world.Y, layers - 1 - (int)Math.Round(world.Z / layerSpacing));
+    /// <summary>逆映射：X/Y/层深四舍五入回逻辑格（同样翻转；layerSpacing≤0 防除零）。</summary>
+    public static (int X, int Y, int Z) WorldToLogical(WorldPoint world, double layerSpacing, int boardSize, int layers)
+    {
+        int x = boardSize - 1 - (int)Math.Round(world.X);
+        int y = (int)Math.Round(world.Y);
+        int z = layerSpacing > GameConfig.CameraEpsilon
+            ? layers - 1 - (int)Math.Round(world.Z / layerSpacing)
+            : layers - 1;
+        return (x, y, z);
+    }
 }
