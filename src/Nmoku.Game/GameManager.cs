@@ -573,7 +573,9 @@ public sealed partial class GameManager : Node
         }
 
         int gen = _generation;
-        _ai.GetBestMoveAsync(_board, _current).ContinueWith(t =>
+        // 传入棋盘独立快照（§10 B30）：避免池线程读取与主线程 Reset/Undo/Load 产生读竞态
+        var snapshot = _board.Clone();
+        _ai.GetBestMoveAsync(snapshot, _current).ContinueWith(t =>
         {
             if (t.Result is not { } move || gen != _generation || IsOver)
             {

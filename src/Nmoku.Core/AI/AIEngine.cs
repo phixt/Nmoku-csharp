@@ -13,6 +13,10 @@ public enum AIDifficulty
 /// </summary>
 public sealed class AIEngine
 {
+    /// <summary>成连即胜分（02-rules §4.3 FIVE 档）。</summary>
+    public const double WinScore = 1_000_000;
+    /// <summary>即胜加成：确保己方当手成连绝对优先于堵对方非同格威胁（§10 B28，修正 B4 战术送死）。</summary>
+    private const double ImmediateWinBonus = 10_000_000;
     /// <summary>RUSH_FOUR 及以上即视为"必须立即处理"的威胁分（02-rules §4.5）。</summary>
     public const double ImmediateThreatScore = 10_000;
 
@@ -34,6 +38,9 @@ public sealed class AIEngine
     /// <summary>04-contracts §2.2.1：可重复调用，每次全量重置内部状态。</summary>
     public void Initialize(int boardSize, int layers, int winLength = GameConfig.WinLength)
     {
+        ArgumentOutOfRangeException.ThrowIfLessThan(boardSize, 1);
+        ArgumentOutOfRangeException.ThrowIfLessThan(layers, 1);
+        ArgumentOutOfRangeException.ThrowIfLessThan(winLength, 1);
         BoardSize = boardSize;
         Layers = layers;
         WinLength = winLength;
@@ -51,7 +58,7 @@ public sealed class AIEngine
 
         if (Difficulty == AIDifficulty.Easy)
         {
-            return GetEasyMove(board, player);
+            return GetEasyMove(board, player, candidates);
         }
 
         return GetScoredMove(board, player, candidates, CancellationToken.None);
@@ -62,8 +69,9 @@ public sealed class AIEngine
         CancellationToken cancellationToken = default)
     {
         Cancel();
-        _inFlight = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        var token = _inFlight.Token;
+        var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        _inFlight = cts;
+        var token = cts.Token;
         return Task.Run(() =>
         {
             try
@@ -74,7 +82,7 @@ public sealed class AIEngine
                     return null;
                 }
                 return Difficulty == AIDifficulty.Easy
-                    ? GetEasyMove(board, player)
+                    ? GetEasyMove(board, player, candidates)
                     : GetScoredMove(board, player, candidates, token);
             }
             catch (OperationCanceledException)
@@ -85,11 +93,15 @@ public sealed class AIEngine
         });
     }
 
-    /// <summary>取消进行中的求解；幂等，可随时调用（§2.2.3）。</summary>
+    /// <summary>取消进行中的求解并释放 CTS；幂等，可随时调用（§2.2.3）。</summary>
     public void Cancel()
     {
-        _inFlight?.Cancel();
-        _inFlight = null;
+        var cts = Interlocked.Exchange(ref _inFlight, null);
+        if (cts != null)
+        {
+            cts.Cancel();
+            cts.Dispose();
+        }
     }
 
     // ---- 评分核心（02-rules §4.2–§4.4） ----
@@ -153,40 +165,33 @@ public sealed class AIEngine
         return total;
     }
 
-    /// <summary>模式分数表（02-rules §4.3），指数级差保证"堵胜 > 造弱威胁"。</summary>
+    /// <summary>模式分数表（02-rules §4.3 + §10 B29 按 WinLength 4–9 泛化，WinLength=5 时与原表逐值一致）。</summary>
     public double PatternScore(int count, int openEnds)
     {
-        if (count >= WinLength) return 1_000_000; // FIVE
+        if (count >= WinLength) return WinScore;
+        if (count <= 0 || openEnds <= 0) return 0;
+        if (count == 1) return 10; // ONE
 
-        if (count == 4)
+        int remaining = WinLength - count;
+        return remaining switch
         {
-            if (openEnds == 2) return 100_000; // LIVE_FOUR
-            if (openEnds == 1) return 10_000;  // RUSH_FOUR
-            return 0;
-        }
-        if (count == 3)
-        {
-            if (openEnds == 2) return 10_000;  // LIVE_THREE
-            if (openEnds == 1) return 1_000;   // SLEEP_THREE
-            return 0;
-        }
-        if (count == 2)
-        {
-            if (openEnds == 2) return 1_000;   // LIVE_TWO
-            if (openEnds == 1) return 100;     // SLEEP_TWO
-            return 0;
-        }
-        if (count == 1)
-        {
-            return openEnds >= 1 ? 10 : 0;     // ONE
-        }
-        return 0;
+            1 => openEnds == 2 ? 100_000 : 10_000, // 差 1 子成连（LIVE_FOUR / RUSH_FOUR 对应档）
+            2 => openEnds == 2 ? 10_000 : 1_000,   // 差 2 子成连（LIVE_THREE / SLEEP_THREE 对应档）
+            3 => openEnds == 2 ? 1_000 : 100,      // 差 3 子成连（LIVE_TWO / SLEEP_TWO 对应档）
+            _ => openEnds == 2
+                ? Math.Max(20.0, 1_000.0 / Math.Pow(4, remaining - 3))
+                : Math.Max(10.0, 100.0 / Math.Pow(4, remaining - 3)),
+        };
     }
 
     public double ScoreCandidate(Board board, Coordinate3D cell, PlayerColor aiPlayer)
     {
         double attack = EvaluateCell(board, cell.X, cell.Y, cell.Z, aiPlayer);
         double defense = EvaluateCell(board, cell.X, cell.Y, cell.Z, aiPlayer.Opponent());
+        if (attack >= WinScore)
+        {
+            return ImmediateWinBonus + attack + defense;
+        }
         return attack + 1.1 * defense;
     }
 
@@ -241,17 +246,43 @@ public sealed class AIEngine
         return result;
     }
 
-    private Coordinate3D? GetEasyMove(Board board, PlayerColor player)
+    private Coordinate3D? GetEasyMove(Board board, PlayerColor player, List<Coordinate3D> candidates)
     {
-        // Easy = 仅堵对方 RUSH_FOUR+ 抢点，否则在空位随机（02-rules §4.5/§4.6）
+        // Easy（§10 B30）：先抓己方即胜点 → 堵对方 RUSH_(N-1)+ 抢点 → 在邻近已有子空位中随机（空盘落盘心）
+        var win = FindWinningMove(board, player);
+        if (win != null)
+        {
+            return win;
+        }
         var threat = FindImmediateThreat(board, player.Opponent());
         if (threat != null)
         {
             return threat;
         }
-        // 随机空位（全棋盘范围）
+        if (candidates.Count > 0)
+        {
+            return candidates[_random.Next(candidates.Count)];
+        }
         var empties = GetAllEmptyCells(board);
         return empties.Count == 0 ? null : empties[_random.Next(empties.Count)];
+    }
+
+    private Coordinate3D? FindWinningMove(Board board, PlayerColor player)
+    {
+        for (int z = 0; z < board.Layers; z++)
+        {
+            for (int y = 0; y < board.BoardSize; y++)
+            {
+                for (int x = 0; x < board.BoardSize; x++)
+                {
+                    if (board.IsEmpty(x, y, z) && EvaluateCell(board, x, y, z, player) >= WinScore)
+                    {
+                        return new Coordinate3D(x, y, z);
+                    }
+                }
+            }
+        }
+        return null;
     }
 
     private Coordinate3D? GetScoredMove(Board board, PlayerColor player,

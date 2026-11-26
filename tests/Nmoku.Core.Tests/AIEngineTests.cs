@@ -175,4 +175,58 @@ public class AIEngineTests
 
         Assert.True(history.Count >= 9); // 至少展开了像样的对局
     }
+
+    [Fact]
+    public void GetBestMove_ImmediateWinBeatsOpponentThreat_B28()
+    {
+        // 黑已有四连差 (4,0,0) 直接赢，白同时有四连差 (4,5,0) 赢：黑必须直接赢，不得放弃胜点去堵白（修 B4 战术送死）
+        var board = new Board(13, 6);
+        for (int x = 0; x < 4; x++)
+        {
+            board.Set(x, 0, 0, CellState.Black);
+            board.Set(x, 5, 0, CellState.White);
+        }
+        var ai = new AIEngine(AIDifficulty.Hard, seed: 1);
+        ai.Initialize(13, 6, 5);
+
+        var move = ai.GetBestMove(board, PlayerColor.Black);
+
+        Assert.Equal(new Coordinate3D(4, 0, 0), move);
+    }
+
+    [Fact]
+    public void PatternScore_CustomWinLength9_ScoresNearWinMonotonically_B29()
+    {
+        var ai = new AIEngine(AIDifficulty.Hard, seed: 1);
+        ai.Initialize(13, 6, winLength: 9);
+
+        double s5 = ai.PatternScore(5, 2);
+        double s6 = ai.PatternScore(6, 2);
+        double s7 = ai.PatternScore(7, 2);
+        double s8 = ai.PatternScore(8, 2);
+        double s9 = ai.PatternScore(9, 2);
+
+        Assert.True(s5 > 0, "wl=9 时 5 活连不得为 0");
+        Assert.True(s5 < s6 && s6 < s7 && s7 < s8 && s8 < s9);
+        Assert.Equal(AIEngine.WinScore, s9);
+    }
+
+    [Fact]
+    public void GetBestMove_Easy_PrefersNearbyCellsWhenNoThreat_B30()
+    {
+        // 仅盘心一黑子、无抢点：Easy 应落在该子半径 1 邻域内而非全盘 1014 格纯随机
+        var board = new Board(13, 6);
+        board.Set(6, 6, 3, CellState.Black);
+        var ai = new AIEngine(AIDifficulty.Easy, seed: 42);
+        ai.Initialize(13, 6, 5);
+
+        for (int i = 0; i < 10; i++)
+        {
+            var move = ai.GetBestMove(board, PlayerColor.White);
+            Assert.NotNull(move);
+            Assert.InRange(Math.Abs(move!.Value.X - 6), 0, 1);
+            Assert.InRange(Math.Abs(move.Value.Y - 6), 0, 1);
+            Assert.InRange(Math.Abs(move.Value.Z - 3), 0, 1);
+        }
+    }
 }
