@@ -3169,6 +3169,7 @@ public partial class Main : Node
         _board3D.SetGridFocus(_gm.FocusZ);
         _board3D.SetAuxData(aux);
         _board3D.SetLastMove(_gm.LastVisibleMove?.Coordinate); // 批10：随游标的可见最后一手（0 手=无）
+        _board2D.Aux = aux; // 一份数据、两个渲染器（避免 2D 面板重复扫描）
         _board2D.QueueRedraw();
         UpdateStatus();
         // 复盘条同步须等路由挂载：GM.StateChanged（BeginReplay/SetReplayIndex）先于 _store.SetState 触发，

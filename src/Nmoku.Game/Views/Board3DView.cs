@@ -29,6 +29,13 @@ public sealed partial class Board3DView : Node3D
     private MeshInstance3D _hover = null!;
     private MeshInstance3D _lastMoveRing = null!;
     private Node3D _auxRoot = null!;
+    private MeshInstance3D _auxLinesNode = null!;
+    private ImmediateMesh _auxLinesMesh = null!;
+    private StandardMaterial3D _auxLineMat = null!;
+    private SphereMesh _auxMarkerMesh = null!;
+    private StandardMaterial3D _auxMarkerSelfMat = null!;
+    private StandardMaterial3D _auxMarkerEnemyMat = null!;
+    private readonly List<MeshInstance3D> _auxMarkerPool = [];
 
     // 材质引用（ApplyPalette 原地换色，避免整棵重建）
     private StandardMaterial3D _focusBlackMat = null!;
@@ -78,6 +85,48 @@ public sealed partial class Board3DView : Node3D
         AddChild(_lastMoveRing);
         _auxRoot = new Node3D { Name = "aux" };
         AddChild(_auxRoot);
+        InitAuxPool();
+    }
+
+    private void InitAuxPool()
+    {
+        _auxMarkerPool.Clear();
+        _auxLineMat = new StandardMaterial3D
+        {
+            ShadingMode = BaseMaterial3D.ShadingModeEnum.Unshaded,
+            VertexColorUseAsAlbedo = true,
+            Transparency = BaseMaterial3D.TransparencyEnum.Alpha,
+        };
+        _auxLinesMesh = new ImmediateMesh();
+        _auxLinesNode = new MeshInstance3D
+        {
+            Name = "aux_lines",
+            Mesh = _auxLinesMesh,
+            MaterialOverride = _auxLineMat,
+            CastShadow = GeometryInstance3D.ShadowCastingSetting.Off,
+            Visible = false,
+        };
+        _auxRoot.AddChild(_auxLinesNode);
+
+        _auxMarkerMesh = new SphereMesh
+        {
+            Radius = 0.12f,
+            Height = 0.24f,
+            RadialSegments = 10,
+            Rings = 6,
+        };
+        _auxMarkerSelfMat = new StandardMaterial3D
+        {
+            ShadingMode = BaseMaterial3D.ShadingModeEnum.Unshaded,
+            AlbedoColor = WithAlpha(Theme.LineSelf, 0.8f),
+            Transparency = BaseMaterial3D.TransparencyEnum.Alpha,
+        };
+        _auxMarkerEnemyMat = new StandardMaterial3D
+        {
+            ShadingMode = BaseMaterial3D.ShadingModeEnum.Unshaded,
+            AlbedoColor = WithAlpha(Theme.LineEnemy, 0.8f),
+            Transparency = BaseMaterial3D.TransparencyEnum.Alpha,
+        };
     }
 
     /// <summary>色弱/主题切换：原地更新全部材质颜色与透明度（不重建结构）。</summary>
@@ -93,6 +142,11 @@ public sealed partial class Board3DView : Node3D
         _connectorMat.AlbedoColor = theme.ConnectorLine;
         _hoverMat.AlbedoColor = theme.HoverHighlight;
         _lastMoveRingMat.AlbedoColor = theme.LastMoveRing;
+        if (_auxMarkerSelfMat != null)
+        {
+            _auxMarkerSelfMat.AlbedoColor = WithAlpha(theme.LineSelf, 0.8f);
+            _auxMarkerEnemyMat.AlbedoColor = WithAlpha(theme.LineEnemy, 0.8f);
+        }
     }
 
     private static Color WithAlpha(Color c, float alpha) => new(c.R, c.G, c.B, alpha);
@@ -282,71 +336,71 @@ public sealed partial class Board3DView : Node3D
     }
 
     /// <summary>
-    /// 辅助线渲染（R4-11 + B9 载荷）：3D = SpaceLines + PlanarMarkers + SpaceMarkers；
-    /// 线为 1px LineMesh（顶点色 0.9），标记为小球 r=0.12（0.8）——与源形态一致。
+    /// 辅助线渲染（R4-11 + B9 载荷）：复用单份 ImmediateMesh 与标记球节点池（零每帧材质/网格分配），
+    /// 且按坐标去重 PlanarMarkers/SpaceMarkers（平面族是空间族真子集，避免重叠双球）。
     /// </summary>
     public void SetAuxData(AuxScanResult data)
     {
-        foreach (Node child in _auxRoot.GetChildren())
-        {
-            _auxRoot.RemoveChild(child);
-            child.Free();
-        }
-
+        _auxLinesMesh.ClearSurfaces();
         if (data.SpaceLines.Count > 0)
         {
-            var verts = new List<Vector3>();
-            var colors = new List<Color>();
+            _auxLinesMesh.SurfaceBegin(Mesh.PrimitiveType.Lines, _auxLineMat);
             foreach (var line in data.SpaceLines)
             {
                 var s = CoordMapper.LogicalToWorld(line.Start.X, line.Start.Y, line.Start.Z, _spacing, _boardSize, _layers);
                 var e = CoordMapper.LogicalToWorld(line.End.X, line.End.Y, line.End.Z, _spacing, _boardSize, _layers);
-                verts.Add(ToVector3(s));
-                verts.Add(ToVector3(e));
                 var c = line.Role == AuxRole.Self ? Theme.LineSelf : Theme.LineEnemy;
                 var vc = new Color(c.R, c.G, c.B, 0.9f);
-                colors.Add(vc);
-                colors.Add(vc);
+                _auxLinesMesh.SurfaceSetColor(vc);
+                _auxLinesMesh.SurfaceAddVertex(ToVector3(s));
+                _auxLinesMesh.SurfaceSetColor(vc);
+                _auxLinesMesh.SurfaceAddVertex(ToVector3(e));
             }
-
-            var arrays = new Godot.Collections.Array();
-            arrays.Resize((int)Mesh.ArrayType.Max);
-            arrays[(int)Mesh.ArrayType.Vertex] = verts.ToArray();
-            arrays[(int)Mesh.ArrayType.Color] = colors.ToArray();
-            var mesh = new ArrayMesh();
-            mesh.AddSurfaceFromArrays(Mesh.PrimitiveType.Lines, arrays);
-            mesh.SurfaceSetMaterial(0, new StandardMaterial3D
-            {
-                ShadingMode = BaseMaterial3D.ShadingModeEnum.Unshaded,
-                VertexColorUseAsAlbedo = true,
-                Transparency = BaseMaterial3D.TransparencyEnum.Alpha,
-            });
-            _auxRoot.AddChild(new MeshInstance3D { Mesh = mesh, CastShadow = GeometryInstance3D.ShadowCastingSetting.Off });
+            _auxLinesMesh.SurfaceEnd();
+            _auxLinesNode.Visible = true;
+        }
+        else
+        {
+            _auxLinesNode.Visible = false;
         }
 
-        foreach (var marker in data.PlanarMarkers.Concat(data.SpaceMarkers))
+        // 去重复用节点池：先扫 SpaceMarkers，再补不重复的 PlanarMarkers
+        var seen = new HashSet<Coordinate3D>();
+        int used = 0;
+        void PlaceMarker(AuxMarker marker)
         {
-            var c = marker.Role == AuxRole.Self ? Theme.LineSelf : Theme.LineEnemy;
-            var mesh = new SphereMesh
+            if (!seen.Add(marker.Position))
             {
-                Radius = 0.12f,
-                Height = 0.24f,
-                RadialSegments = 8,
-                Rings = 6,
-                Material = new StandardMaterial3D
+                return;
+            }
+            if (used >= _auxMarkerPool.Count)
+            {
+                var node = new MeshInstance3D
                 {
-                    ShadingMode = BaseMaterial3D.ShadingModeEnum.Unshaded,
-                    AlbedoColor = new Color(c.R, c.G, c.B, 0.8f),
-                    Transparency = BaseMaterial3D.TransparencyEnum.Alpha,
-                },
-            };
+                    Mesh = _auxMarkerMesh,
+                    CastShadow = GeometryInstance3D.ShadowCastingSetting.Off,
+                };
+                _auxRoot.AddChild(node);
+                _auxMarkerPool.Add(node);
+            }
+            var mi = _auxMarkerPool[used++];
             var world = CoordMapper.LogicalToWorld(marker.Position.X, marker.Position.Y, marker.Position.Z, _spacing, _boardSize, _layers);
-            _auxRoot.AddChild(new MeshInstance3D
-            {
-                Mesh = mesh,
-                Position = ToVector3(world),
-                CastShadow = GeometryInstance3D.ShadowCastingSetting.Off,
-            });
+            mi.Position = ToVector3(world);
+            mi.MaterialOverride = marker.Role == AuxRole.Self ? _auxMarkerSelfMat : _auxMarkerEnemyMat;
+            mi.Visible = true;
+        }
+
+        foreach (var marker in data.SpaceMarkers)
+        {
+            PlaceMarker(marker);
+        }
+        foreach (var marker in data.PlanarMarkers)
+        {
+            PlaceMarker(marker);
+        }
+        for (int i = used; i < _auxMarkerPool.Count; i++)
+        {
+            _auxMarkerPool[i].Visible = false;
         }
     }
 

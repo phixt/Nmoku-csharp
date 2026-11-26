@@ -24,6 +24,9 @@ public sealed partial class Board2DView : Control
     /// <summary>调色板（色弱切换时由 Main 换实例）。命名避开 Control.Theme。</summary>
     public Palette Palette { get; set; } = Palette.Dark;
 
+    /// <summary>由 Main 推送的辅助线快照（与 3D 视图共用一份数据，避免重复扫描）。</summary>
+    public AuxScanResult Aux { get; set; } = AuxScanResult.Empty;
+
     /// <summary>悬停格变化（界内格或 null）→ GameManager.SetHover。</summary>
     public event Action<Coordinate3D?>? HoverChanged;
 
@@ -110,8 +113,8 @@ public sealed partial class Board2DView : Control
             StonePainter.DrawOnBoard(this, CellToScreen(h.X, h.Y), _scale, Game.Current.ToCell(), ghostAlpha, Palette);
         }
 
-        // 辅助线（己方先画、敌方后画 → 敌方压上层，R4-5）
-        var aux = Game.ComputeAux(Game.Hover);
+        // 辅助线（己方先画、敌方后画 → 敌方压上层，R4-5；复用 Main 推送的同一份快照）
+        var aux = Aux;
         DrawAuxLines(aux.PlanarLines, AuxRole.Self);
         DrawAuxLines(aux.PlanarLines, AuxRole.Enemy);
         foreach (var m in aux.PlanarMarkers)
