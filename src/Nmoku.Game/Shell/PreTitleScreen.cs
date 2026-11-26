@@ -8,15 +8,14 @@ namespace Nmoku.Game.Shell;
 /// <summary>
 /// 开始界面（预开始封面 ↔ 流体形变 ↔ 交互菜单一体化）：
 /// <para>
-/// · 宝石与焦散美学（借鉴 caustic-gem / motion-cube）：雕塑级 3D 晶体字母 N（5 阶高保色色板 +
-///   窄带 Bayer 4×4 抖动 + 内部折射虹彩 + 等宽棱边高光）、黑曜星光蓝/冰瓷月光石弧面宝石棋子、
-///   底部硬边分层焦散光盘，以及克制的等轴几何视差背景层。
-/// · 封面态（Letter）：黑白双子沿交叉倾斜轨道差速绕 N 立体公转（真实前后遮挡），右侧配原生清晰 2D 排版。
-/// · 流体形变（Morph，可双向可逆）：双子自当前轨道瞬时位置沿平滑弧线飞入棋盘格位；晶体 N 三笔画沿纵深
-///   分离薄化并流体融入三层波浪展开的 5×5×3 棋盘；底部焦散由椭圆渐变为棱镜光斑。
-/// · 自中心旋转 + 略偏左构图：相机始终以棋盘/N 自身中心 (0,0,0) 为旋转轴，经 <see cref="Camera3D.HOffset"/>
-///   在视锥空间温和偏左构图——任意角度自转/拖拽均原地绕自身中心旋转，零甩动漂移。
-/// · 工程卫生：物理像素超采样 + MSAA 8×、隐藏停进程停视口、<see cref="IKeepAliveRefreshable"/> 原地换肤换语。
+/// · 雕刻多面晶体 N：三笔画各自雕琢多组斜切棱面与中脊，随缓动与视角平滑流转光影（无像素抖动/网格噪点）；
+///   封面态底部配柔和折射焦散光斑，展开棋盘后焦散彻底消隐。
+/// · 温润棋子与差速公转：采用与对局一致的素雅棋子质感（非夸张宝石），黑白双子沿交叉倾斜轨道差速绕 N 公转，
+///   形变时自瞬时轨道位置沿弧线落位至三层 5×5×3 交互演示棋盘。
+/// · 自中心旋转 + 略偏左构图：相机严格以 (0,0,0) 为轴心，经 <see cref="Camera3D.HOffset"/> 略偏左构图，
+///   原地自转/拖拽零甩动。
+/// · 性能与工程卫生：1:1 原生像素 + MSAA 4×、仅在状态变化时更新网格与射线拾取、隐藏自动停进程与视口、
+///   <see cref="IKeepAliveRefreshable"/> 原地换肤换语。
 /// </para>
 /// </summary>
 public sealed partial class PreTitleScreen : Control, IKeepAliveRefreshable
@@ -30,35 +29,35 @@ public sealed partial class PreTitleScreen : Control, IKeepAliveRefreshable
     public event Action? QuitRequested;
 
     // ============ 视觉与动效参数 ============
-    private const float MorphDuration = 1.15f;
+    private const float MorphDuration = 1.12f;
     private const float BoardSpacing = 1.52f;       // 3 层 5×5 演示盘层间距（以原点为几何中心：+s, 0, -s）
     private const float CellStep = 0.82f;           // 单格世界尺寸（总宽 4×0.82 = 3.28）
     private const float StoneRadius = 0.30f;
     private const float HoverBallRadius = 0.24f;
     private const float MarkerRadius = 0.105f;
-    private const float GridThickness = 0.027f;
-    private const float ConnectorThickness = 0.023f;
-    private const float ViewportSupersample = 1.5f;
+    private const float GridThickness = 0.042f;     // 明晰锐利的演示盘线宽（深浅背景皆清晰）
+    private const float ConnectorThickness = 0.030f;
+    private const float ViewportSupersample = 1.0f; // 原生 1:1 物理像素，杜绝过度超采拖慢帧率
 
-    // 相机始终绕世界原点 (0,0,0) 旋转，通过 HOffset/VOffset 实现「以自身为中心、略偏左」的稳态构图
-    private const float CoverHOffset = 1.38f;       // 封面态：N 与公转双子稳居左侧黄金位，与右侧排版留出干净间距
-    private const float MenuHOffset = 1.18f;        // 菜单态：棋盘居中略偏左（约 37% 屏宽），原地自转零甩动
-    private const float CoverVOffset = -0.08f;
-    private const float MenuVOffset = -0.10f;
+    // 相机始终绕世界原点 (0,0,0) 旋转，通过 HOffset/VOffset 实现「以自身为中心、略偏左」稳态构图
+    private const float CoverHOffset = 1.36f;
+    private const float MenuHOffset = 1.16f;
+    private const float CoverVOffset = -0.06f;
+    private const float MenuVOffset = -0.08f;
 
-    private const float CoverYaw = -0.28f;          // -16°：展现晶体 N 三笔画微错层纵深与切面折光
+    private const float CoverYaw = -0.26f;          // -15°：展现雕刻多面晶体 N 的立体切面与纵深
     private const float CoverPitch = 0.14f;         // +8°
-    private const float CoverDist = 10.0f;
+    private const float CoverDist = 9.9f;
     private const float CoverFov = 32f;
 
     private const float MenuYaw = 0.56f;            // +32°：立体 3/4 展示角
     private const float MenuPitch = 0.35f;          // +20°
-    private const float MenuDist = 10.9f;
+    private const float MenuDist = 10.8f;
     private const float MenuFov = 34f;
 
-    // 黑白双子绕 N 差速公转参数（两条交叉倾斜 3D 椭圆轨道，黑子快、白子慢，自然错落追越）
-    private const float BlackOrbitSpeed = 0.72f;    // rad/s
-    private const float WhiteOrbitSpeed = 0.43f;    // rad/s（差速比 ≈ 1.67）
+    // 黑白双子绕 N 差速公转参数（两条交叉倾斜 3D 椭圆轨道，黑子快、白子慢）
+    private const float BlackOrbitSpeed = 0.68f;    // rad/s
+    private const float WhiteOrbitSpeed = 0.41f;    // rad/s（差速比 ≈ 1.66）
     private const float BlackOrbitPhase0 = 2.35f;
     private const float WhiteOrbitPhase0 = -0.58f;
 
@@ -67,11 +66,11 @@ public sealed partial class PreTitleScreen : Control, IKeepAliveRefreshable
     private const float DragPitchSense = 0.006f;
     private const float DragFollow = 14f;
     private const float InertiaDecay = 0.04f;
-    private const float AutoOrbitSpeed = 0.22f;     // 未接管时的舒缓原地自转（rad/s）
+    private const float AutoOrbitSpeed = 0.22f;
     private const float MinMenuPitch = 0.08f;
     private const float MaxMenuPitch = 0.76f;
 
-    // 菜单列设计基准（768×432 逻辑面：宽 232、右留白 56、间距 9、按钮高 36 —— 不挤不空、平衡舒展）
+    // 菜单列设计基准（768×432 逻辑面：宽 232、右留白 56、间距 9、按钮高 36）
     private const float DesignFaceWidth = 768f;
     private const float DesignColumnWidth = 232f;
     private const float DesignRightMargin = 56f;
@@ -84,9 +83,10 @@ public sealed partial class PreTitleScreen : Control, IKeepAliveRefreshable
 
     private Phase _phase = Phase.Letter;
     private float _morphT;
+    private float _lastAppliedMorphT = -1f;
     private int _morphDir = 1;
     private float _clock;
-    private float _polishSweep = 0f;    // 首次入场晶体扫光 0 -> 1
+    private float _polishSweep = 0f;
 
     // 演示棋盘（5×5×3，真实 Core 实例，独立于主对局）
     private readonly Board _board = new(5, 3);
@@ -97,18 +97,17 @@ public sealed partial class PreTitleScreen : Control, IKeepAliveRefreshable
     // 背景与 3D 场景节点
     private ColorRect _backdrop = null!;
     private ShaderMaterial _backdropMat = null!;
-    private GeoParallaxLayer _geoBg = null!;
     private SubViewport _vp = null!;
     private ViewportHost _vpHost = null!;
     private Node3D _sceneRoot = null!;
     private Camera3D _cam = null!;
     private Godot.Environment _env = null!;
 
-    // 底部硬边分层焦散光盘（借鉴 caustic-gem）
+    // 封面态平滑地面焦散（仅 Letter/Morph 前半程显示，展开棋盘后彻底隐藏）
     private MeshInstance3D _causticDisc = null!;
     private ShaderMaterial _causticMat = null!;
 
-    // 雕塑级 3D 晶体字母 N（精确斜接挤出体 + CrystalNShader）
+    // 雕刻多面晶体 N
     private Node3D _letterRoot = null!;
     private MeshInstance3D _nLeft = null!;
     private MeshInstance3D _nDiag = null!;
@@ -127,11 +126,11 @@ public sealed partial class PreTitleScreen : Control, IKeepAliveRefreshable
     private readonly List<MeshInstance3D> _connectors = [];
     private StandardMaterial3D _connectorMat = null!;
 
-    // 弧面宝石棋子（前 2 枚封面态差速绕 N 公转，形变时从瞬时轨道位置弧线落位）
+    // 素雅瓷质棋子（与对局一致，拒绝夸张宝石质感）
     private readonly List<StoneVisual> _stones = [];
     private SphereMesh _stoneMesh = null!;
-    private ShaderMaterial _stoneBlackMat = null!;
-    private ShaderMaterial _stoneWhiteMat = null!;
+    private StandardMaterial3D _stoneBlackMat = null!;
+    private StandardMaterial3D _stoneWhiteMat = null!;
 
     // 辅助线对象池（真实 Core.AuxScan，零每帧分配）
     private MeshInstance3D _hoverBall = null!;
@@ -147,6 +146,8 @@ public sealed partial class PreTitleScreen : Control, IKeepAliveRefreshable
     private Coordinate3D? _renderedHoverCell;
     private Vector2? _hoverScreen;
     private bool _auxDirty = true;
+    private bool _pickDirty = true;
+    private bool _morphDirty = true;
 
     // 相机 / 交互态
     private float _menuYaw = MenuYaw;
@@ -227,7 +228,6 @@ public sealed partial class PreTitleScreen : Control, IKeepAliveRefreshable
         _fontSerif = new SystemFont { FontNames = ["Georgia", "Times New Roman", "serif"] };
 
         BuildBackdrop();
-        BuildGeoParallaxLayer();
         BuildViewport3D();
         BuildCausticGround();
         BuildSculptedN();
@@ -241,6 +241,7 @@ public sealed partial class PreTitleScreen : Control, IKeepAliveRefreshable
 
         ApplyTheme();
         RefreshLocale();
+        _morphDirty = true;
         ApplyMorphVisuals(0f);
         SyncLayout(Size);
 
@@ -257,6 +258,7 @@ public sealed partial class PreTitleScreen : Control, IKeepAliveRefreshable
         {
             bool visible = IsVisibleInTree();
             SetProcess(visible);
+            _vpHost?.SetProcess(visible);
             _vp.RenderTargetUpdateMode = visible
                 ? SubViewport.UpdateMode.Always
                 : SubViewport.UpdateMode.Disabled;
@@ -275,6 +277,7 @@ public sealed partial class PreTitleScreen : Control, IKeepAliveRefreshable
         SyncViewportSize();
         if (_phase == Phase.Menu)
         {
+            _morphDirty = true;
             ApplyMorphVisuals(1f);
         }
     }
@@ -331,7 +334,9 @@ public sealed partial class PreTitleScreen : Control, IKeepAliveRefreshable
     internal int PhaseForTests => (int)_phase;
     internal int DemoStoneCountForTests => _board.MoveCount();
     internal bool ResumeVisibleForTests => _resumeItem.Slot.Visible;
+    internal bool CausticVisibleForTests => _causticDisc.Visible;
     internal SubViewport.UpdateMode ViewportUpdateModeForTests => _vp.RenderTargetUpdateMode;
+    internal Vector2I ViewportSizeForTests => _vp.Size;
 
     internal void SetVisualProgressForCheck(float t, Coordinate3D? previewHover = null, float clockOverride = -1f)
     {
@@ -345,6 +350,7 @@ public sealed partial class PreTitleScreen : Control, IKeepAliveRefreshable
         CaptureStoneLaunchAnchors();
         _hoverCell = previewHover;
         _auxDirty = true;
+        _morphDirty = true;
         ApplyMorphVisuals(_morphT);
         if (_phase == Phase.Menu)
         {
@@ -362,7 +368,7 @@ public sealed partial class PreTitleScreen : Control, IKeepAliveRefreshable
         return true;
     }
 
-    // ================= 1. 氛围背景 + 克制等轴视差几何层 =================
+    // ================= 1. 干净通透的氛围渐变背景 =================
 
     private void BuildBackdrop()
     {
@@ -370,9 +376,9 @@ public sealed partial class PreTitleScreen : Control, IKeepAliveRefreshable
         {
             Code = """
 shader_type canvas_item;
-uniform vec4 bg_base : source_color = vec4(0.10, 0.11, 0.13, 1.0);
-uniform vec4 bg_glow : source_color = vec4(0.16, 0.21, 0.26, 1.0);
-uniform vec4 bg_edge : source_color = vec4(0.06, 0.07, 0.09, 1.0);
+uniform vec4 bg_base : source_color = vec4(0.039, 0.051, 0.075, 1.0);
+uniform vec4 bg_glow : source_color = vec4(0.085, 0.125, 0.185, 1.0);
+uniform vec4 bg_edge : source_color = vec4(0.020, 0.028, 0.044, 1.0);
 uniform vec2 glow_center = vec2(0.38, 0.50);
 uniform float aspect = 1.777;
 
@@ -380,10 +386,10 @@ void fragment() {
     vec2 d = UV - glow_center;
     d.x *= aspect;
     float dist = length(d);
-    float glow = exp(-dist * dist * 2.25);
-    float vig = smoothstep(0.38, 1.48, dist);
-    vec3 col = mix(bg_base.rgb, bg_edge.rgb, vig * 0.52);
-    col = mix(col, bg_glow.rgb, glow * 0.62);
+    float glow = exp(-dist * dist * 2.15);
+    float vig = smoothstep(0.40, 1.50, dist);
+    vec3 col = mix(bg_base.rgb, bg_edge.rgb, vig * 0.45);
+    col = mix(col, bg_glow.rgb, glow * 0.55);
     COLOR = vec4(col, 1.0);
 }
 """,
@@ -398,99 +404,7 @@ void fragment() {
         AddChild(_backdrop);
     }
 
-    private void BuildGeoParallaxLayer()
-    {
-        _geoBg = new GeoParallaxLayer { MouseFilter = MouseFilterEnum.Ignore };
-        _geoBg.SetAnchorsAndOffsetsPreset(LayoutPreset.FullRect);
-        AddChild(_geoBg);
-    }
-
-    /// <summary>借鉴 motion-cube StartPage 的克制等轴几何与微粒背景（极低对比、随鼠标轻微视差，不喧宾夺主）。</summary>
-    private sealed partial class GeoParallaxLayer : Control
-    {
-        public Color LineColor { get; set; } = new(1f, 1f, 1f, 0.07f);
-        public Color FillTintA { get; set; } = new(0.40f, 0.72f, 1f, 0.05f);
-        public Color FillTintB { get; set; } = new(0.55f, 0.88f, 0.78f, 0.05f);
-        public Vector2 Parallax { get; set; }
-
-        public override void _Draw()
-        {
-            if (Size.X < 60f || Size.Y < 60f)
-            {
-                return;
-            }
-            Vector2 far = Parallax * new Vector2(6f, 4f);
-            Vector2 mid = Parallax * new Vector2(14f, 9f);
-            Vector2 near = Parallax * new Vector2(22f, 14f);
-
-            // 远景 2 枚克制等轴六边形线框（错开左上品牌角标与主内容，平衡负空间）
-            DrawIsoHex(new Vector2(Size.X * 0.57f, Size.Y * 0.13f) + far, 36f, LineColor, withInnerAxes: true);
-            DrawIsoHex(new Vector2(Size.X * 0.92f, Size.Y * 0.87f) + far, 34f, LineColor, withInnerAxes: false);
-
-            // 中景 2 枚淡彩等轴小方块（顶部留白 + 左下外沿）
-            DrawIsoCubie(new Vector2(Size.X * 0.24f, Size.Y * 0.12f) + mid, 14f, FillTintA, LineColor);
-            DrawIsoCubie(new Vector2(Size.X * 0.06f, Size.Y * 0.72f) + mid, 13f, FillTintB, LineColor);
-
-            // 近景少量极细十字 '+' 与小菱点
-            Color moteCol = new(LineColor.R, LineColor.G, LineColor.B, LineColor.A * 1.45f);
-            DrawPlus(new Vector2(Size.X * 0.24f, Size.Y * 0.15f) + near, 3.5f, moteCol);
-            DrawPlus(new Vector2(Size.X * 0.56f, Size.Y * 0.84f) + near, 3.0f, moteCol);
-            DrawDiamond(new Vector2(Size.X * 0.86f, Size.Y * 0.14f) + near, 3.2f, moteCol);
-            DrawDiamond(new Vector2(Size.X * 0.16f, Size.Y * 0.82f) + near, 2.8f, moteCol);
-        }
-
-        private void DrawIsoHex(Vector2 c, float r, Color col, bool withInnerAxes)
-        {
-            Vector2[] pts = new Vector2[7];
-            for (int i = 0; i < 6; i++)
-            {
-                float a = Mathf.Pi / 6f + i * Mathf.Pi / 3f;
-                pts[i] = c + new Vector2(MathF.Cos(a), MathF.Sin(a)) * r;
-            }
-            pts[6] = pts[0];
-            DrawPolyline(pts, col, 1.0f, antialiased: true);
-            if (withInnerAxes)
-            {
-                Color inner = new(col.R, col.G, col.B, col.A * 0.65f);
-                DrawLine(c, pts[1], inner, 0.9f, true);
-                DrawLine(c, pts[3], inner, 0.9f, true);
-                DrawLine(c, pts[5], inner, 0.9f, true);
-            }
-        }
-
-        private void DrawIsoCubie(Vector2 c, float r, Color fill, Color edge)
-        {
-            float dx = r * 0.866f;
-            float dy = r * 0.5f;
-            Vector2 top = c + new Vector2(0, -r);
-            Vector2 right = c + new Vector2(dx, -dy);
-            Vector2 left = c + new Vector2(-dx, -dy);
-            Vector2 bRight = c + new Vector2(dx, dy);
-            Vector2 bLeft = c + new Vector2(-dx, dy);
-            Vector2 bottom = c + new Vector2(0, r);
-
-            DrawColoredPolygon([top, right, c, left], new Color(fill.R, fill.G, fill.B, fill.A * 1.2f));
-            DrawColoredPolygon([left, c, bottom, bLeft], fill);
-            DrawColoredPolygon([right, bRight, bottom, c], new Color(fill.R, fill.G, fill.B, fill.A * 0.72f));
-            DrawPolyline([top, right, bRight, bottom, bLeft, left, top], edge, 0.9f, true);
-        }
-
-        private void DrawPlus(Vector2 c, float arm, Color col)
-        {
-            DrawLine(c - new Vector2(arm, 0), c + new Vector2(arm, 0), col, 1.0f);
-            DrawLine(c - new Vector2(0, arm), c + new Vector2(0, arm), col, 1.0f);
-        }
-
-        private void DrawDiamond(Vector2 c, float r, Color col)
-        {
-            DrawColoredPolygon([
-                c + new Vector2(0, -r), c + new Vector2(r, 0),
-                c + new Vector2(0, r), c + new Vector2(-r, 0),
-            ], col);
-        }
-    }
-
-    // ================= 2. 物理像素超采样 3D 视口 =================
+    // ================= 2. 高效 1:1 原生像素 3D 视口 =================
 
     private void BuildViewport3D()
     {
@@ -498,7 +412,7 @@ void fragment() {
         {
             OwnWorld3D = true,
             TransparentBg = true,
-            Msaa3D = Viewport.Msaa.Msaa8X,
+            Msaa3D = Viewport.Msaa.Msaa4X,
             Size = new Vector2I(1280, 720),
             RenderTargetUpdateMode = SubViewport.UpdateMode.Always,
         };
@@ -507,10 +421,25 @@ void fragment() {
             BackgroundMode = Godot.Environment.BGMode.ClearColor,
             AmbientLightSource = Godot.Environment.AmbientSource.Color,
             AmbientLightColor = Colors.White,
-            AmbientLightEnergy = 0.65f,
+            AmbientLightEnergy = 0.62f,
         };
         _vp.World3D = new World3D { Environment = _env };
         AddChild(_vp);
+
+        // 柔和双定向光（无阴影开销）：给素雅棋子提供清晰的球面体积感与轮廓回光
+        _vp.AddChild(new DirectionalLight3D
+        {
+            RotationDegrees = new Vector3(-48f, 34f, 0f),
+            LightEnergy = 0.95f,
+            ShadowEnabled = false,
+        });
+        _vp.AddChild(new DirectionalLight3D
+        {
+            RotationDegrees = new Vector3(24f, -142f, 0f),
+            LightEnergy = 0.42f,
+            LightColor = new Color(0.84f, 0.92f, 1.00f),
+            ShadowEnabled = false,
+        });
 
         _sceneRoot = new Node3D { Name = "PreTitleScene" };
         _vp.AddChild(_sceneRoot);
@@ -573,8 +502,12 @@ void fragment() {
                 scale = f * ViewportSupersample;
             }
         }
-        int w = Mathf.Clamp((int)MathF.Floor(Size.X * scale), 64, 4096);
-        int h = Mathf.Clamp((int)MathF.Floor(Size.Y * scale), 64, 4096);
+        // 等比封顶长边 ≤1920：1080p 保持 1:1，3K/4K 高分屏自动降渲染像素省 GPU 且严格保宽高比
+        float physW = Size.X * scale;
+        float physH = Size.Y * scale;
+        float cap = MathF.Min(1f, 1920f / MathF.Max(1f, MathF.Max(physW, physH)));
+        int w = Mathf.Max(64, (int)MathF.Floor(physW * cap));
+        int h = Mathf.Max(64, (int)MathF.Floor(physH * cap));
         if (_vp.Size != new Vector2I(w, h))
         {
             _vp.Size = new Vector2I(w, h);
@@ -582,7 +515,7 @@ void fragment() {
         _backdropMat.SetShaderParameter("aspect", Size.X / MathF.Max(1f, Size.Y));
     }
 
-    // ================= 3. 硬边分层地面焦散光盘（caustic-gem） =================
+    // ================= 3. 封面态平滑地面焦散（变形后彻底消隐） =================
 
     private void BuildCausticGround()
     {
@@ -590,15 +523,15 @@ void fragment() {
         _causticDisc = new MeshInstance3D
         {
             Name = "CausticGround",
-            Mesh = new PlaneMesh { Size = new Vector2(4.4f, 4.4f) },
+            Mesh = new PlaneMesh { Size = new Vector2(4.2f, 4.2f) },
             MaterialOverride = _causticMat,
-            Position = new Vector3(0f, -2.18f, 0f),
+            Position = new Vector3(0f, -2.06f, 0f),
             CastShadow = GeometryInstance3D.ShadowCastingSetting.Off,
         };
         _sceneRoot.AddChild(_causticDisc);
     }
 
-    // ================= 4. 雕塑级 3D 晶体字母 N（caustic-gem 切面折光） =================
+    // ================= 4. 雕刻多面晶体字母 N =================
 
     private void BuildSculptedN()
     {
@@ -613,41 +546,50 @@ void fragment() {
         const float halfH = 1.60f;
         const float outerX = 1.24f;
         const float innerX = 0.69f;
-        const float depth = 0.44f;
+        const float depth = 0.50f;
 
         _nLeft = new MeshInstance3D
         {
             Name = "NLeft",
-            Mesh = BuildExtrudedQuad(
+            Mesh = BuildFacetedCrystalBar(
                 new Vector2(-outerX, -halfH),
                 new Vector2(-innerX, -halfH),
                 new Vector2(-innerX, halfH),
                 new Vector2(-outerX, halfH),
-                depth),
+                depth,
+                ridgeBias: +0.08f,
+                midBreakLeft: 0.44f,
+                midBreakRight: 0.58f),
             MaterialOverride = _nMatFront,
         };
 
         _nDiag = new MeshInstance3D
         {
             Name = "NDiag",
-            Mesh = BuildExtrudedQuad(
+            Mesh = BuildFacetedCrystalBar(
                 new Vector2(innerX, -halfH),
                 new Vector2(outerX, -halfH),
                 new Vector2(-innerX, halfH),
                 new Vector2(-outerX, halfH),
-                depth * 0.92f),
+                depth * 0.94f,
+                ridgeBias: -0.06f,
+                midBreakLeft: 0.54f,
+                midBreakRight: 0.42f),
             MaterialOverride = _nMatMid,
         };
 
         _nRight = new MeshInstance3D
         {
             Name = "NRight",
-            Mesh = BuildExtrudedQuad(
+            Mesh = BuildFacetedCrystalBar(
                 new Vector2(innerX, -halfH),
                 new Vector2(outerX, -halfH),
                 new Vector2(outerX, halfH),
                 new Vector2(innerX, halfH),
-                depth),
+                depth,
+                ridgeBias: -0.08f,
+                midBreakLeft: 0.58f,
+                midBreakRight: 0.44f),
             MaterialOverride = _nMatBack,
         };
 
@@ -657,73 +599,104 @@ void fragment() {
     }
 
     /// <summary>
-    /// 构造带精确面法线 + 面局部 UV + UV2（物理宽高，供着色器等宽晶体棱边高光使用）的挤出 3D 棱柱。
+    /// 构造带真实雕刻斜切棱面与中脊的 3D 晶体笔画（硬法线平面切面，外轮廓严格保持字母 N 锐利剪影）：
+    /// · 正面与背面各雕琢 10 组角度互异的三角晶体切面（上下端斜角 + 左右纵脊斜面 + 中段折面）；
+    /// · 四周保留清晰腰棱侧壁；转动或鼠标微动时每个雕刻面各自独立受光、呈现自然明暗变化。
     /// </summary>
-    private static ArrayMesh BuildExtrudedQuad(Vector2 p0, Vector2 p1, Vector2 p2, Vector2 p3, float depth)
+    private static ArrayMesh BuildFacetedCrystalBar(
+        Vector2 p0, Vector2 p1, Vector2 p2, Vector2 p3,
+        float depth, float ridgeBias, float midBreakLeft, float midBreakRight)
     {
-        float hz = depth * 0.5f;
-        var verts = new List<Vector3>(36);
-        var norms = new List<Vector3>(36);
-        var uvs = new List<Vector2>(36);
-        var uv2s = new List<Vector2>(36);
+        float wallHz = depth * 0.24f;
+        float crownHz = depth * 0.58f;
 
-        void AddTri(Vector3 a, Vector3 b, Vector3 c, Vector3 n,
-            Vector2 ua, Vector2 ub, Vector2 uc, Vector2 faceSize)
+        var verts = new List<Vector3>(108);
+        var norms = new List<Vector3>(108);
+
+        void AddFacetTri(Vector3 a, Vector3 b, Vector3 c, Vector3 outwardHint)
         {
+            // Godot CW 正面约定：外法线 = (c - a) × (b - a)
+            Vector3 n = (c - a).Cross(b - a);
+            if (n.LengthSquared() < 1e-10f)
+            {
+                return;
+            }
+            n = n.Normalized();
+            if (n.Dot(outwardHint) < 0f)
+            {
+                (b, c) = (c, b);
+                n = -n;
+            }
             verts.Add(a); verts.Add(b); verts.Add(c);
             norms.Add(n); norms.Add(n); norms.Add(n);
-            uvs.Add(ua); uvs.Add(ub); uvs.Add(uc);
-            uv2s.Add(faceSize); uv2s.Add(faceSize); uv2s.Add(faceSize);
         }
 
-        void AddQuad(Vector3 a, Vector3 b, Vector3 c, Vector3 d, Vector3 n, Vector2 faceSize)
+        // 外轮廓上增加左右中段折点（严格落在原始外边上，零破坏 N 剪影）
+        Vector2 pRightMid = p1.Lerp(p2, midBreakRight);
+        Vector2 pLeftMid = p0.Lerp(p3, midBreakLeft);
+
+        // 雕刻中脊三控制点（沿笔画方向微偏置，形成柔和而不对称的宝石多切面）
+        Vector2 Bilinear(float u, float v) => p0.Lerp(p1, u).Lerp(p3.Lerp(p2, u), v);
+        Vector2 rBot2 = Bilinear(0.50f + ridgeBias * 0.6f, 0.16f);
+        Vector2 rMid2 = Bilinear(0.50f - ridgeBias, 0.50f);
+        Vector2 rTop2 = Bilinear(0.50f + ridgeBias * 0.8f, 0.84f);
+
+        void BuildCrown(float zSign)
         {
-            var u0 = new Vector2(0f, 0f);
-            var u1 = new Vector2(1f, 0f);
-            var u2 = new Vector2(1f, 1f);
-            var u3 = new Vector2(0f, 1f);
-            AddTri(a, b, c, n, u0, u1, u2, faceSize);
-            AddTri(a, c, d, n, u0, u2, u3, faceSize);
+            float wz = wallHz * zSign;
+            float cz = crownHz * zSign;
+            Vector3 hint = new(0f, 0f, zSign);
+
+            var v0 = new Vector3(p0.X, p0.Y, wz);
+            var v1 = new Vector3(p1.X, p1.Y, wz);
+            var v12 = new Vector3(pRightMid.X, pRightMid.Y, wz);
+            var v2 = new Vector3(p2.X, p2.Y, wz);
+            var v3 = new Vector3(p3.X, p3.Y, wz);
+            var v30 = new Vector3(pLeftMid.X, pLeftMid.Y, wz);
+
+            var rb = new Vector3(rBot2.X, rBot2.Y, cz * 0.92f);
+            var rm = new Vector3(rMid2.X, rMid2.Y, cz * 1.08f);
+            var rt = new Vector3(rTop2.X, rTop2.Y, cz * 0.94f);
+
+            // 底/顶两块三角端斜切面
+            AddFacetTri(v0, rb, v1, hint);
+            AddFacetTri(v2, rt, v3, hint);
+
+            // 右侧 4 块交错折切面
+            AddFacetTri(v1, rb, v12, hint);
+            AddFacetTri(rb, rm, v12, hint);
+            AddFacetTri(v12, rm, rt, hint);
+            AddFacetTri(v12, rt, v2, hint);
+
+            // 左侧 4 块交错折切面
+            AddFacetTri(v3, rt, v30, hint);
+            AddFacetTri(rt, rm, v30, hint);
+            AddFacetTri(v30, rm, rb, hint);
+            AddFacetTri(v30, rb, v0, hint);
         }
 
-        var f0 = new Vector3(p0.X, p0.Y, hz);
-        var f1 = new Vector3(p1.X, p1.Y, hz);
-        var f2 = new Vector3(p2.X, p2.Y, hz);
-        var f3 = new Vector3(p3.X, p3.Y, hz);
+        BuildCrown(+1f);
+        BuildCrown(-1f);
 
-        var b0 = new Vector3(p0.X, p0.Y, -hz);
-        var b1 = new Vector3(p1.X, p1.Y, -hz);
-        var b2 = new Vector3(p2.X, p2.Y, -hz);
-        var b3 = new Vector3(p3.X, p3.Y, -hz);
-
-        // 平行四边形的垂直厚度：让斜干的晶体棱边与竖干等宽
-        Vector2 eU = p1 - p0;
-        Vector2 eV = p3 - p0;
-        float lenV = eV.Length();
-        float perpW = MathF.Abs(eU.X * eV.Y - eU.Y * eV.X) / MathF.Max(0.001f, lenV);
-        var capSize = new Vector2(perpW, lenV);
-
-        AddQuad(f0, f3, f2, f1, Vector3.Back, new Vector2(capSize.Y, capSize.X));
-        AddQuad(b0, b1, b2, b3, Vector3.Forward, capSize);
-
-        Vector2[] pts = [p0, p1, p2, p3];
-        Vector3[] front = [f0, f1, f2, f3];
-        Vector3[] back = [b0, b1, b2, b3];
-        for (int i = 0; i < 4; i++)
+        // 四周清晰腰棱侧壁（6 段闭合，与中段折点严丝合缝）
+        Vector2[] ring = [p0, p1, pRightMid, p2, p3, pLeftMid];
+        for (int i = 0; i < ring.Length; i++)
         {
-            int next = (i + 1) % 4;
-            Vector2 edge = pts[next] - pts[i];
-            float edgeLen = edge.Length();
-            Vector3 sideNorm = new Vector3(edge.Y, -edge.X, 0f).Normalized();
-            AddQuad(front[i], front[next], back[next], back[i], sideNorm, new Vector2(edgeLen, depth));
+            int next = (i + 1) % ring.Length;
+            Vector2 e = ring[next] - ring[i];
+            Vector3 sideHint = new Vector3(e.Y, -e.X, 0f).Normalized();
+            var fa = new Vector3(ring[i].X, ring[i].Y, wallHz);
+            var fb = new Vector3(ring[next].X, ring[next].Y, wallHz);
+            var ba = new Vector3(ring[i].X, ring[i].Y, -wallHz);
+            var bb = new Vector3(ring[next].X, ring[next].Y, -wallHz);
+            AddFacetTri(fa, fb, bb, sideHint);
+            AddFacetTri(fa, bb, ba, sideHint);
         }
 
         var arrays = new Godot.Collections.Array();
         arrays.Resize((int)Mesh.ArrayType.Max);
         arrays[(int)Mesh.ArrayType.Vertex] = verts.ToArray();
         arrays[(int)Mesh.ArrayType.Normal] = norms.ToArray();
-        arrays[(int)Mesh.ArrayType.TexUV] = uvs.ToArray();
-        arrays[(int)Mesh.ArrayType.TexUV2] = uv2s.ToArray();
         var mesh = new ArrayMesh();
         mesh.AddSurfaceFromArrays(Mesh.PrimitiveType.Triangles, arrays);
         return mesh;
@@ -806,14 +779,23 @@ void fragment() {
     private static Vector3 CellToBoardLocal(int x, int y, int z) =>
         new((x - 2f) * CellStep, (y - 2f) * CellStep, (1 - z) * BoardSpacing);
 
-    // ================= 6. 弧面宝石棋子（封面态差速绕 N 公转） =================
+    // ================= 6. 素雅棋子（封面态差速绕 N 公转） =================
 
     private void BuildShowcaseStones()
     {
-        _stoneMesh = new SphereMesh { Radius = 1f, Height = 2f, RadialSegments = 28, Rings = 14 };
-        var gemStoneShader = PreTitleShaders.CreateGemStoneShader();
-        _stoneBlackMat = new ShaderMaterial { Shader = gemStoneShader };
-        _stoneWhiteMat = new ShaderMaterial { Shader = gemStoneShader };
+        _stoneMesh = new SphereMesh { Radius = 1f, Height = 2f, RadialSegments = 24, Rings = 12 };
+        _stoneBlackMat = new StandardMaterial3D
+        {
+            Roughness = 0.28f,
+            Metallic = 0.04f,
+            MetallicSpecular = 0.45f,
+        };
+        _stoneWhiteMat = new StandardMaterial3D
+        {
+            Roughness = 0.32f,
+            Metallic = 0.0f,
+            MetallicSpecular = 0.35f,
+        };
         SeedShowcaseStones();
     }
 
@@ -828,11 +810,11 @@ void fragment() {
         _board.Reset();
         _turn = PlayerColor.Black;
 
-        // 斜对角无遮挡展示格位：封面态差速绕 N 公转，形变时从瞬时轨道点弧线飞入棋盘
         AddStoneInternal(1, 1, 0, PlayerColor.Black, isShowcase: true);
         AddStoneInternal(3, 3, 1, PlayerColor.White, isShowcase: true);
         CaptureStoneLaunchAnchors();
         _auxDirty = true;
+        _morphDirty = true;
         UpdateDemoStatus();
     }
 
@@ -845,6 +827,7 @@ void fragment() {
             MaterialOverride = color == PlayerColor.Black ? _stoneBlackMat : _stoneWhiteMat,
             Position = CellToBoardLocal(x, y, z),
             Scale = Vector3.One * (isShowcase ? StoneRadius : 0.001f),
+            CastShadow = GeometryInstance3D.ShadowCastingSetting.Off,
         };
         _boardRoot.AddChild(mi);
         _stones.Add(new StoneVisual
@@ -860,7 +843,7 @@ void fragment() {
         });
     }
 
-    /// <summary>黑白双子绕 N 中心的差速交叉 3D 倾斜椭圆轨道（紧贴晶体 N 轮廓前后穿行，不侵占右侧文字区）。</summary>
+    /// <summary>黑白双子绕 N 中心的差速交叉 3D 倾斜椭圆轨道。</summary>
     private static Vector3 OrbitPositionOf(PlayerColor color, float clock)
     {
         if (color == PlayerColor.Black)
@@ -925,7 +908,7 @@ void fragment() {
         };
         _boardRoot.AddChild(_auxLinesNode);
 
-        _auxMarkerMesh = new SphereMesh { Radius = MarkerRadius, Height = MarkerRadius * 2f, RadialSegments = 12, Rings = 6 };
+        _auxMarkerMesh = new SphereMesh { Radius = MarkerRadius, Height = MarkerRadius * 2f, RadialSegments = 10, Rings = 6 };
         _auxMarkerSelfMat = new StandardMaterial3D
         {
             ShadingMode = BaseMaterial3D.ShadingModeEnum.Unshaded,
@@ -949,7 +932,7 @@ void fragment() {
         _hoverBall = new MeshInstance3D
         {
             Name = "HoverBall",
-            Mesh = new SphereMesh { Radius = HoverBallRadius, Height = HoverBallRadius * 2f, RadialSegments = 20, Rings = 10 },
+            Mesh = new SphereMesh { Radius = HoverBallRadius, Height = HoverBallRadius * 2f, RadialSegments = 16, Rings = 8 },
             MaterialOverride = _hoverBallMat,
             CastShadow = GeometryInstance3D.ShadowCastingSetting.Off,
             Visible = false,
@@ -1289,7 +1272,7 @@ void fragment() {
         var pal = Palette.Active;
         bool isDark = pal.Background.Luminance < 0.4f;
         _turnDotBox.BgColor = _turn == PlayerColor.Black
-            ? (isDark ? new Color(0.14f, 0.16f, 0.22f) : pal.StoneBlack)
+            ? pal.StoneBlack
             : pal.StoneWhite;
         _turnDotBox.BorderColor = _turn == PlayerColor.Black && isDark
             ? pal.TextDim
@@ -1314,7 +1297,6 @@ void fragment() {
         {
             return;
         }
-        // 与左侧晶体 N + 公转双子留出舒适呼吸间距（57.5% X 起排，左右留白匀称不挤不空）
         float leftX = Mathf.Clamp(faceSize.X * 0.575f, 16f, faceSize.X - 230f);
         float topY = Mathf.Max(28f, (faceSize.Y - 178f) * 0.47f);
         stack.Position = new Vector2(leftX, topY);
@@ -1359,92 +1341,76 @@ void fragment() {
             visibleTotalH);
     }
 
-    // ================= 10. 主题 / 宝石色板适配（原地刷新） =================
+    // ================= 10. 主题配色适配（原地刷新） =================
 
     private void ApplyTheme()
     {
         var pal = Palette.For(_colorblind);
         bool isDark = pal.Background.Luminance < 0.4f;
 
-        // 1) 氛围径向渐变背景 + 等轴视差几何层
+        // 1) 深邃/通透氛围渐变背景
         Color glow = isDark
-            ? pal.Background.Lightened(0.11f).Lerp(pal.Accent, 0.14f)
-            : pal.Background.Lightened(0.06f);
+            ? pal.Background.Lightened(0.08f).Lerp(pal.Accent, 0.12f)
+            : pal.Background.Lightened(0.05f);
         Color edge = isDark
-            ? pal.Background.Darkened(0.32f)
-            : pal.Background.Darkened(0.08f);
+            ? pal.Background.Darkened(0.42f)
+            : pal.Background.Darkened(0.06f);
         _backdropMat.SetShaderParameter("bg_base", pal.Background);
         _backdropMat.SetShaderParameter("bg_glow", glow);
         _backdropMat.SetShaderParameter("bg_edge", edge);
 
-        _geoBg.LineColor = isDark
-            ? new Color(0.64f, 0.78f, 0.96f, 0.085f)
-            : new Color(0.18f, 0.34f, 0.38f, 0.10f);
-        _geoBg.FillTintA = isDark
-            ? new Color(0.36f, 0.68f, 1.00f, 0.07f)
-            : new Color(0.24f, 0.56f, 0.62f, 0.09f);
-        _geoBg.FillTintB = isDark
-            ? new Color(0.38f, 0.88f, 0.74f, 0.06f)
-            : new Color(0.34f, 0.68f, 0.58f, 0.08f);
-        _geoBg.QueueRedraw();
-
-        // 2) 雕塑晶体 N 5 阶宝石色板（暗色：星钻冰蓝青；亮色：青玉祖母绿调——绝不发灰！）
+        // 2) 雕刻多面晶体 N 高保色渐变色板（暗色：星蓝冰晶；亮色：青碧翡翠）
         if (isDark)
         {
             ConfigureCrystalMat(_nMatFront,
-                new Color("16264A"), new Color("2C4E8A"), new Color("5C8CE0"), new Color("B6D8FF"), Colors.White,
-                new Color("62F0FF"), new Color("B88CFF"), new Color("E8F4FF"));
+                new Color("112244"), new Color("244A86"), new Color("4E82D6"), new Color("A8D0FF"), Colors.White,
+                new Color("58E8FF"), new Color("9E82FF"), new Color("D6ECFF"));
             ConfigureCrystalMat(_nMatMid,
-                new Color("122040"), new Color("25447A"), new Color("4E7CD0"), new Color("A4CCFA"), Colors.White,
-                new Color("58E6FF"), new Color("AC80F8"), new Color("DCEBFF"));
+                new Color("0E1D3B"), new Color("1F4076"), new Color("4474C4"), new Color("96C2F5"), new Color("F5FAFF"),
+                new Color("4EDCF5"), new Color("9076F2"), new Color("C8E2FA"));
             ConfigureCrystalMat(_nMatBack,
-                new Color("0E1934"), new Color("1E3868"), new Color("406ABC"), new Color("8EBCEB"), new Color("F0F7FF"),
-                new Color("4ED8F2"), new Color("9A72EC"), new Color("CAE0FA"));
+                new Color("0B1730"), new Color("1A3666"), new Color("3A64B0"), new Color("84B2E8"), new Color("EAF4FF"),
+                new Color("44CEE8"), new Color("846AE6"), new Color("B8D6F5"));
         }
         else
         {
-            // 亮色水绿宣纸底配翠青碧玉晶体（对齐源水绿 #2C4A4E 色族并提升晶体明澈度）
             ConfigureCrystalMat(_nMatFront,
-                new Color("0F2B30"), new Color("1E4D54"), new Color("357B84"), new Color("86CFD2"), new Color("F4FFFF"),
-                new Color("5EEAD4"), new Color("7CC4FF"), new Color("D6F8F5"));
+                new Color("14383F"), new Color("245C66"), new Color("3D8B94"), new Color("8CD2D4"), new Color("F4FFFF"),
+                new Color("5EEAD4"), new Color("74C0FA"), new Color("D8F8F5"));
             ConfigureCrystalMat(_nMatMid,
-                new Color("0C2428"), new Color("184248"), new Color("2C6C75"), new Color("74C0C4"), new Color("EEFFFD"),
-                new Color("52E0CC"), new Color("6FB8F5"), new Color("C5F0EC"));
+                new Color("103036"), new Color("1E5059"), new Color("347A84"), new Color("7BC4C7"), new Color("EEFFFD"),
+                new Color("50DFCA"), new Color("68B4F0"), new Color("C8F0EC"));
             ConfigureCrystalMat(_nMatBack,
-                new Color("091D21"), new Color("13363C"), new Color("245C64"), new Color("62B0B5"), new Color("E2FAFA"),
-                new Color("44D4C0"), new Color("60AAE8"), new Color("B2E4E0"));
+                new Color("0D282E"), new Color("18444C"), new Color("2B6973"), new Color("6AB4B8"), new Color("E4FAFA"),
+                new Color("42D2BC"), new Color("5CA6E4"), new Color("B8E6E2"));
         }
 
-        // 3) 黑曜星光蓝 / 冰瓷月光石 弧面宝石棋子色板
-        ConfigureGemStoneMat(_stoneBlackMat, isWhite: false,
-            new Color("080B18"), new Color("121B36"), new Color("243662"), new Color("6EA4EC"), Colors.White,
-            isDark ? new Color("5294FF") : new Color("3E8494"));
-        ConfigureGemStoneMat(_stoneWhiteMat, isWhite: true,
-            new Color("88A0C4"), new Color("B2C6E0"), new Color("DCE8F6"), new Color("F6FAFF"), Colors.White,
-            isDark ? new Color("96D4FF") : new Color("7EC8CC"));
+        // 3) 素雅瓷质棋子（与对局一致，无夸张宝石质感）
+        _stoneBlackMat.AlbedoColor = isDark
+            ? new Color(0.115f, 0.130f, 0.165f)
+            : pal.StoneBlack;
+        _stoneWhiteMat.AlbedoColor = pal.StoneWhite;
 
-        // 4) 硬边分层焦散地面色板（暗色星钻青紫 / 亮色水绿翠金）
+        // 4) 封面态平滑地面焦散（无抖动格纹）
         if (isDark)
         {
-            _causticMat.SetShaderParameter("shadow_color", new Color("111524"));
-            _causticMat.SetShaderParameter("lobe_left_color", new Color("4CB8FF"));
-            _causticMat.SetShaderParameter("lobe_right_color", new Color("9E78FF"));
-            _causticMat.SetShaderParameter("accent_rim_color", new Color("4CF0C8"));
-            _causticMat.SetShaderParameter("inner_ring_color", new Color("B8DCFF"));
-            _causticMat.SetShaderParameter("core_color", new Color("F4FAFF"));
-            _causticMat.SetShaderParameter("shadow_alpha", 0.34f);
-            _causticMat.SetShaderParameter("caustic_alpha", 0.56f);
+            _causticMat.SetShaderParameter("shadow_color", new Color("050810"));
+            _causticMat.SetShaderParameter("lobe_left_color", new Color("3E9EE8"));
+            _causticMat.SetShaderParameter("lobe_right_color", new Color("7E6CE8"));
+            _causticMat.SetShaderParameter("inner_ring_color", new Color("9ECAF5"));
+            _causticMat.SetShaderParameter("core_color", new Color("E6F4FF"));
+            _causticMat.SetShaderParameter("shadow_alpha", 0.28f);
+            _causticMat.SetShaderParameter("caustic_alpha", 0.44f);
         }
         else
         {
-            _causticMat.SetShaderParameter("shadow_color", new Color("9AB0B6"));
-            _causticMat.SetShaderParameter("lobe_left_color", new Color("48C9B8"));
-            _causticMat.SetShaderParameter("lobe_right_color", new Color("6BB8F2"));
-            _causticMat.SetShaderParameter("accent_rim_color", new Color("72E8B4"));
-            _causticMat.SetShaderParameter("inner_ring_color", new Color("C4F2EE"));
+            _causticMat.SetShaderParameter("shadow_color", new Color("9EB4BA"));
+            _causticMat.SetShaderParameter("lobe_left_color", new Color("4CC2B4"));
+            _causticMat.SetShaderParameter("lobe_right_color", new Color("6EB6EC"));
+            _causticMat.SetShaderParameter("inner_ring_color", new Color("BEECE8"));
             _causticMat.SetShaderParameter("core_color", new Color("FFFFFF"));
-            _causticMat.SetShaderParameter("shadow_alpha", 0.24f);
-            _causticMat.SetShaderParameter("caustic_alpha", 0.64f);
+            _causticMat.SetShaderParameter("shadow_alpha", 0.20f);
+            _causticMat.SetShaderParameter("caustic_alpha", 0.50f);
         }
 
         // 5) 辅助线 / 悬停球
@@ -1452,16 +1418,16 @@ void fragment() {
         _auxMarkerSelfMat.AlbedoColor = new Color(pal.LineSelf.R, pal.LineSelf.G, pal.LineSelf.B, 0.90f);
         _auxMarkerEnemyMat.AlbedoColor = new Color(pal.LineEnemy.R, pal.LineEnemy.G, pal.LineEnemy.B, 0.90f);
 
-        // 6) 封面与角标排版
+        // 6) 封面与角标排版（浅色背景文字温雅青墨不过度死黑）
         _coverBrand.AddThemeColorOverride("font_color", pal.TextPrimary);
         _coverRule.Color = pal.Accent;
         _coverCn.AddThemeColorOverride("font_color", pal.TextPrimary);
         _coverSub.AddThemeColorOverride("font_color", pal.TextDim);
 
         _coverPromptNormal.BgColor = isDark
-            ? new Color(pal.ButtonBg.R, pal.ButtonBg.G, pal.ButtonBg.B, 0.55f)
-            : new Color(pal.PanelBg.R, pal.PanelBg.G, pal.PanelBg.B, 0.80f);
-        _coverPromptNormal.BorderColor = new Color(pal.Accent.R, pal.Accent.G, pal.Accent.B, 0.58f);
+            ? new Color(pal.ButtonBg.R, pal.ButtonBg.G, pal.ButtonBg.B, 0.58f)
+            : new Color(pal.PanelBg.R, pal.PanelBg.G, pal.PanelBg.B, 0.84f);
+        _coverPromptNormal.BorderColor = new Color(pal.Accent.R, pal.Accent.G, pal.Accent.B, 0.60f);
         _coverPromptHover.BgColor = pal.Accent;
         _coverPromptHover.BorderColor = pal.Accent;
         _coverPromptBtn.AddThemeColorOverride("font_color", pal.TextPrimary);
@@ -1490,12 +1456,12 @@ void fragment() {
             else
             {
                 Color cardBg = isDark
-                    ? new Color(pal.PanelBg.R, pal.PanelBg.G, pal.PanelBg.B, 0.78f)
-                    : new Color(pal.PanelBg.R, pal.PanelBg.G, pal.PanelBg.B, 0.84f);
+                    ? new Color(pal.PanelBg.R, pal.PanelBg.G, pal.PanelBg.B, 0.82f)
+                    : new Color(pal.PanelBg.R, pal.PanelBg.G, pal.PanelBg.B, 0.88f);
                 Color cardHover = isDark
                     ? new Color(pal.ButtonHover.R, pal.ButtonHover.G, pal.ButtonHover.B, 0.94f)
-                    : new Color(pal.ButtonHover.R, pal.ButtonHover.G, pal.ButtonHover.B, 0.92f);
-                Color cardBorder = new Color(pal.PanelBorder.R, pal.PanelBorder.G, pal.PanelBorder.B, isDark ? 0.36f : 0.55f);
+                    : new Color(pal.ButtonHover.R, pal.ButtonHover.G, pal.ButtonHover.B, 0.94f);
+                Color cardBorder = new Color(pal.PanelBorder.R, pal.PanelBorder.G, pal.PanelBorder.B, isDark ? 0.42f : 0.60f);
 
                 normal = CreatePillStyle(cardBg, cardBorder, 7, padH: 16, padV: 4);
                 hover = CreatePillStyle(cardHover, pal.Accent, 7, padH: 16, padV: 4);
@@ -1512,8 +1478,8 @@ void fragment() {
         }
 
         // 8) 左下迷你控制条
-        Color miniBg = new Color(pal.PanelBg.R, pal.PanelBg.G, pal.PanelBg.B, 0.72f);
-        Color miniBorder = new Color(pal.PanelBorder.R, pal.PanelBorder.G, pal.PanelBorder.B, 0.45f);
+        Color miniBg = new Color(pal.PanelBg.R, pal.PanelBg.G, pal.PanelBg.B, 0.78f);
+        Color miniBorder = new Color(pal.PanelBorder.R, pal.PanelBorder.G, pal.PanelBorder.B, 0.50f);
         var miniNormal = CreatePillStyle(miniBg, miniBorder, 6, padH: 10, padV: 2);
         var miniHover = CreatePillStyle(pal.ButtonHover, pal.Accent, 6, padH: 10, padV: 2);
         foreach (var b in new[] { _backCoverBtn, _clearDemoBtn })
@@ -1528,13 +1494,14 @@ void fragment() {
         _demoStatusLabel.AddThemeColorOverride("font_color", pal.TextDim);
         UpdateDemoStatus();
 
+        _morphDirty = true;
         ApplyMorphVisuals(_morphT);
         _auxDirty = true;
     }
 
     private static void ConfigureCrystalMat(ShaderMaterial mat,
         Color dark, Color shadowMid, Color mid, Color bright, Color highlight,
-        Color fireA, Color fireB, Color border)
+        Color fireA, Color fireB, Color rimTint)
     {
         mat.SetShaderParameter("col_dark", dark);
         mat.SetShaderParameter("col_shadow_mid", shadowMid);
@@ -1543,33 +1510,28 @@ void fragment() {
         mat.SetShaderParameter("col_highlight", highlight);
         mat.SetShaderParameter("fire_a", fireA);
         mat.SetShaderParameter("fire_b", fireB);
-        mat.SetShaderParameter("border_color", border);
+        mat.SetShaderParameter("rim_tint", rimTint);
     }
 
-    private static void ConfigureGemStoneMat(ShaderMaterial mat, bool isWhite,
-        Color dark, Color shadowMid, Color mid, Color bright, Color highlight, Color rimAccent)
-    {
-        mat.SetShaderParameter("is_white_stone", isWhite ? 1f : 0f);
-        mat.SetShaderParameter("col_dark", dark);
-        mat.SetShaderParameter("col_shadow_mid", shadowMid);
-        mat.SetShaderParameter("col_mid", mid);
-        mat.SetShaderParameter("col_bright", bright);
-        mat.SetShaderParameter("col_highlight", highlight);
-        mat.SetShaderParameter("rim_accent", rimAccent);
-    }
-
-    // ================= 11. 流体形变驱动（完全可逆） =================
+    // ================= 11. 流体形变驱动（完全可逆 + 脏标记节流） =================
 
     private void ApplyMorphVisuals(float t)
     {
+        bool structuralDirty = _morphDirty || MathF.Abs(t - _lastAppliedMorphT) > 1e-5f;
+        _lastAppliedMorphT = t;
+        _morphDirty = false;
+
         var pal = Palette.For(_colorblind);
         float smooth = SmoothStep(0f, 1f, t);
 
-        _backdropMat.SetShaderParameter("glow_center", new Vector2(
-            Mathf.Lerp(0.38f, 0.36f, smooth),
-            Mathf.Lerp(0.50f, 0.51f, smooth)));
+        if (structuralDirty)
+        {
+            _backdropMat.SetShaderParameter("glow_center", new Vector2(
+                Mathf.Lerp(0.38f, 0.36f, smooth),
+                Mathf.Lerp(0.50f, 0.51f, smooth)));
+        }
 
-        // --- Stage 1: 晶体 N 三笔画沿纵深分离薄化并流体融入棋盘 (t: 0.00 -> 0.66) ---
+        // --- Stage 1: 雕刻多面晶体 N（封面态缓动微摆展露切面光流，形变时分离薄化融入棋盘） ---
         float nOut = SmoothStep(0.00f, 0.64f, t);
         float nEase = EaseInOutCubic(nOut);
         float nAlpha = 1f - SmoothStep(0.24f, 0.66f, t);
@@ -1577,126 +1539,144 @@ void fragment() {
         _letterRoot.Visible = nVisible;
         if (nVisible)
         {
-            float breatheY = Mathf.Sin(_clock * 1.25f) * 0.040f * (1f - nOut);
+            float idleWeight = 1f - nOut;
+            float breatheY = Mathf.Sin(_clock * 1.20f) * 0.038f * idleWeight;
+            float swayYaw = Mathf.Sin(_clock * 0.58f) * 0.14f * idleWeight;
+            float swayPitch = Mathf.Cos(_clock * 0.42f) * 0.045f * idleWeight;
             _letterRoot.Position = new Vector3(0f, breatheY, 0f);
-            float hoverLift = 1f + _letterHoverGlow * 0.030f * (1f - nOut);
+            _letterRoot.Rotation = new Vector3(swayPitch, swayYaw, 0f);
+            float hoverLift = 1f + _letterHoverGlow * 0.028f * idleWeight;
             _letterRoot.Scale = Vector3.One * hoverLift;
 
-            float thin = Mathf.Lerp(1f, 0.12f, nEase);
-            float spreadY = Mathf.Lerp(1f, 0.92f, nEase);
-            float spreadX = Mathf.Lerp(1f, 1.18f, nEase);
-
-            _nLeft.Position = new Vector3(
-                Mathf.Lerp(0f, 0.88f, nEase),
-                0f,
-                Mathf.Lerp(0.05f, BoardSpacing, nEase));
-            _nLeft.Scale = new Vector3(spreadX, spreadY, thin);
-
-            _nDiag.Position = new Vector3(0f, 0f, 0f);
-            _nDiag.Rotation = new Vector3(0f, 0f, Mathf.Lerp(0f, 0.46f, nEase));
-            _nDiag.Scale = new Vector3(Mathf.Lerp(1f, 0.72f, nEase), spreadY, thin);
-
-            _nRight.Position = new Vector3(
-                Mathf.Lerp(0f, -0.88f, nEase),
-                0f,
-                Mathf.Lerp(-0.05f, -BoardSpacing, nEase));
-            _nRight.Scale = new Vector3(spreadX, spreadY, thin);
-
-            float hoverShader = _letterHoverGlow * (1f - nOut);
-            foreach (var mat in new[] { _nMatFront, _nMatMid, _nMatBack })
+            if (structuralDirty)
             {
-                mat.SetShaderParameter("alpha_fade", nAlpha);
-                mat.SetShaderParameter("hover_glow", hoverShader);
-                mat.SetShaderParameter("polish_sweep", _polishSweep);
+                float thin = Mathf.Lerp(1f, 0.12f, nEase);
+                float spreadY = Mathf.Lerp(1f, 0.92f, nEase);
+                float spreadX = Mathf.Lerp(1f, 1.18f, nEase);
+
+                _nLeft.Position = new Vector3(
+                    Mathf.Lerp(0f, 0.88f, nEase),
+                    0f,
+                    Mathf.Lerp(0.05f, BoardSpacing, nEase));
+                _nLeft.Scale = new Vector3(spreadX, spreadY, thin);
+
+                _nDiag.Position = Vector3.Zero;
+                _nDiag.Rotation = new Vector3(0f, 0f, Mathf.Lerp(0f, 0.46f, nEase));
+                _nDiag.Scale = new Vector3(Mathf.Lerp(1f, 0.72f, nEase), spreadY, thin);
+
+                _nRight.Position = new Vector3(
+                    Mathf.Lerp(0f, -0.88f, nEase),
+                    0f,
+                    Mathf.Lerp(-0.05f, -BoardSpacing, nEase));
+                _nRight.Scale = new Vector3(spreadX, spreadY, thin);
             }
+
+            float hoverShader = _letterHoverGlow * idleWeight;
+            SetCrystalFrameUniforms(_nMatFront, nAlpha, hoverShader, _polishSweep);
+            SetCrystalFrameUniforms(_nMatMid, nAlpha, hoverShader, _polishSweep);
+            SetCrystalFrameUniforms(_nMatBack, nAlpha, hoverShader, _polishSweep);
         }
 
-        // --- Stage 2: 三层 5×5 棋盘波浪涟漪展开 (t: 0.16 -> 0.86) ---
-        bool boardVisible = t > 0.14f;
-        _boardRoot.Visible = boardVisible || _stones.Count > 0;
-        float[] layerBaseAlpha = [0.82f, 0.58f, 0.36f];
-        for (int z = 0; z < 3; z++)
+        // --- Stage 2: 三层 5×5 演示棋盘（仅 t/主题变化时重算 30 格线与 5 立柱，零稳态空转） ---
+        if (structuralDirty)
         {
-            float lz = SmoothStep(0.16f + z * 0.08f, 0.66f + z * 0.08f, t);
-            float zPos = Mathf.Lerp((1 - z) * 0.32f, (1 - z) * BoardSpacing, EaseOutQuint(lz));
-            _layerRoots[z].Position = new Vector3(0f, 0f, zPos);
-            _layerRoots[z].Visible = lz > 0.005f;
-            _layerGridMats[z].AlbedoColor = new Color(pal.GridLine.R, pal.GridLine.G, pal.GridLine.B, layerBaseAlpha[z] * lz);
-        }
-
-        foreach (var bar in _gridBars)
-        {
-            float start = 0.16f + bar.Layer * 0.08f + bar.Stagger;
-            float end = 0.64f + bar.Layer * 0.08f + bar.Stagger;
-            float p = EaseOutQuint(SmoothStep(start, end, t));
-            if (p <= 0.005f)
+            bool boardVisible = t > 0.14f;
+            _boardRoot.Visible = boardVisible || _stones.Count > 0;
+            for (int z = 0; z < 3; z++)
             {
-                bar.Node.Visible = false;
-                continue;
+                float lz = SmoothStep(0.16f + z * 0.08f, 0.66f + z * 0.08f, t);
+                float zPos = Mathf.Lerp((1 - z) * 0.32f, (1 - z) * BoardSpacing, EaseOutQuint(lz));
+                _layerRoots[z].Position = new Vector3(0f, 0f, zPos);
+                _layerRoots[z].Visible = lz > 0.005f;
+
+                // 首层用 FocusGridLine、后两层用 GridLine，深浅背景下层次清晰
+                Color layerColor = z == 0 ? pal.FocusGridLine : pal.GridLine;
+                float layerAlpha = z == 0 ? 0.96f : z == 1 ? 0.72f : 0.48f;
+                _layerGridMats[z].AlbedoColor = new Color(layerColor.R, layerColor.G, layerColor.B, layerAlpha * lz);
             }
-            bar.Node.Visible = true;
-            bar.Node.Position = bar.BasePos;
-            float len = bar.FullLength * p;
-            float thick = GridThickness * Mathf.Lerp(0.35f, 1f, p);
-            bar.Node.Scale = bar.Horizontal
-                ? new Vector3(len, thick, thick)
-                : new Vector3(thick, len, thick);
-        }
 
-        float connP = EaseOutQuint(SmoothStep(0.42f, 0.86f, t));
-        float connLen = 2f * BoardSpacing * connP;
-        _connectorMat.AlbedoColor = new Color(pal.ConnectorLine.R, pal.ConnectorLine.G, pal.ConnectorLine.B, 0.42f * connP);
-        foreach (var rail in _connectors)
-        {
-            rail.Visible = connP > 0.01f;
-            rail.Scale = new Vector3(ConnectorThickness, ConnectorThickness, Mathf.Max(0.001f, connLen));
-        }
-
-        // --- Stage 3: 黑白宝石棋子——封面差速公转 → 沿流畅弧线落位棋盘 ---
-        float stoneFlight = SmoothStep(0.18f, 0.90f, t);
-        float stoneEase = EaseInOutCubic(stoneFlight);
-        for (int i = 0; i < _stones.Count; i++)
-        {
-            var s = _stones[i];
-            Vector3 dst = CellToBoardLocal(s.X, s.Y, s.Z);
-            if (s.IsShowcase)
+            foreach (var bar in _gridBars)
             {
-                Vector3 liveOrbit = OrbitPositionOf(s.Color, _clock);
-                if (_phase == Phase.Letter)
+                float start = 0.16f + bar.Layer * 0.08f + bar.Stagger;
+                float end = 0.64f + bar.Layer * 0.08f + bar.Stagger;
+                float p = EaseOutQuint(SmoothStep(start, end, t));
+                if (p <= 0.005f)
                 {
-                    s.LaunchAnchor = liveOrbit;
+                    bar.Node.Visible = false;
+                    continue;
                 }
-                Vector3 src = _phase == Phase.Letter ? liveOrbit : s.LaunchAnchor;
-                float arc = Mathf.Sin(stoneEase * Mathf.Pi) * 0.48f * (i == 0 ? 1f : -1f);
-                Vector3 pos = src.Lerp(dst, stoneEase) + new Vector3(arc * 0.35f, MathF.Abs(arc) * 0.32f, 0f);
-                float r = Mathf.Lerp(0.24f, StoneRadius, stoneEase);
-                s.Node.Visible = true;
-                s.Node.Position = pos;
-                s.Node.Scale = Vector3.One * r;
+                bar.Node.Visible = true;
+                bar.Node.Position = bar.BasePos;
+                float len = bar.FullLength * p;
+                float thick = GridThickness * Mathf.Lerp(0.40f, 1f, p);
+                bar.Node.Scale = bar.Horizontal
+                    ? new Vector3(len, thick, thick)
+                    : new Vector3(thick, len, thick);
             }
-            else
+
+            float connP = EaseOutQuint(SmoothStep(0.42f, 0.86f, t));
+            float connLen = 2f * BoardSpacing * connP;
+            _connectorMat.AlbedoColor = new Color(pal.ConnectorLine.R, pal.ConnectorLine.G, pal.ConnectorLine.B, 0.56f * connP);
+            foreach (var rail in _connectors)
             {
-                float p = EaseOutBack(SmoothStep(0.56f, 0.94f, t)) * EaseOutBack(s.PopProgress);
-                s.Node.Visible = p > 0.01f;
-                s.Node.Position = dst;
-                s.Node.Scale = Vector3.One * (StoneRadius * Mathf.Max(0.001f, p));
+                rail.Visible = connP > 0.01f;
+                rail.Scale = new Vector3(ConnectorThickness, ConnectorThickness, Mathf.Max(0.001f, connLen));
             }
         }
 
-        // --- Stage 4: 地面焦散光盘随阶段与旋转联动 ---
-        _causticDisc.Position = new Vector3(0f, Mathf.Lerp(-2.06f, -2.28f, smooth), 0f);
-        float causticScale = Mathf.Lerp(0.84f, 0.90f, smooth);
-        _causticDisc.Scale = new Vector3(causticScale, 1f, causticScale);
-        _causticMat.SetShaderParameter("spin_angle", Mathf.Lerp(_clock * 0.35f, _menuYaw, smooth));
-        _causticMat.SetShaderParameter("squareness", Mathf.Lerp(0.15f, 0.78f, smooth));
-        _causticMat.SetShaderParameter("caustic_intensity", Mathf.Lerp(0.95f, 0.64f, smooth));
+        // --- Stage 3: 黑白双子（封面差速公转 → 形变弧线落位 → 菜单稳态仅驱动新落子弹出） ---
+        if (_phase != Phase.Menu || structuralDirty || HasAnimatingStones())
+        {
+            float stoneFlight = SmoothStep(0.18f, 0.90f, t);
+            float stoneEase = EaseInOutCubic(stoneFlight);
+            for (int i = 0; i < _stones.Count; i++)
+            {
+                var s = _stones[i];
+                Vector3 dst = CellToBoardLocal(s.X, s.Y, s.Z);
+                if (s.IsShowcase)
+                {
+                    Vector3 liveOrbit = OrbitPositionOf(s.Color, _clock);
+                    if (_phase == Phase.Letter)
+                    {
+                        s.LaunchAnchor = liveOrbit;
+                    }
+                    Vector3 src = _phase == Phase.Letter ? liveOrbit : s.LaunchAnchor;
+                    float arc = Mathf.Sin(stoneEase * Mathf.Pi) * 0.48f * (i == 0 ? 1f : -1f);
+                    Vector3 pos = src.Lerp(dst, stoneEase) + new Vector3(arc * 0.35f, MathF.Abs(arc) * 0.32f, 0f);
+                    float r = Mathf.Lerp(0.24f, StoneRadius, stoneEase);
+                    s.Node.Visible = true;
+                    s.Node.Position = pos;
+                    s.Node.Scale = Vector3.One * r;
+                }
+                else
+                {
+                    float p = EaseOutBack(SmoothStep(0.56f, 0.94f, t)) * EaseOutBack(s.PopProgress);
+                    s.Node.Visible = p > 0.01f;
+                    s.Node.Position = dst;
+                    s.Node.Scale = Vector3.One * (StoneRadius * Mathf.Max(0.001f, p));
+                }
+            }
+        }
+
+        // --- Stage 4: 地面焦散（仅封面态呈现，形变展开棋盘后彻底消隐） ---
+        float causticFade = 1f - SmoothStep(0.10f, 0.52f, t);
+        bool causticVisible = causticFade > 0.008f;
+        _causticDisc.Visible = causticVisible;
+        if (causticVisible)
+        {
+            float causticScale = Mathf.Lerp(0.84f, 0.58f, 1f - causticFade);
+            _causticDisc.Position = new Vector3(0f, -2.06f, 0f);
+            _causticDisc.Scale = new Vector3(causticScale, 1f, causticScale);
+            _causticMat.SetShaderParameter("spin_angle", _clock * 0.32f);
+            _causticMat.SetShaderParameter("caustic_intensity", causticFade);
+        }
 
         // --- Stage 5: 相机严格绕原点 (0,0,0) 旋转，经 HOffset 实现「略偏左」零甩动构图 ---
         float camE = EaseInOutCubic(t);
         float swirl = Mathf.Sin(camE * Mathf.Pi);
         float yaw = Mathf.Lerp(CoverYaw, _menuYaw, camE) + 0.16f * swirl;
         float pitch = Mathf.Lerp(CoverPitch, _menuPitch, camE) + 0.04f * swirl;
-        float dist = Mathf.Lerp(CoverDist, MenuDist, camE) + 0.80f * swirl;
+        float dist = Mathf.Lerp(CoverDist, MenuDist, camE) + 0.78f * swirl;
         float fov = Mathf.Lerp(CoverFov, MenuFov, camE);
 
         float parallaxWeight = 1f - SmoothStep(0f, 0.45f, t);
@@ -1714,16 +1694,25 @@ void fragment() {
         _cam.LookAt(Vector3.Zero, Vector3.Up);
 
         // --- Stage 6: 2D UI 错峰编排 ---
-        float coverAlpha = 1f - SmoothStep(0.00f, 0.34f, t);
-        _coverUi.Visible = coverAlpha > 0.01f;
-        _coverUi.Modulate = new Color(1f, 1f, 1f, coverAlpha);
-        _coverUi.Position = new Vector2(-12f * (1f - coverAlpha), -5f * (1f - coverAlpha));
-        _coverPromptBtn.MouseFilter = t > 0.20f ? MouseFilterEnum.Ignore : MouseFilterEnum.Stop;
+        if (structuralDirty)
+        {
+            float coverAlpha = 1f - SmoothStep(0.00f, 0.34f, t);
+            _coverUi.Visible = coverAlpha > 0.01f;
+            _coverUi.Modulate = new Color(1f, 1f, 1f, coverAlpha);
+            _coverUi.Position = new Vector2(-12f * (1f - coverAlpha), -5f * (1f - coverAlpha));
+            _coverPromptBtn.MouseFilter = t > 0.20f ? MouseFilterEnum.Ignore : MouseFilterEnum.Stop;
 
-        float cornerP = EaseOutQuint(SmoothStep(0.56f, 0.92f, t));
-        _cornerUi.Visible = cornerP > 0.01f;
-        _cornerUi.Modulate = new Color(1f, 1f, 1f, cornerP);
-        _cornerUi.Position = new Vector2(28f - 12f * (1f - cornerP), 16f);
+            float cornerP = EaseOutQuint(SmoothStep(0.56f, 0.92f, t));
+            _cornerUi.Visible = cornerP > 0.01f;
+            _cornerUi.Modulate = new Color(1f, 1f, 1f, cornerP);
+            _cornerUi.Position = new Vector2(28f - 12f * (1f - cornerP), 16f);
+
+            float barP = EaseOutQuint(SmoothStep(0.66f, 1.00f, t));
+            _bottomBar.Visible = barP > 0.01f;
+            _bottomBar.Modulate = new Color(1f, 1f, 1f, barP);
+            _bottomBar.OffsetTop = -42f + 10f * (1f - barP);
+            _bottomBar.OffsetBottom = -16f + 10f * (1f - barP);
+        }
 
         bool menuActive = t > 0.46f;
         _menuCol.Visible = menuActive;
@@ -1752,12 +1741,6 @@ void fragment() {
             }
         }
 
-        float barP = EaseOutQuint(SmoothStep(0.66f, 1.00f, t));
-        _bottomBar.Visible = barP > 0.01f;
-        _bottomBar.Modulate = new Color(1f, 1f, 1f, barP);
-        _bottomBar.OffsetTop = -42f + 10f * (1f - barP);
-        _bottomBar.OffsetBottom = -16f + 10f * (1f - barP);
-
         if (_phase != Phase.Menu)
         {
             _hoverBall.Visible = false;
@@ -1769,6 +1752,25 @@ void fragment() {
         }
     }
 
+    private static void SetCrystalFrameUniforms(ShaderMaterial mat, float alphaFade, float hoverGlow, float polishSweep)
+    {
+        mat.SetShaderParameter("alpha_fade", alphaFade);
+        mat.SetShaderParameter("hover_glow", hoverGlow);
+        mat.SetShaderParameter("polish_sweep", polishSweep);
+    }
+
+    private bool HasAnimatingStones()
+    {
+        foreach (var s in _stones)
+        {
+            if (s.PopProgress < 1f)
+            {
+                return true;
+            }
+        }
+        return false;
+    }
+
     // ================= 12. 主循环与交互 =================
 
     public override void _Process(double delta)
@@ -1777,27 +1779,32 @@ void fragment() {
         _clock += dt;
         if (_polishSweep < 1f)
         {
-            _polishSweep = Mathf.Min(1f, _polishSweep + dt / 0.90f);
+            _polishSweep = Mathf.Min(1f, _polishSweep + dt / 0.85f);
         }
-        SyncViewportSize();
 
         float pFactor = 1f - MathF.Exp(-8f * dt);
         _parallaxCurrent = _parallaxCurrent.Lerp(_parallaxTarget, pFactor);
-        _geoBg.Parallax = _parallaxCurrent;
-        _geoBg.QueueRedraw();
 
         float targetGlow = _phase == Phase.Letter && _letterHovered ? 1f : 0f;
         _letterHoverGlow = Mathf.Lerp(_letterHoverGlow, targetGlow, 1f - MathF.Exp(-10f * dt));
         if (_phase == Phase.Letter)
         {
-            float pulse = 0.86f + 0.14f * Mathf.Sin(_clock * 2.3f);
+            float pulse = 0.86f + 0.14f * Mathf.Sin(_clock * 2.2f);
             _coverPromptBtn.Modulate = new Color(1f, 1f, 1f, pulse);
         }
 
         float hoverFactor = 1f - MathF.Exp(-16f * dt);
         foreach (var item in _menuItems)
         {
-            item.HoverAnim = Mathf.Lerp(item.HoverAnim, item.Hovered ? 1f : 0f, hoverFactor);
+            float target = item.Hovered ? 1f : 0f;
+            if (MathF.Abs(item.HoverAnim - target) > 0.002f)
+            {
+                item.HoverAnim = Mathf.Lerp(item.HoverAnim, target, hoverFactor);
+            }
+            else
+            {
+                item.HoverAnim = target;
+            }
         }
 
         foreach (var s in _stones)
@@ -1816,6 +1823,7 @@ void fragment() {
                 _morphT = 1f;
                 _phase = Phase.Menu;
                 _auxDirty = true;
+                _pickDirty = true;
             }
             else if (_morphT <= 0f)
             {
@@ -1827,6 +1835,8 @@ void fragment() {
         }
         else if (_phase == Phase.Menu)
         {
+            float prevYaw = _menuYaw;
+            float prevPitch = _menuPitch;
             if (_dragging)
             {
                 float follow = 1f - MathF.Exp(-DragFollow * dt);
@@ -1850,9 +1860,15 @@ void fragment() {
                 _menuYaw += AutoOrbitSpeed * dt;
             }
 
-            if (_hoverScreen.HasValue && !_dragging)
+            if (MathF.Abs(_menuYaw - prevYaw) > 1e-4f || MathF.Abs(_menuPitch - prevPitch) > 1e-4f)
+            {
+                _pickDirty = true;
+            }
+
+            if (_pickDirty && _hoverScreen.HasValue && !_dragging)
             {
                 _hoverCell = PickCell(_hoverScreen.Value);
+                _pickDirty = false;
             }
             if (_auxDirty || !Nullable.Equals(_hoverCell, _renderedHoverCell))
             {
@@ -1913,6 +1929,7 @@ void fragment() {
             else if (_dragging)
             {
                 _dragging = false;
+                _pickDirty = true;
                 float moved = (mb2.Position - _downPos).Length();
                 if (moved < 6f && Time.GetTicksMsec() - _downTimeMs < 450)
                 {
@@ -1939,6 +1956,7 @@ void fragment() {
             else
             {
                 _hoverScreen = mm2.Position;
+                _pickDirty = true;
                 var picked = PickCell(mm2.Position);
                 MouseDefaultCursorShape = picked is { } c && _board.IsEmpty(c.X, c.Y, c.Z)
                     ? CursorShape.PointingHand
@@ -1952,6 +1970,7 @@ void fragment() {
         if (@event is InputEventMouseMotion mm && _phase == Phase.Menu && !_dragging)
         {
             _hoverScreen = mm.Position;
+            _pickDirty = true;
         }
     }
 

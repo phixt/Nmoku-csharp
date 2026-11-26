@@ -11,7 +11,7 @@
 
 ### 本轮已完成（2026-11-26，待人类统一体验）
 
-- [x] **开始界面彻底重做（`PreTitleScreen.cs`）**：雕塑级精确斜接 3D 字母 `N` + 原生清晰 2D 排版 + 流体波浪展开形变（双向可逆）+ 5×5×3 真实 Core 演示盘 + 物理像素 1.5× 超采样/MSAA 8× + 调色板全驱动按钮（含 hover 轻移与强调条）；根治 7 处历史遗留（角标就位 / 继续对局独立管理 / `IKeepAliveRefreshable` 原地换肤换语不重置演示盘 / 柔和自转生效 / 隐藏停进程停视口 / 全量 `I18n.T`）。真实窗口暗亮两套 × 封面/形变/菜单三阶段截帧复验通过。
+- [x] **开始界面重做与实机调优（`PreTitleScreen.cs` / `PreTitleShaders.cs`）**：雕刻多面 3D 晶体 `N`（无 Bayer 像素抖动/背景格纹）+ 素雅瓷质双子差速公转 + 封面柔和焦散（展开棋盘后彻底消隐）+ 自中心略偏左构图 + 均衡 2D UI；同步深化全局暗/亮主题、新增 `FocusGridLine` 提升深浅背景棋盘明晰度，并根治高分屏 32× 过采与隐藏视口空转性能瓶颈（3200×2000 核显稳锁 60fps）。7 处历史遗留清零，真实窗口暗亮两套 × 开始页/对局页截帧复验通过。
 - [x] **AI 行为修复与线程隔离（§10 B28–B30，人类拍板）**：己方即胜绝对优先于防守（修 B4 送死）、`PatternScore` 按 `WinLength` 4–9 泛化、Easy 恢复邻近落点、`GameManager` 传 `Board.Clone()` 快照并释放 CTS。
 - [x] **Core 边界防御与相机精度**：`Rules.Directions` 改 `ImmutableArray`；`Board`/`Rules`/规则引擎参数校验；`CoordMapper.WorldToLogical` 四舍五入+防除零；`CameraMath.ComputeDistance` 非法 aspect 防护；`CameraRig.Advance` 同步元数据；`AuxScan`/`KeycapParser` 边界防护。
 - [x] **视图与壳层卫生**：2D/3D 共用 `AuxScanResult` 快照；3D 辅助线改 `ImmediateMesh` + 标记球节点池并去重；`Main`/`GameStore`/`AudioManager` 补 `_ExitTree` 退订停播；`SaveMenu`/`KeymapContent` 补 `RemoveChild`；`SettingsStore` 缓存+合并落盘+退出释放；`I18nCsvTests` 新增占位符一致守卫。

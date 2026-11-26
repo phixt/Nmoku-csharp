@@ -523,17 +523,28 @@ public partial class Main
         bool resumeShownOk = _titleScreen.ResumeVisibleForTests;
         _titleScreen.UpdateResumeButton(_store.HasLiveGame);
 
-        // 隐藏停渲染、显示恢复渲染
+        // 焦散仅在封面态呈现，棋盘展开后彻底消隐
+        _titleScreen.SetVisualProgressForCheck(0f);
+        bool causticInCover = _titleScreen.CausticVisibleForTests;
+        _titleScreen.SetVisualProgressForCheck(1f);
+        bool causticHiddenInMenu = !_titleScreen.CausticVisibleForTests;
+
+        // 隐藏停渲染、显示恢复渲染（标题视口与对局视口双向互斥停跑）
+        bool gamePausedOnTitle = _viewport3D.RenderTargetUpdateMode == SubViewport.UpdateMode.Disabled;
         _store.StartGame();
         bool pausedWhenHidden = _titleScreen.ViewportUpdateModeForTests == SubViewport.UpdateMode.Disabled;
+        bool gameRunningInPlay = _viewport3D.RenderTargetUpdateMode == SubViewport.UpdateMode.Always;
         _store.Pause();
         _store.ReturnToTitle();
         bool resumedWhenShown = _titleScreen.ViewportUpdateModeForTests == SubViewport.UpdateMode.Always;
 
-        return placed && afterThemeLang && resumeHiddenOk && resumeShownOk && pausedWhenHidden && resumedWhenShown
+        return placed && afterThemeLang && resumeHiddenOk && resumeShownOk
+            && causticInCover && causticHiddenInMenu
+            && gamePausedOnTitle && pausedWhenHidden && gameRunningInPlay && resumedWhenShown
             ? "ok"
             : $"FAIL placed={placed} keepState={afterThemeLang} resH={resumeHiddenOk} resS={resumeShownOk} " +
-              $"vpOff={pausedWhenHidden} vpOn={resumedWhenShown}";
+              $"caustC={causticInCover} caustM={causticHiddenInMenu} gOff={gamePausedOnTitle} " +
+              $"vpOff={pausedWhenHidden} gOn={gameRunningInPlay} vpOn={resumedWhenShown}";
     }
 
     /// <summary>

@@ -9,10 +9,11 @@
 - **① Core 防御与相机元数据同步**：`Rules.Directions` 改 `ImmutableArray` 防篡改；`Board`/`Rules`/规则引擎补非正尺寸/非正连珠/非法 `CellState` 校验并新增 `Board.Clone()`；`CoordMapper.WorldToLogical` 改四舍五入+防 `spacing=0` 除零；`CameraMath.ComputeDistance` 防非正/NaN 宽高比；`CameraRig.Advance` 同步非插值元数据（修 `ComputeOpacity` 陈旧读）；`AuxScan.Scan` 验悬停界内、`KeycapParser.Parse(null)` 不抛 NRE（+16 例单测）。
 - **② AI 行为修复与线程隔离（§10 B28–B30，人类拍板）**：①己方即胜绝对优先于防守（修 B4 战术送死）；②`PatternScore` 按 `WinLength` 4–9 泛化（wl=5 逐值不变）；③Easy 恢复邻近已有子落点档；④`GameManager` 向 AI 线程池传 `Board.Clone()` 独立快照并释放 CTS（+3 例单测）。
 - **③ 视图与壳层卫生**：`Board2DView` 改消费 `Main` 推送的同一份 `AuxScanResult` 快照；`Board3DView` 辅助线改单份 `ImmediateMesh` + 标记球节点池并按坐标去重；`Main`/`GameStore`/`AudioManager` 补 `_ExitTree` 退订与停播；`SaveMenu`/`KeymapContent` 补 `RemoveChild` 防同帧残留；`SettingsStore` 增内存缓存+`SetMany` 合并落盘+退出释放；`SceneRouter.Rebuild` 保护 `game` 并支持 `IKeepAliveRefreshable` 原地刷新；`I18nCsvTests` 新增四语言 `{n}` 占位符一致性守卫（+1 例单测）。
-- **④ 开始界面重做（`PreTitleScreen.cs`，真实窗口 3 轮截帧调优）**：
-  - 封面态：借鉴 `caustic-gem` / `motion-cube` 风格化宝石语言（`PreTitleShaders.cs`：5 阶高保色色板 + 窄带 Bayer 4×4 抖动 + 内部折射虹彩 + 等宽晶体棱边高光 + 硬边分层地面焦散盘），三段斜接 3D 晶体字母 `N` 配黑白星光蓝/月光石双子差速交叉 3D 公转、克制等轴视差几何背景与原生清晰 2D 排版。
-  - 流体形变与自中心构图（可双向可逆）：双子自瞬时轨道位置沿弧线落入棋盘格位，晶体 N 三笔画沿纵深分离薄化并融入波浪展开的 5×5×3 棋盘；相机始终以原点 `(0,0,0)` 为自身旋转轴，经 `Camera3D.HOffset` 实现「略偏左」零甩动构图；菜单列 232px/右留白 56px 与 28px 左轴对齐，均衡不挤不空。
-  - 菜单态与 7 处历史遗留根治：物理像素 1.5× 超采样 + MSAA 8× 根治 csf 2.5 发糊；左上角标就位；「继续对局」独立管理不被覆盖；`IKeepAliveRefreshable` 原地换肤/换语不重置演示盘；柔和自转生效+拖拽惯性；隐藏时停进程并置视口 `Disabled`；全量 `I18n.T` 零硬编码中文；按钮全走 `Palette.Active` 并配 hover 轻移与强调条。
+- **④ 开始界面重做与实机调优（`PreTitleScreen.cs` / `PreTitleShaders.cs`，真实窗口多轮截帧与 FPS 实测）**：
+  - 封面态：雕刻多面 3D 晶体字母 `N`（每笔画正反 10 组真实斜切棱面+中脊+硬法线平滑折光，彻底去除 Bayer 像素抖动与背景格纹杂线）；配素雅瓷质黑白双子差速交叉 3D 公转（去夸张宝石质感）与柔和地面焦散光斑。
+  - 流体形变与自中心构图（可双向可逆）：双子自瞬时轨道位置沿弧线落入 5×5×3 棋盘；晶体 N 三笔画沿纵深薄化融入波浪展开的棋盘，**底部焦散在形变前半程彻底消隐（菜单态零焦散）**；相机严格绕原点 `(0,0,0)` 自转并经 `Camera3D.HOffset` 略偏左构图；菜单列 232px/右留白 56px 与 28px 左轴对齐。
+  - 主题、棋盘明晰度与性能根治：深色背景加深至 `#0A0D13`（去灰暗）、浅色主字柔化至温雅青墨 `#3A525B`（AA+ 高对比不死黑）；`Palette` 新增 `FocusGridLine`，3D/2D 盘面与演示盘焦点层/远层在深浅背景下皆清晰锐利。性能端根治 32× 过采瓶颈：**`GameScreen` 隐藏停渲染、`PreTitleScreen` 与 `GameScreen` 统一 1:1 物理像素（高分屏等比封顶长边 1920）+ MSAA 4×、移除 `Main._Process` 逐帧 Win32 轮询与标题页空转、开始页脏标记节流**，3200×2000 核显实测封面/菜单/对局全程稳锁 60fps。
+  - 7 处历史遗留清零：角标就位 /「继续对局」独立管理 / `IKeepAliveRefreshable` 原地换肤换语 / 自转+拖拽惯性 / 隐藏停进程停视口 / 全量 `I18n.T`。
 - **⑤ 架构拆解与自测补盲**：将 2000 行自测拆入 `Autotest/Main.Autotest.cs`，取消 `Main._Process` 自测早退（四条生产路径正式进入自测覆盖），新增 `m5-pretitle-redesign` 回归锁，补提交 `KeymapAudit.cs.uid`。
 - **门禁**：build 0 警告 0 错误 / **382 单测全绿**（362→382，+20 例）/ 无头 `--quit` + `--autotest` ALL PASS（含新回归锁，内存平稳 ~133MB）/ 真实窗口暗亮两套 × 封面·形变·菜单三阶段截帧复验通过。未 push（铁律 9）。
 
