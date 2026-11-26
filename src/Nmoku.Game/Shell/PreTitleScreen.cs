@@ -103,10 +103,6 @@ public sealed partial class PreTitleScreen : Control, IKeepAliveRefreshable
     private Camera3D _cam = null!;
     private Godot.Environment _env = null!;
 
-    // 封面态平滑地面焦散（仅 Letter/Morph 前半程显示，展开棋盘后彻底隐藏）
-    private MeshInstance3D _causticDisc = null!;
-    private ShaderMaterial _causticMat = null!;
-
     // 雕刻多面晶体 N
     private Node3D _letterRoot = null!;
     private MeshInstance3D _nLeft = null!;
@@ -224,12 +220,11 @@ public sealed partial class PreTitleScreen : Control, IKeepAliveRefreshable
         SetAnchorsAndOffsetsPreset(LayoutPreset.FullRect);
         MouseFilter = MouseFilterEnum.Stop;
 
-        _fontLxgw = GD.Load<FontFile>("res://assets/fonts/LXGWWenKaiLite-Regular.ttf");
+        _fontLxgw = UiTheme.DefaultFont;
         _fontSerif = new SystemFont { FontNames = ["Georgia", "Times New Roman", "serif"] };
 
         BuildBackdrop();
         BuildViewport3D();
-        BuildCausticGround();
         BuildSculptedN();
         BuildDemoBoard3D();
         BuildShowcaseStones();
@@ -334,7 +329,6 @@ public sealed partial class PreTitleScreen : Control, IKeepAliveRefreshable
     internal int PhaseForTests => (int)_phase;
     internal int DemoStoneCountForTests => _board.MoveCount();
     internal bool ResumeVisibleForTests => _resumeItem.Slot.Visible;
-    internal bool CausticVisibleForTests => _causticDisc.Visible;
     internal SubViewport.UpdateMode ViewportUpdateModeForTests => _vp.RenderTargetUpdateMode;
     internal Vector2I ViewportSizeForTests => _vp.Size;
 
@@ -515,23 +509,7 @@ void fragment() {
         _backdropMat.SetShaderParameter("aspect", Size.X / MathF.Max(1f, Size.Y));
     }
 
-    // ================= 3. 封面态平滑地面焦散（变形后彻底消隐） =================
-
-    private void BuildCausticGround()
-    {
-        _causticMat = new ShaderMaterial { Shader = PreTitleShaders.CreateCausticGroundShader() };
-        _causticDisc = new MeshInstance3D
-        {
-            Name = "CausticGround",
-            Mesh = new PlaneMesh { Size = new Vector2(4.2f, 4.2f) },
-            MaterialOverride = _causticMat,
-            Position = new Vector3(0f, -2.06f, 0f),
-            CastShadow = GeometryInstance3D.ShadowCastingSetting.Off,
-        };
-        _sceneRoot.AddChild(_causticDisc);
-    }
-
-    // ================= 4. 雕刻多面晶体字母 N =================
+    // ================= 3. 雕刻多面晶体字母 N =================
 
     private void BuildSculptedN()
     {
@@ -1385,35 +1363,15 @@ void fragment() {
                 new Color("42D2BC"), new Color("5CA6E4"), new Color("B8E6E2"));
         }
 
-        // 3) 素雅瓷质棋子（与对局一致，无夸张宝石质感）
-        _stoneBlackMat.AlbedoColor = isDark
-            ? new Color(0.115f, 0.130f, 0.165f)
-            : pal.StoneBlack;
+        // 3) 素雅瓷质棋子（深色背景启用柔和轮廓回光，确保黑子清晰可见）
+        _stoneBlackMat.AlbedoColor = pal.StoneBlack;
+        _stoneBlackMat.Roughness = isDark ? 0.25f : 0.30f;
+        _stoneBlackMat.RimEnabled = isDark;
+        _stoneBlackMat.Rim = 0.42f;
+        _stoneBlackMat.RimTint = 0.30f;
         _stoneWhiteMat.AlbedoColor = pal.StoneWhite;
 
-        // 4) 封面态平滑地面焦散（无抖动格纹）
-        if (isDark)
-        {
-            _causticMat.SetShaderParameter("shadow_color", new Color("050810"));
-            _causticMat.SetShaderParameter("lobe_left_color", new Color("3E9EE8"));
-            _causticMat.SetShaderParameter("lobe_right_color", new Color("7E6CE8"));
-            _causticMat.SetShaderParameter("inner_ring_color", new Color("9ECAF5"));
-            _causticMat.SetShaderParameter("core_color", new Color("E6F4FF"));
-            _causticMat.SetShaderParameter("shadow_alpha", 0.28f);
-            _causticMat.SetShaderParameter("caustic_alpha", 0.44f);
-        }
-        else
-        {
-            _causticMat.SetShaderParameter("shadow_color", new Color("9EB4BA"));
-            _causticMat.SetShaderParameter("lobe_left_color", new Color("4CC2B4"));
-            _causticMat.SetShaderParameter("lobe_right_color", new Color("6EB6EC"));
-            _causticMat.SetShaderParameter("inner_ring_color", new Color("BEECE8"));
-            _causticMat.SetShaderParameter("core_color", new Color("FFFFFF"));
-            _causticMat.SetShaderParameter("shadow_alpha", 0.20f);
-            _causticMat.SetShaderParameter("caustic_alpha", 0.50f);
-        }
-
-        // 5) 辅助线 / 悬停球
+        // 4) 辅助线 / 悬停球
         _hoverBallMat.AlbedoColor = new Color(pal.HoverHighlight.R, pal.HoverHighlight.G, pal.HoverHighlight.B, 0.78f);
         _auxMarkerSelfMat.AlbedoColor = new Color(pal.LineSelf.R, pal.LineSelf.G, pal.LineSelf.B, 0.90f);
         _auxMarkerEnemyMat.AlbedoColor = new Color(pal.LineEnemy.R, pal.LineEnemy.G, pal.LineEnemy.B, 0.90f);
@@ -1425,9 +1383,9 @@ void fragment() {
         _coverSub.AddThemeColorOverride("font_color", pal.TextDim);
 
         _coverPromptNormal.BgColor = isDark
-            ? new Color(pal.ButtonBg.R, pal.ButtonBg.G, pal.ButtonBg.B, 0.58f)
-            : new Color(pal.PanelBg.R, pal.PanelBg.G, pal.PanelBg.B, 0.84f);
-        _coverPromptNormal.BorderColor = new Color(pal.Accent.R, pal.Accent.G, pal.Accent.B, 0.60f);
+            ? new Color(pal.ButtonBg.R, pal.ButtonBg.G, pal.ButtonBg.B, 0.84f)
+            : new Color(pal.ButtonBg.R, pal.ButtonBg.G, pal.ButtonBg.B, 0.94f);
+        _coverPromptNormal.BorderColor = new Color(pal.Accent.R, pal.Accent.G, pal.Accent.B, 0.72f);
         _coverPromptHover.BgColor = pal.Accent;
         _coverPromptHover.BorderColor = pal.Accent;
         _coverPromptBtn.AddThemeColorOverride("font_color", pal.TextPrimary);
@@ -1456,12 +1414,12 @@ void fragment() {
             else
             {
                 Color cardBg = isDark
-                    ? new Color(pal.PanelBg.R, pal.PanelBg.G, pal.PanelBg.B, 0.82f)
-                    : new Color(pal.PanelBg.R, pal.PanelBg.G, pal.PanelBg.B, 0.88f);
+                    ? new Color(pal.ButtonBg.R, pal.ButtonBg.G, pal.ButtonBg.B, 0.88f)
+                    : new Color(pal.ButtonBg.R, pal.ButtonBg.G, pal.ButtonBg.B, 0.96f);
                 Color cardHover = isDark
-                    ? new Color(pal.ButtonHover.R, pal.ButtonHover.G, pal.ButtonHover.B, 0.94f)
-                    : new Color(pal.ButtonHover.R, pal.ButtonHover.G, pal.ButtonHover.B, 0.94f);
-                Color cardBorder = new Color(pal.PanelBorder.R, pal.PanelBorder.G, pal.PanelBorder.B, isDark ? 0.42f : 0.60f);
+                    ? new Color(pal.ButtonHover.R, pal.ButtonHover.G, pal.ButtonHover.B, 0.96f)
+                    : new Color(pal.ButtonHover.R, pal.ButtonHover.G, pal.ButtonHover.B, 0.98f);
+                Color cardBorder = new Color(pal.PanelBorder.R, pal.PanelBorder.G, pal.PanelBorder.B, isDark ? 0.62f : 0.78f);
 
                 normal = CreatePillStyle(cardBg, cardBorder, 7, padH: 16, padV: 4);
                 hover = CreatePillStyle(cardHover, pal.Accent, 7, padH: 16, padV: 4);
@@ -1478,8 +1436,8 @@ void fragment() {
         }
 
         // 8) 左下迷你控制条
-        Color miniBg = new Color(pal.PanelBg.R, pal.PanelBg.G, pal.PanelBg.B, 0.78f);
-        Color miniBorder = new Color(pal.PanelBorder.R, pal.PanelBorder.G, pal.PanelBorder.B, 0.50f);
+        Color miniBg = new Color(pal.ButtonBg.R, pal.ButtonBg.G, pal.ButtonBg.B, isDark ? 0.86f : 0.94f);
+        Color miniBorder = new Color(pal.PanelBorder.R, pal.PanelBorder.G, pal.PanelBorder.B, isDark ? 0.62f : 0.78f);
         var miniNormal = CreatePillStyle(miniBg, miniBorder, 6, padH: 10, padV: 2);
         var miniHover = CreatePillStyle(pal.ButtonHover, pal.Accent, 6, padH: 10, padV: 2);
         foreach (var b in new[] { _backCoverBtn, _clearDemoBtn })
@@ -1658,20 +1616,7 @@ void fragment() {
             }
         }
 
-        // --- Stage 4: 地面焦散（仅封面态呈现，形变展开棋盘后彻底消隐） ---
-        float causticFade = 1f - SmoothStep(0.10f, 0.52f, t);
-        bool causticVisible = causticFade > 0.008f;
-        _causticDisc.Visible = causticVisible;
-        if (causticVisible)
-        {
-            float causticScale = Mathf.Lerp(0.84f, 0.58f, 1f - causticFade);
-            _causticDisc.Position = new Vector3(0f, -2.06f, 0f);
-            _causticDisc.Scale = new Vector3(causticScale, 1f, causticScale);
-            _causticMat.SetShaderParameter("spin_angle", _clock * 0.32f);
-            _causticMat.SetShaderParameter("caustic_intensity", causticFade);
-        }
-
-        // --- Stage 5: 相机严格绕原点 (0,0,0) 旋转，经 HOffset 实现「略偏左」零甩动构图 ---
+        // --- Stage 4: 相机严格绕原点 (0,0,0) 旋转，经 HOffset 实现「略偏左」零甩动构图 ---
         float camE = EaseInOutCubic(t);
         float swirl = Mathf.Sin(camE * Mathf.Pi);
         float yaw = Mathf.Lerp(CoverYaw, _menuYaw, camE) + 0.16f * swirl;
