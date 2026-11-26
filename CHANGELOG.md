@@ -10,8 +10,8 @@
 - **② AI 行为修复与线程隔离（§10 B28–B30，人类拍板）**：①己方即胜绝对优先于防守（修 B4 战术送死）；②`PatternScore` 按 `WinLength` 4–9 泛化（wl=5 逐值不变）；③Easy 恢复邻近已有子落点档；④`GameManager` 向 AI 线程池传 `Board.Clone()` 独立快照并释放 CTS（+3 例单测）。
 - **③ 视图与壳层卫生**：`Board2DView` 改消费 `Main` 推送的同一份 `AuxScanResult` 快照；`Board3DView` 辅助线改单份 `ImmediateMesh` + 标记球节点池并按坐标去重；`Main`/`GameStore`/`AudioManager` 补 `_ExitTree` 退订与停播；`SaveMenu`/`KeymapContent` 补 `RemoveChild` 防同帧残留；`SettingsStore` 增内存缓存+`SetMany` 合并落盘+退出释放；`SceneRouter.Rebuild` 保护 `game` 并支持 `IKeepAliveRefreshable` 原地刷新；`I18nCsvTests` 新增四语言 `{n}` 占位符一致性守卫（+1 例单测）。
 - **④ 开始界面重做（`PreTitleScreen.cs`，真实窗口 3 轮截帧调优）**：
-  - 封面态：三段精密斜接挤出 3D 雕塑字母 `N`（微浮雕错层 + 鼠标微视差 + 悬浮黑白双子）配原生清晰 2D 排版（`Nmoku` + 强调线 + 副标题 + 呼吸入口按钮）。
-  - 流体形变（可双向可逆）：N 三笔画沿纵深分离成三层薄片并流体渐隐，5×5×3 棋盘从中心波浪涟漪展开，双子沿弧线落入斜对角无遮挡格位，透视相机沿曲线滑入 3/4 构图，左上品牌角标与右侧菜单列错峰级联入场。
+  - 封面态：借鉴 `caustic-gem` / `motion-cube` 风格化宝石语言（`PreTitleShaders.cs`：5 阶高保色色板 + 窄带 Bayer 4×4 抖动 + 内部折射虹彩 + 等宽晶体棱边高光 + 硬边分层地面焦散盘），三段斜接 3D 晶体字母 `N` 配黑白星光蓝/月光石双子差速交叉 3D 公转、克制等轴视差几何背景与原生清晰 2D 排版。
+  - 流体形变与自中心构图（可双向可逆）：双子自瞬时轨道位置沿弧线落入棋盘格位，晶体 N 三笔画沿纵深分离薄化并融入波浪展开的 5×5×3 棋盘；相机始终以原点 `(0,0,0)` 为自身旋转轴，经 `Camera3D.HOffset` 实现「略偏左」零甩动构图；菜单列 232px/右留白 56px 与 28px 左轴对齐，均衡不挤不空。
   - 菜单态与 7 处历史遗留根治：物理像素 1.5× 超采样 + MSAA 8× 根治 csf 2.5 发糊；左上角标就位；「继续对局」独立管理不被覆盖；`IKeepAliveRefreshable` 原地换肤/换语不重置演示盘；柔和自转生效+拖拽惯性；隐藏时停进程并置视口 `Disabled`；全量 `I18n.T` 零硬编码中文；按钮全走 `Palette.Active` 并配 hover 轻移与强调条。
 - **⑤ 架构拆解与自测补盲**：将 2000 行自测拆入 `Autotest/Main.Autotest.cs`，取消 `Main._Process` 自测早退（四条生产路径正式进入自测覆盖），新增 `m5-pretitle-redesign` 回归锁，补提交 `KeymapAudit.cs.uid`。
 - **门禁**：build 0 警告 0 错误 / **382 单测全绿**（362→382，+20 例）/ 无头 `--quit` + `--autotest` ALL PASS（含新回归锁，内存平稳 ~133MB）/ 真实窗口暗亮两套 × 封面·形变·菜单三阶段截帧复验通过。未 push（铁律 9）。

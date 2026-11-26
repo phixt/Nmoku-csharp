@@ -740,7 +740,7 @@ public partial class Main
         Rect2 designRect = _titleScreen.ApplyMenuLayoutForTests(designFace);
         bool designInside = new Rect2(Vector2.Zero, designFace).Encloses(designRect);
         bool designOk = designInside
-            && Mathf.IsEqualApprox(designRect.Size.X, 248f)
+            && Mathf.IsEqualApprox(designRect.Size.X, 232f)
             && designRect.Size.Y > 200f && designRect.Size.Y <= 340f;
 
         _titleScreen.ApplyMenuLayoutForTests(_titleScreen.Size); // 复原真实布局
