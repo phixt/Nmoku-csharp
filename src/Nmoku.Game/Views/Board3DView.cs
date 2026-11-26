@@ -147,6 +147,7 @@ public sealed partial class Board3DView : Node3D
             _auxMarkerSelfMat.AlbedoColor = WithAlpha(theme.LineSelf, 0.8f);
             _auxMarkerEnemyMat.AlbedoColor = WithAlpha(theme.LineEnemy, 0.8f);
         }
+        ApplyGridAlphas();
     }
 
     private static Color WithAlpha(Color c, float alpha) => new(c.R, c.G, c.B, alpha);
@@ -242,17 +243,22 @@ public sealed partial class Board3DView : Node3D
     {
         for (int z = 0; z < _gridLayerMats.Count; z++)
         {
+            bool isFocus = z == _lastFocusZ;
+            Color c = isFocus ? Theme.FocusGridLine : Theme.GridLine;
             float alpha;
             if (_gridAllFull)
+            {
+                alpha = isFocus ? 1f : 0.90f;
+            }
+            else if (isFocus)
             {
                 alpha = 1f;
             }
             else
             {
                 int d = Math.Abs(z - _lastFocusZ);
-                alpha = 1f / (1f + d); // 反比例雾化
+                alpha = 0.74f / (1f + (d - 1) * 0.70f); // 相邻层 0.74、次远 0.44、更远平滑雾化
             }
-            var c = Theme.GridLine;
             _gridLayerMats[z].AlbedoColor = WithAlpha(c, alpha);
         }
     }
@@ -448,7 +454,7 @@ public sealed partial class Board3DView : Node3D
     /// </summary>
     private void BuildGrid(int boardSize, double spacing)
     {
-        const float thickness = 0.06f; // 0.05→0.06：远景细线锯齿（M4R 反馈），配合 MSAA 8×
+        const float thickness = 0.072f; // 清晰明快的 3D 线宽，原生 1:1 + MSAA 4× 即保持锐利无虚化
         float length = boardSize - 1;
         float mid = length / 2;
 

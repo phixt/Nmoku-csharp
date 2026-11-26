@@ -50,8 +50,13 @@ public sealed partial class GameScreen : Control
         hbox.AddChild(viewportHost);
         Host3D = viewportHost;
 
-        // MSAA 8×：场景极小（≤1014 球体 + 数百线盒），细网格线在远景掠射角下 4× 仍有锯齿（M4R 反馈）
-        Viewport3D = new SubViewport { OwnWorld3D = true, Msaa3D = Viewport.Msaa.Msaa8X };
+        // MSAA 4× + 原生 1:1 物理像素（取代此前 2× 超采样 + MSAA 8× 的 32× 过采，性能大幅提升）
+        Viewport3D = new SubViewport
+        {
+            OwnWorld3D = true,
+            Msaa3D = Viewport.Msaa.Msaa4X,
+            RenderTargetUpdateMode = SubViewport.UpdateMode.Always,
+        };
         viewportHost.Viewport = Viewport3D;
         viewportHost.AddChild(Viewport3D);
 
@@ -61,10 +66,11 @@ public sealed partial class GameScreen : Control
             BackgroundColor = Palette.Active.Background,
             AmbientLightSource = Godot.Environment.AmbientSource.Color,
             AmbientLightColor = Palette.Active.AmbientLight,
-            AmbientLightEnergy = 0.55f,
+            AmbientLightEnergy = 0.60f,
         };
         Viewport3D.AddChild(new WorldEnvironment { Environment = _environment });
-        Viewport3D.AddChild(new DirectionalLight3D { RotationDegrees = new Vector3(-55, 35, 0) });
+        Viewport3D.AddChild(new DirectionalLight3D { RotationDegrees = new Vector3(-50, 35, 0), LightEnergy = 0.95f });
+        Viewport3D.AddChild(new DirectionalLight3D { RotationDegrees = new Vector3(28, -145, 0), LightEnergy = 0.38f });
 
         Board3D = new Board3DView { Name = "Board3DView" };
         Viewport3D.AddChild(Board3D);
@@ -87,6 +93,26 @@ public sealed partial class GameScreen : Control
         TurnIndicator = new TurnIndicator();
         AddChild(TurnIndicator);
         ApplyStatusStyle();
+        SyncViewportActive();
+    }
+
+    public override void _Notification(int what)
+    {
+        if (what == NotificationVisibilityChanged && Viewport3D != null)
+        {
+            SyncViewportActive();
+        }
+        base._Notification(what);
+    }
+
+    /// <summary>KeepAlive 隐藏期间停止 3D SubViewport 渲染与宿主重绘，杜绝标题页白跑对局视口。</summary>
+    private void SyncViewportActive()
+    {
+        bool visible = IsVisibleInTree();
+        Viewport3D.RenderTargetUpdateMode = visible
+            ? SubViewport.UpdateMode.Always
+            : SubViewport.UpdateMode.Disabled;
+        Host3D.SetProcess(visible);
     }
 
     /// <summary>主题切换（T）：3D 背景与环境光随套更新；棋盘/棋子由 Main.Refresh 经 ApplyPalette 通道刷新。</summary>
@@ -109,7 +135,13 @@ public sealed partial class GameScreen : Control
     {
         public SubViewport? Viewport { get; set; }
 
-        public override void _Process(double delta) => QueueRedraw();
+        public override void _Process(double delta)
+        {
+            if (IsVisibleInTree())
+            {
+                QueueRedraw();
+            }
+        }
 
         public override void _Draw()
         {

@@ -61,14 +61,14 @@ public sealed partial class Board2DView : Control
         int size = board.BoardSize;
         int focus = Game.FocusZ;
 
-        // 网格（人类反馈 2026-09-26：AA 线在高缩放下发糊——轴对齐线用硬边细线）
+        // 网格（焦点层明晰格线：FocusGridLine 在深浅背景下均高可读）
         for (int y = 0; y < size; y++)
         {
-            DrawLine(CellToScreen(0, y), CellToScreen(size - 1, y), Palette.GridLine, 1.2f, false);
+            DrawLine(CellToScreen(0, y), CellToScreen(size - 1, y), Palette.FocusGridLine, 1.3f, false);
         }
         for (int x = 0; x < size; x++)
         {
-            DrawLine(CellToScreen(x, 0), CellToScreen(x, size - 1), Palette.GridLine, 1.2f, false);
+            DrawLine(CellToScreen(x, 0), CellToScreen(x, size - 1), Palette.FocusGridLine, 1.3f, false);
         }
 
         // 星位（R4-3/D1：边星 max(1, floor(size/5)) + 中心，由 size 推导禁止硬编码）

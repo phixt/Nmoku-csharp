@@ -56,8 +56,8 @@ public partial class Main : Node
     private AIDifficulty _aiDifficulty = AIDifficulty.Medium;
     private Vector2 _lastViewportSize;
 
-    /// <summary>3D 视口超采样倍率（在原生像素之上再 ×2，细网格线抗锯齿）。</summary>
-    private const float ViewportSupersample = 2f;
+    /// <summary>3D 视口渲染倍率（1:1 原生物理像素 + MSAA 4×；摒弃此前 2× 超采样 + 8× MSAA 的 32× 过采瓶颈）。</summary>
+    private const float ViewportSupersample = 1f;
 
     /// <summary>全局 UI 观感放大系数（人类拍板 2026-09-25）：内容缩放绝对值（×2.5 基准设计），
     /// 窗口固定 1920×1080，等效逻辑视口 768×432；调全局 UI 大小只动这里。</summary>
@@ -172,6 +172,8 @@ public partial class Main : Node
         if (DisplayServer.GetName() != "headless")
         {
             GetWindow().SizeChanged += SyncWindowModeToPrefs;
+            GetWindow().SizeChanged += OnWindowSizeChangedTrace;
+            TraceWindowGeometry(force: true);
         }
 
         var defaultLevel = new LevelConfig
@@ -210,6 +212,7 @@ public partial class Main : Node
             if (win != null)
             {
                 win.SizeChanged -= SyncWindowModeToPrefs;
+                win.SizeChanged -= OnWindowSizeChangedTrace;
             }
         }
         SettingsStore.ReleaseCache();
@@ -433,7 +436,6 @@ public partial class Main : Node
 
     public override void _Process(double delta)
     {
-        TraceWindowGeometry();
         if (_autotestArmed)
         {
             RunAutotest();
@@ -441,11 +443,17 @@ public partial class Main : Node
             // _rig.Advance / ApplyCamera 在自测期间同样接受覆盖
         }
         AdvanceFade(delta);
+        if (!_gameScreen.Visible && !_autotestArmed)
+        {
+            return; // 标题页期间跳过对局相机与视口轮询，零空转开销
+        }
         HandleHeldInput(delta);
         HandleViewportChange();
         _rig.Advance(delta);
         ApplyCamera();
     }
+
+    private void OnWindowSizeChangedTrace() => TraceWindowGeometry();
 
     // ---- 批11 窗口几何追踪（任务栏遮挡根因调查，B16 式"先机制结论后修复"）：窗口 pos/size/
     // mode/工作区任一变化即落 .trace/window-trace.log（res:// = 游戏项目目录）并 GD.Print，带状态
@@ -840,10 +848,13 @@ public partial class Main : Node
         {
             return; // headless dummy 值（≈0.033）：无从换算
         }
-        // ×2 超采样（人类反馈 2026-09-26：3D 细网格线精度不足）——纹理由宿主缩小绘制，
-        // 等效 SSAA；场景极小，开销可忽略
-        var desired = (Vector2I)(((Vector2)host.Size * factor * ViewportSupersample).Floor());
-        if (desired.X > 0 && desired.Y > 0 && _viewport3D.Size != desired)
+        // 原生 1:1 物理像素，高分屏（如 3K/4K）按等比上限 1920 封顶，保证高帧率且零宽高比拉伸
+        float physW = host.Size.X * factor * ViewportSupersample;
+        float physH = host.Size.Y * factor * ViewportSupersample;
+        float cap = MathF.Min(1f, 1920f / MathF.Max(1f, MathF.Max(physW, physH)));
+        var desired = new Vector2I(Mathf.Max(64, (int)MathF.Floor(physW * cap)),
+            Mathf.Max(64, (int)MathF.Floor(physH * cap)));
+        if (_viewport3D.Size != desired)
         {
             _viewport3D.Size = desired;
         }

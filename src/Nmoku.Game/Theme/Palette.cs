@@ -11,98 +11,97 @@ namespace Nmoku.Game.Theme;
 /// </summary>
 public sealed class Palette
 {
-    /// <summary>暗色（M0–M4R 既有视觉基线）。声明须在 Active 之前（静态初始化顺序）。</summary>
+    /// <summary>暗色（深邃午夜底 + 高明晰棋盘网格与棋子层次）。声明须在 Active 之前（静态初始化顺序）。</summary>
     public static readonly Palette Dark = new()
     {
-        Background = new Color(0.10f, 0.11f, 0.13f),
+        Background = new Color(0.039f, 0.051f, 0.075f),   // #0A0D13 深邃午夜黑，去灰暗感
         AmbientLight = Colors.White,
-        StoneBlack = new Color(0.09f, 0.09f, 0.10f),
-        StoneWhite = new Color(0.92f, 0.93f, 0.95f),
-        GridLine = new Color(0.62f, 0.66f, 0.70f),
-        ConnectorLine = new Color(0.62f, 0.66f, 0.70f, 0.35f), // 同源 GHOST_CONNECTOR_OPACITY
-        HoverHighlight = new Color(0.30f, 0.55f, 1.00f, 0.55f),
+        StoneBlack = new Color(0.110f, 0.125f, 0.155f),   // 墨曜黑（深底上留体积感与高光层次）
+        StoneWhite = new Color(0.935f, 0.945f, 0.965f),   // 温润瓷白
+        FocusGridLine = new Color(0.760f, 0.860f, 0.960f),// #C2DCF5 焦点层高明晰冷银线
+        GridLine = new Color(0.430f, 0.555f, 0.680f),     // #6E8EAD 非焦点层清晰冷蓝灰
+        ConnectorLine = new Color(0.450f, 0.575f, 0.700f, 0.45f),
+        HoverHighlight = new Color(0.34f, 0.62f, 1.00f, 0.60f),
         LineSelf = new Color(0f, 1f, 0f),        // 0x00FF00（R4-6）
         LineEnemy = new Color(1f, 0f, 0f),       // 0xFF0000
-        StarPoint = new Color(0.8f, 0f, 0f),     // 0xCC0000
-        LastMoveRing = new Color(1f, 0f, 0f),    // 0xFF0000
+        StarPoint = new Color(0.85f, 0.16f, 0.16f),
+        LastMoveRing = new Color(1f, 0.12f, 0.12f),
         LineSelfColorblind = new Color(0f, 0.533f, 1f),  // 0x0088FF
         LineEnemyColorblind = new Color(1f, 0.8f, 0f),   // 0xFFCC00
-        GhostBlack = 0.30f,                      // 非焦点未被标记：暗背景黑子需更高才可辨（人类反馈 2026-09-19）
-        GhostWhite = 0.14f,
-        GhostMarkedBlack = 0.70f,                // 辅助线标记到的子：强化显示
-        GhostMarkedWhite = 0.50f,
-        // 2D 自绘棋子（M4 二轮反馈：2D 白子对比不足、须随主题适配；Dark 值=原 Darkened 派生结果，观感不变）
-        StoneWhite2D = new Color(0.69f, 0.70f, 0.71f),
-        StoneBlack2D = new Color(0.04f, 0.04f, 0.05f),
-        StoneOutlineBlack2D = new Color(0.07f, 0.07f, 0.08f),
-        StoneOutlineWhite2D = new Color(0.92f, 0.93f, 0.95f),
-        TextOutline = new Color(0f, 0f, 0f, 0.85f), // 状态字描边（暗底白字黑描边）
-        PanelBg = new Color(0.13f, 0.14f, 0.17f, 0.97f),
-        PanelBorder = new Color(0.45f, 0.50f, 0.55f, 0.80f),
-        TextPrimary = new Color(0.92f, 0.93f, 0.95f),
-        TextDim = new Color(0.62f, 0.66f, 0.70f),
-        ButtonBg = new Color(0.20f, 0.22f, 0.26f),
-        ButtonHover = new Color(0.28f, 0.31f, 0.36f),
-        Accent = new Color(0.30f, 0.55f, 1.00f),
-        Error = new Color(1.00f, 0.35f, 0.30f),
-        // 键帽作用域色（F1 快捷键页；源 panels.css 键盘模拟配色 + Ctrl/Shift 自定层，不叠层规则）
-        KeycapGame = new Color(0.290f, 0.478f, 0.494f),    // 源暗 base #4A7A7E
-        KeycapReplay = new Color(0.176f, 0.416f, 0.310f),  // 源复盘 #2D6A4F
-        KeycapPause = new Color(0.118f, 0.227f, 0.373f),   // 源暂停 #1E3A5F
-        KeycapCtrl = new Color(0.541f, 0.353f, 0.157f),    // Ctrl 层 赭（暗套加深）
-        KeycapShift = new Color(0.369f, 0.231f, 0.420f),   // Shift 层 紫（暗套加深）
-        KeycapGlobal = new Color(0.290f, 0.353f, 0.333f),  // 全局 中性灰绿
-        KeycapIdle = new Color(0.165f, 0.227f, 0.243f),    // 非活跃（源暗 inactive #2A3A3E）
-        KeycapShadow = new Color(1f, 1f, 1f, 0.10f),       // 暗底用浅色硬阴影（假环境光，人类拍板）
+        GhostBlack = 0.34f,                      // 非焦点未被标记：深底上黑子需足够清晰
+        GhostWhite = 0.18f,
+        GhostMarkedBlack = 0.74f,                // 辅助线标记到的子：强化显示
+        GhostMarkedWhite = 0.54f,
+        // 2D 自绘棋子（深底黑子配克制冷灰描边确保边界清晰）
+        StoneWhite2D = new Color(0.84f, 0.86f, 0.89f),
+        StoneBlack2D = new Color(0.08f, 0.09f, 0.12f),
+        StoneOutlineBlack2D = new Color(0.34f, 0.39f, 0.46f),
+        StoneOutlineWhite2D = new Color(0.94f, 0.96f, 0.98f),
+        TextOutline = new Color(0.02f, 0.03f, 0.05f, 0.88f),
+        PanelBg = new Color(0.075f, 0.094f, 0.137f, 0.96f), // #131823 深层浮板
+        PanelBorder = new Color(0.30f, 0.38f, 0.50f, 0.75f),
+        TextPrimary = new Color(0.925f, 0.945f, 0.975f),    // #ECF1F9 高对比柔白
+        TextDim = new Color(0.575f, 0.645f, 0.745f),        // #93A5BE 清晰次级字
+        ButtonBg = new Color(0.120f, 0.150f, 0.205f),
+        ButtonHover = new Color(0.180f, 0.225f, 0.305f),
+        Accent = new Color(0.34f, 0.62f, 1.00f),            // #579EFF 澄澈星蓝
+        Error = new Color(1.00f, 0.38f, 0.34f),
+        // 键帽作用域色（F1 快捷键页）
+        KeycapGame = new Color(0.290f, 0.478f, 0.494f),
+        KeycapReplay = new Color(0.176f, 0.416f, 0.310f),
+        KeycapPause = new Color(0.118f, 0.227f, 0.373f),
+        KeycapCtrl = new Color(0.541f, 0.353f, 0.157f),
+        KeycapShift = new Color(0.369f, 0.231f, 0.420f),
+        KeycapGlobal = new Color(0.290f, 0.353f, 0.333f),
+        KeycapIdle = new Color(0.145f, 0.195f, 0.220f),
+        KeycapShadow = new Color(1f, 1f, 1f, 0.10f),
     };
 
     /// <summary>
-    /// 浅水绿 light（B17 对齐源项目，2026-09-25 重校）：底/网格/石子取源 Types.ts Theme 与
-    /// RightPanel 渐变端色，面板/文字取源 CSS（body #F2F7F2 系、强调 #2C4A4E）；辅助线自方深绿、
-    /// ghost 透明度与色弱组为本项目 B9 校准值保持不变。
+    /// 浅水绿 light：温润淡青底配克制墨青文字（不过度死黑，保持 AA+ 清晰度）与高明晰深青棋盘网格。
     /// </summary>
     public static readonly Palette Light = new()
     {
-        Background = new Color(0.910f, 0.957f, 0.961f),   // 源画布底 #E8F4F5（浅水绿）
+        Background = new Color(0.922f, 0.957f, 0.961f),   // #EBF4F5 通透浅水绿
         AmbientLight = Colors.White,
-        StoneBlack = new Color(0.133f, 0.133f, 0.140f),   // 源黑石 #222222
-        StoneWhite = new Color(0.941f, 0.910f, 0.878f),   // 源白石渐变顶 #F0E8E0（暖象牙）
-        GridLine = new Color(0.627f, 0.753f, 0.769f),     // 源网格 #A0C0C4
-        ConnectorLine = new Color(0.627f, 0.753f, 0.769f, 0.35f),
-        HoverHighlight = new Color(0.20f, 0.55f, 0.45f, 0.50f),  // 水绿（本项目悬停语义）
-        LineSelf = new Color(0.00f, 0.55f, 0.25f),        // 深绿（纸上可读，B9 自方语义）
-        LineEnemy = new Color(0.816f, 0.008f, 0.106f),    // 源辅助线 #D0021B
-        StarPoint = new Color(0.70f, 0.15f, 0.12f),
-        LastMoveRing = new Color(0.85f, 0.25f, 0.15f),    // 朱（本项目最后手环）
-        LineSelfColorblind = new Color(0.10f, 0.45f, 0.85f),   // 蓝（纸上加深）
-        LineEnemyColorblind = new Color(0.72f, 0.48f, 0.00f),  // 琥珀（纸上加深）
-        // 明暗反转：浅底上黑子易见需低透明、白子难见需高透明（Dark 的镜像）
-        GhostBlack = 0.14f,
-        GhostWhite = 0.34f,
-        GhostMarkedBlack = 0.60f,
-        GhostMarkedWhite = 0.85f,
-        // 2D 自绘棋子：端色取源 RightPanel 渐变（白 #F0E8E0→#D0C8C0 描边 #555 / 黑 #222 描边 #000）
-        StoneWhite2D = new Color(0.906f, 0.867f, 0.835f), // 渐变中点 #E7DDD5
-        StoneBlack2D = new Color(0.133f, 0.133f, 0.140f),
-        StoneOutlineBlack2D = new Color(0.00f, 0.00f, 0.00f),
-        StoneOutlineWhite2D = new Color(0.333f, 0.333f, 0.333f),
-        TextOutline = new Color(0.97f, 0.96f, 0.92f, 0.90f), // 浅底深字纸色描边
-        PanelBg = new Color(0.955f, 0.970f, 0.960f, 0.97f),  // 源 body #F2F7F2 系面板
-        PanelBorder = new Color(0.72f, 0.78f, 0.76f, 0.85f),
-        TextPrimary = new Color(0.102f, 0.180f, 0.227f),  // 源 text-on-base #1A2E3A
-        TextDim = new Color(0.353f, 0.478f, 0.494f),      // 源次级字 #5A7A7E
-        ButtonBg = new Color(0.925f, 0.945f, 0.935f),     // #ECF1EE 浅底按钮
-        ButtonHover = new Color(0.784f, 0.878f, 0.894f),  // 源 hover #C8E0E4
-        Accent = new Color(0.173f, 0.290f, 0.306f),       // 源强调/主按钮 #2C4A4E
-        Error = new Color(0.545f, 0.227f, 0.227f),        // 源危险 #8B3A3A
-        KeycapGame = new Color(0.624f, 0.796f, 0.816f),   // 水蓝加深 #9FCBD0（人类反馈：原 #E8F4F5 与白色不分）
-        KeycapReplay = new Color(0.176f, 0.416f, 0.310f), // 源复盘 #2D6A4F
-        KeycapPause = new Color(0.118f, 0.227f, 0.373f),  // 源暂停 #1E3A5F
-        KeycapCtrl = new Color(0.722f, 0.447f, 0.173f),   // Ctrl 层 赭 #B8722C
-        KeycapShift = new Color(0.478f, 0.306f, 0.549f),  // Shift 层 紫 #7A4E8C
-        KeycapGlobal = new Color(0.604f, 0.659f, 0.639f), // 全局 灰绿 #9AA8A3
-        KeycapIdle = new Color(1f, 1f, 1f),               // 非活跃（源亮 inactive #FFF）
-        KeycapShadow = new Color(0f, 0f, 0f, 0.14f),      // 亮底用深色硬阴影（源 0 4px 0）
+        StoneBlack = new Color(0.145f, 0.160f, 0.180f),   // 温润墨石
+        StoneWhite = new Color(0.965f, 0.955f, 0.940f),   // 暖白象牙
+        FocusGridLine = new Color(0.215f, 0.365f, 0.400f),// #375D66 焦点层清晰墨青线（浅底高对比）
+        GridLine = new Color(0.425f, 0.560f, 0.590f),     // #6C8F96 非焦点层明晰青灰（替代过淡 #A0C0C4）
+        ConnectorLine = new Color(0.350f, 0.490f, 0.525f, 0.48f),
+        HoverHighlight = new Color(0.16f, 0.52f, 0.48f, 0.55f),
+        LineSelf = new Color(0.00f, 0.55f, 0.25f),
+        LineEnemy = new Color(0.816f, 0.008f, 0.106f),
+        StarPoint = new Color(0.72f, 0.16f, 0.13f),
+        LastMoveRing = new Color(0.85f, 0.25f, 0.15f),
+        LineSelfColorblind = new Color(0.10f, 0.45f, 0.85f),
+        LineEnemyColorblind = new Color(0.72f, 0.48f, 0.00f),
+        // 明暗反转：浅底上黑子易见需低透明、白子难见需高透明
+        GhostBlack = 0.16f,
+        GhostWhite = 0.36f,
+        GhostMarkedBlack = 0.62f,
+        GhostMarkedWhite = 0.86f,
+        StoneWhite2D = new Color(0.935f, 0.915f, 0.895f),
+        StoneBlack2D = new Color(0.145f, 0.160f, 0.180f),
+        StoneOutlineBlack2D = new Color(0.06f, 0.08f, 0.10f),
+        StoneOutlineWhite2D = new Color(0.36f, 0.42f, 0.44f),
+        TextOutline = new Color(0.97f, 0.98f, 0.98f, 0.92f),
+        PanelBg = new Color(0.962f, 0.980f, 0.982f, 0.97f),
+        PanelBorder = new Color(0.66f, 0.76f, 0.78f, 0.85f),
+        TextPrimary = new Color(0.227f, 0.322f, 0.357f),  // #3A525B 温雅青墨（不死黑，7.3:1 清晰度）
+        TextDim = new Color(0.365f, 0.478f, 0.510f),      // #5D7A82 柔和青灰（4.4:1）
+        ButtonBg = new Color(0.922f, 0.952f, 0.956f),
+        ButtonHover = new Color(0.820f, 0.902f, 0.916f),
+        Accent = new Color(0.176f, 0.415f, 0.455f),       // #2D6A74 清朗青碧强调色
+        Error = new Color(0.620f, 0.245f, 0.245f),
+        KeycapGame = new Color(0.624f, 0.796f, 0.816f),
+        KeycapReplay = new Color(0.176f, 0.416f, 0.310f),
+        KeycapPause = new Color(0.118f, 0.227f, 0.373f),
+        KeycapCtrl = new Color(0.722f, 0.447f, 0.173f),
+        KeycapShift = new Color(0.478f, 0.306f, 0.549f),
+        KeycapGlobal = new Color(0.604f, 0.659f, 0.639f),
+        KeycapIdle = new Color(1f, 1f, 1f),
+        KeycapShadow = new Color(0f, 0f, 0f, 0.14f),
     };
 
     /// <summary>当前生效套（运行时可切换；默认暗色）。</summary>
@@ -115,6 +114,7 @@ public sealed class Palette
         AmbientLight = AmbientLight,
         StoneBlack = StoneBlack,
         StoneWhite = StoneWhite,
+        FocusGridLine = FocusGridLine,
         GridLine = GridLine,
         ConnectorLine = ConnectorLine,
         HoverHighlight = HoverHighlight,
@@ -159,6 +159,7 @@ public sealed class Palette
     public Color AmbientLight { get; private init; }
     public Color StoneBlack { get; private init; }
     public Color StoneWhite { get; private init; }
+    public Color FocusGridLine { get; private init; }
     public Color GridLine { get; private init; }
     public Color ConnectorLine { get; private init; }
     public Color HoverHighlight { get; private init; }
