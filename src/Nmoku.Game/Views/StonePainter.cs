@@ -34,7 +34,8 @@ public static class StonePainter
         canvas.DrawTextureRect(_shadeTex, stoneRect, tile: false, modulate: new Color(1, 1, 1, alpha));
 
         EnsureGlowTexture();
-        float glowStrength = (isBlack ? 0.35f : 0.55f) * alpha;
+        bool isDarkBg = palette.Background.Luminance < 0.4f;
+        float glowStrength = (isBlack ? (isDarkBg ? 0.50f : 0.35f) : 0.55f) * alpha;
         // 高光必须完整落在轮廓内：偏移幅 0.30√2·r ≈ 0.42r + 光斑半径 0.45r = 0.87r < r。
         // 旧参数（0.28 格偏移 + 0.55r 光斑 = 1.43r）会穿透圆形边框（M4R 验收反馈）。
         float glowDiameter = radius * 0.9f;

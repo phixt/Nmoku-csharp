@@ -58,7 +58,18 @@ public sealed partial class SceneRouter : Node
     private CanvasLayer _layerBase = null!;
     private CanvasLayer _layerModal = null!;
     private CanvasLayer _layerOverlay = null!;
+    private Godot.Theme? _uiTheme;
     private static Shader? _blurShader;
+
+    /// <summary>同步全局统一 UI 主题到全部已挂载壳屏（穿透三层 CanvasLayer）。</summary>
+    public void ApplyGlobalTheme(Godot.Theme uiTheme)
+    {
+        _uiTheme = uiTheme;
+        foreach (var content in _content.Values)
+        {
+            content.Theme = uiTheme;
+        }
+    }
 
     public SceneRouter(IEnumerable<RouteDef> defs) =>
         _defs = defs.ToDictionary(d => d.Id);
@@ -215,6 +226,10 @@ public sealed partial class SceneRouter : Node
         else
         {
             content = def.Factory();
+            if (_uiTheme != null)
+            {
+                content.Theme = _uiTheme;
+            }
             if (def.Backdrop != BackdropKind.None)
             {
                 var backdrop = CreateBackdrop(def);

@@ -112,7 +112,8 @@ public sealed partial class KeyCap : Control
         }
         DrawStyleBox(faceBox, rect);
 
-        var font = GetThemeDefaultFont();
+        // 物理键帽字符（Esc/Ctrl/F1/WASD 等）使用清晰无衬线黑体，其余全局 UI 统一走霞鹜文楷
+        var font = UiTheme.KeycapFont;
         if (_mini)
         {
             DrawString(font, new Vector2(0, Size.Y * 0.5f + FontSizeMini * 0.36f), _label,

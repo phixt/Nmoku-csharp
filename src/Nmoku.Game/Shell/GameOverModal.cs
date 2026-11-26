@@ -28,6 +28,10 @@ public sealed partial class GameOverModal : Control
         {
             BgColor = Palette.Active.PanelBg,
             BorderColor = Palette.Active.Accent,
+            BorderWidthLeft = 1,
+            BorderWidthRight = 1,
+            BorderWidthTop = 1,
+            BorderWidthBottom = 1,
             CornerRadiusTopLeft = 10,
             CornerRadiusTopRight = 10,
             CornerRadiusBottomLeft = 10,

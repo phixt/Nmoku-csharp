@@ -41,6 +41,10 @@ public sealed partial class SaveMenu : Control
         {
             BgColor = Palette.Active.PanelBg,
             BorderColor = Palette.Active.PanelBorder,
+            BorderWidthLeft = 1,
+            BorderWidthRight = 1,
+            BorderWidthTop = 1,
+            BorderWidthBottom = 1,
             CornerRadiusTopLeft = 8,
             CornerRadiusTopRight = 8,
             CornerRadiusBottomLeft = 8,

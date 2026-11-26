@@ -133,9 +133,17 @@ public sealed partial class Board3DView : Node3D
     public void ApplyPalette(Palette theme)
     {
         Theme = theme;
+        bool isDark = theme.Background.Luminance < 0.4f;
         _focusBlackMat.AlbedoColor = theme.StoneBlack;
+        _focusBlackMat.Roughness = isDark ? 0.25f : 0.34f;
+        _focusBlackMat.RimEnabled = isDark;
+        _focusBlackMat.Rim = 0.42f;
+        _focusBlackMat.RimTint = 0.30f;
         _focusWhiteMat.AlbedoColor = theme.StoneWhite;
         _markedBlackMat.AlbedoColor = WithAlpha(theme.StoneBlack, theme.GhostMarkedBlack);
+        _markedBlackMat.RimEnabled = isDark;
+        _markedBlackMat.Rim = 0.35f;
+        _markedBlackMat.RimTint = 0.25f;
         _markedWhiteMat.AlbedoColor = WithAlpha(theme.StoneWhite, theme.GhostMarkedWhite);
         _fadedBlackMat.AlbedoColor = WithAlpha(theme.StoneBlack, theme.GhostBlack);
         _fadedWhiteMat.AlbedoColor = WithAlpha(theme.StoneWhite, theme.GhostWhite);

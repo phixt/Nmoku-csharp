@@ -33,6 +33,10 @@ window/stretch/aspect="expand"
 
 project/assembly_name="Nmoku.Game"
 
+[gui]
+
+theme/custom_font="res://assets/fonts/LXGWWenKaiLite-Regular.ttf"
+
 [internationalization]
 
 ; i18n 四语言表（§3.5）：CSV 键=zh-CN 文本本身；zh-CN 不注册 translation——
@@ -220,4 +224,4 @@ toggle_grid_all={
 [rendering]
 
 anti_aliasing/quality/msaa_3d=0
-environment/defaults/default_clear_color=Color(0.039, 0.051, 0.075, 1)
+environment/defaults/default_clear_color=Color(0.055, 0.075, 0.106, 1)

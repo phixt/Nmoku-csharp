@@ -11,12 +11,12 @@ namespace Nmoku.Game.Theme;
 /// </summary>
 public sealed class Palette
 {
-    /// <summary>暗色（深邃午夜底 + 高明晰棋盘网格与棋子层次）。声明须在 Active 之前（静态初始化顺序）。</summary>
+    /// <summary>暗色（深邃午夜底 + 清晰墨曜黑子 + 清透蓝调浮板与按钮）。声明须在 Active 之前（静态初始化顺序）。</summary>
     public static readonly Palette Dark = new()
     {
-        Background = new Color(0.039f, 0.051f, 0.075f),   // #0A0D13 深邃午夜黑，去灰暗感
+        Background = new Color(0.055f, 0.075f, 0.106f),   // #0E131B 深邃午夜底（保深度同时让黑子清晰可辨）
         AmbientLight = Colors.White,
-        StoneBlack = new Color(0.110f, 0.125f, 0.155f),   // 墨曜黑（深底上留体积感与高光层次）
+        StoneBlack = new Color(0.185f, 0.215f, 0.268f),   // #2F3744 墨曜黑子（深底上轮廓分明、立体感足）
         StoneWhite = new Color(0.935f, 0.945f, 0.965f),   // 温润瓷白
         FocusGridLine = new Color(0.760f, 0.860f, 0.960f),// #C2DCF5 焦点层高明晰冷银线
         GridLine = new Color(0.430f, 0.555f, 0.680f),     // #6E8EAD 非焦点层清晰冷蓝灰
@@ -28,23 +28,23 @@ public sealed class Palette
         LastMoveRing = new Color(1f, 0.12f, 0.12f),
         LineSelfColorblind = new Color(0f, 0.533f, 1f),  // 0x0088FF
         LineEnemyColorblind = new Color(1f, 0.8f, 0f),   // 0xFFCC00
-        GhostBlack = 0.34f,                      // 非焦点未被标记：深底上黑子需足够清晰
+        GhostBlack = 0.44f,                      // 非焦点未被标记：深底黑子保持良好可读性
         GhostWhite = 0.18f,
-        GhostMarkedBlack = 0.74f,                // 辅助线标记到的子：强化显示
+        GhostMarkedBlack = 0.80f,                // 辅助线标记到的子：强化显示
         GhostMarkedWhite = 0.54f,
-        // 2D 自绘棋子（深底黑子配克制冷灰描边确保边界清晰）
-        StoneWhite2D = new Color(0.84f, 0.86f, 0.89f),
-        StoneBlack2D = new Color(0.08f, 0.09f, 0.12f),
-        StoneOutlineBlack2D = new Color(0.34f, 0.39f, 0.46f),
+        // 2D 自绘棋子（深底黑子提亮墨灰体色 + 冷银描边确保一眼可辨）
+        StoneWhite2D = new Color(0.86f, 0.88f, 0.91f),
+        StoneBlack2D = new Color(0.155f, 0.180f, 0.220f),
+        StoneOutlineBlack2D = new Color(0.52f, 0.60f, 0.70f),
         StoneOutlineWhite2D = new Color(0.94f, 0.96f, 0.98f),
         TextOutline = new Color(0.02f, 0.03f, 0.05f, 0.88f),
-        PanelBg = new Color(0.075f, 0.094f, 0.137f, 0.96f), // #131823 深层浮板
-        PanelBorder = new Color(0.30f, 0.38f, 0.50f, 0.75f),
+        PanelBg = new Color(0.078f, 0.106f, 0.160f, 0.96f), // #141B29 清透靛蓝浮板（去灰暗）
+        PanelBorder = new Color(0.24f, 0.36f, 0.52f, 0.80f),
         TextPrimary = new Color(0.925f, 0.945f, 0.975f),    // #ECF1F9 高对比柔白
-        TextDim = new Color(0.575f, 0.645f, 0.745f),        // #93A5BE 清晰次级字
-        ButtonBg = new Color(0.120f, 0.150f, 0.205f),
-        ButtonHover = new Color(0.180f, 0.225f, 0.305f),
-        Accent = new Color(0.34f, 0.62f, 1.00f),            // #579EFF 澄澈星蓝
+        TextDim = new Color(0.575f, 0.655f, 0.760f),        // #93A7C2 清晰次级字
+        ButtonBg = new Color(0.106f, 0.153f, 0.235f),       // #1B273C 深海青蓝按钮（告别灰扑扑）
+        ButtonHover = new Color(0.157f, 0.235f, 0.365f),    // #283C5D 朗润悬停蓝
+        Accent = new Color(0.32f, 0.60f, 1.00f),            // #5299FF 澄澈星蓝
         Error = new Color(1.00f, 0.38f, 0.34f),
         // 键帽作用域色（F1 快捷键页）
         KeycapGame = new Color(0.290f, 0.478f, 0.494f),
@@ -86,12 +86,12 @@ public sealed class Palette
         StoneOutlineBlack2D = new Color(0.06f, 0.08f, 0.10f),
         StoneOutlineWhite2D = new Color(0.36f, 0.42f, 0.44f),
         TextOutline = new Color(0.97f, 0.98f, 0.98f, 0.92f),
-        PanelBg = new Color(0.962f, 0.980f, 0.982f, 0.97f),
-        PanelBorder = new Color(0.66f, 0.76f, 0.78f, 0.85f),
+        PanelBg = new Color(0.975f, 0.990f, 0.992f, 0.98f),
+        PanelBorder = new Color(0.68f, 0.79f, 0.82f, 0.90f),
         TextPrimary = new Color(0.227f, 0.322f, 0.357f),  // #3A525B 温雅青墨（不死黑，7.3:1 清晰度）
         TextDim = new Color(0.365f, 0.478f, 0.510f),      // #5D7A82 柔和青灰（4.4:1）
-        ButtonBg = new Color(0.922f, 0.952f, 0.956f),
-        ButtonHover = new Color(0.820f, 0.902f, 0.916f),
+        ButtonBg = new Color(0.985f, 0.996f, 0.996f),     // 清透莹白瓷钮（告别灰扑扑）
+        ButtonHover = new Color(0.865f, 0.940f, 0.950f),  // 淡青水色悬停
         Accent = new Color(0.176f, 0.415f, 0.455f),       // #2D6A74 清朗青碧强调色
         Error = new Color(0.620f, 0.245f, 0.245f),
         KeycapGame = new Color(0.624f, 0.796f, 0.816f),

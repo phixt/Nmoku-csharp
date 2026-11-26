@@ -83,10 +83,8 @@ public partial class Main : Node
         _audio = new AudioManager();
         AddChild(_audio);
 
-        // 全局字体：霞鹜文楷 Lite（OFL，assets-src/fonts 本地转换版）——根窗口 Theme 全体控件生效
-        var uiTheme = new Theme();
-        uiTheme.DefaultFont = GD.Load<FontFile>("res://assets/fonts/LXGWWenKaiLite-Regular.ttf");
-        uiTheme.DefaultFontSize = 15;
+        // 全局统一 UI 主题：霞鹜文楷 Lite 默认字体 + 主题化非灰暗控件样式
+        var uiTheme = UiTheme.Build(Palette.Active);
         GetWindow().Theme = uiTheme;
         RenderingServer.SetDefaultClearColor(Palette.Active.Background); // 首帧前同步（默认暗色）
 
@@ -115,10 +113,12 @@ public partial class Main : Node
         // 2) 对话框层（z=30，高于路由三层）
         _overlay = new OverlayManager();
         AddChild(_overlay);
+        _overlay.ApplyTheme(uiTheme);
 
         // 3) 路由器与壳屏（工厂内构造+接线，KeepAlive 路由首次挂载后常驻）
         _router = new SceneRouter(BuildRoutes());
         AddChild(_router);
+        _router.ApplyGlobalTheme(uiTheme);
 
         // 4) 壳状态机宿主（自测走隔离目录——AutotestSaveDir 此前是死常量，m4c 清槽步骤会毁真实存档）
         _store = _autotestArmed
@@ -252,6 +252,12 @@ public partial class Main : Node
     private void ApplyTheme(bool isDark)
     {
         Palette.Active = isDark ? Palette.Dark : Palette.Light;
+        var uiTheme = UiTheme.Build(Palette.Active);
+        GetWindow().Theme = uiTheme;
+        _overlay.ApplyTheme(uiTheme);
+        _router.ApplyGlobalTheme(uiTheme);
+        if (_exportFileDialog != null) _exportFileDialog.Theme = uiTheme;
+        if (_importFileDialog != null) _importFileDialog.Theme = uiTheme;
         RenderingServer.SetDefaultClearColor(Palette.Active.Background); // 2D 侧无自有背景，透出的根清屏色必须随主题（B17-M1：亮色发暗根因）
         _gameScreen.ApplyTheme();
         foreach (string id in _router.Mounted.Where(id => id != "game").ToList())
@@ -1130,6 +1136,7 @@ public partial class Main : Node
             Unresizable = false,
             MinSize = new Vector2I(720, 480),
             Filters = ["*.nzsave ; " + I18n.T(Text.Save.SaveFileFilter)],
+            Theme = GetWindow().Theme,
         };
         dialog.FileSelected += path => onSelected(path);
         AddChild(dialog);

@@ -83,6 +83,14 @@ public sealed partial class OverlayManager : CanvasLayer, IOverlayManager
         AddChild(_toastHost);
     }
 
+    /// <summary>同步全局统一 UI 主题至对话框与 Toast 宿主（CanvasLayer 不继承 Window.Theme）。</summary>
+    public void ApplyTheme(Godot.Theme uiTheme)
+    {
+        if (_confirm != null) _confirm.Theme = uiTheme;
+        if (_inputDialog != null) _inputDialog.Theme = uiTheme;
+        if (_toastHost != null) _toastHost.Theme = uiTheme;
+    }
+
     // ---- 确认框 ----
 
     public void ShowConfirmDialog(string title, string message, Action onYes,
