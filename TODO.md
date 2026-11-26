@@ -2,14 +2,15 @@
 
 > 维护规则见 `AGENTS.md`：本文件按"当前→近期→远期挂账"三层组织，收工必更新；总量 ≤300 行，已完成的尽快移入 CHANGELOG/git log，不丢当阶段关键教训。
 
-## 当前（M5 代码完结 + 全面审查修复批 1–4 & 开始界面重做已落地 2026-11-26；待人类真实窗口统一体验 → 分支合回 `master` → tag `m5`）
+## 当前（`v0.2.0-beta` / `m5` 已合回 `master` 并发布 2026-11-26）
 
-> 历史背景：2026-10-26 全面代码审查（[`docs/review-2026-10-26.md`](docs/review-2026-10-26.md)）后，
-> 修复批 ①止血 / ②数据完整性 / ③真实缺陷 已于 10-26/10-27 落地；2026-11-26 按人类指示落地
-> **修复批 ④（Core/AI/视图/壳层遗留 bug + 开始界面彻底重做 + autotest 拆分与 `_Process` 覆盖）**。
-> 当前门禁：**build 0 警告 / 382 单测全绿 / 无头自测 ALL PASS**（含 `m5-pretitle-redesign`）。
+> 历史背景：M5 音频/设置/i18n/打包 + 2026-10-26 全面代码审查（[`docs/review-2026-10-26.md`](docs/review-2026-10-26.md)）修复批 ①–④ + 开始界面重做 + 全局 `UiTheme` + 亮色立体 N 矢量图标已全部合回 `master`，打 tag `m5` 与 `v0.2.0-beta` 并打包 `build/Nmoku-0.2.0-beta-win64.zip`。
+> 当前门禁：**build 0 警告 / 382 单测全绿 / 无头自测 ALL PASS / 打包冒烟 boot OK**。
 
-### 本轮已完成（2026-11-26，待人类统一体验）
+### 0.2.0-beta 已收口（2026-11-26）
+
+- [x] **分支收口与发布**：`prestart-native` 快进合回 `master`，清理已废弃旧分支 `bgm-engine` / `bgm-engine-mixed-backup`，打 `m5` + `v0.2.0-beta` 并推送 `origin` 触发 CI。
+- [x] **应用图标重做（`tools/make-icon.py`）**：参照原 TS 3×3×3 立体盘 + 跨层红柱 + 蓝/黑绿/白红辅助线，改亮色水绿圆角矩形纯平矢量风并由棋盘纵边与空间对角连线勾勒立体 `N`，生成 512/256/多尺寸 ICO。
 
 - [x] **开始界面重做与全局 UI/主题/性能调优（`PreTitleScreen.cs` / `UiTheme.cs`）**：雕刻多面 3D 晶体 `N`（无 Bayer 抖动、无地面焦散）+ 素雅双子差速公转 + 自中心略偏左构图；全局默认字体统一为霞鹜文楷（仅物理键帽用无衬线黑体），全套弹窗/菜单按钮去除默认灰扑扑皮肤；深色黑子回调可见度、浅色字柔化、`FocusGridLine` 拉清深浅棋盘，并根治高分屏过采与隐藏视口空转（3200×2000 稳锁 60fps）。7 处历史遗留清零，真实窗口暗/亮截帧复验通过。
 - [x] **AI 行为修复与线程隔离（§10 B28–B30，人类拍板）**：己方即胜绝对优先于防守（修 B4 送死）、`PatternScore` 按 `WinLength` 4–9 泛化、Easy 恢复邻近落点、`GameManager` 传 `Board.Clone()` 快照并释放 CTS。
@@ -38,10 +39,9 @@
 
 ## 近期
 
-- [ ] **分支收口与 CI 门禁（待人类拍板）**：验收通过后 `prestart-native` 合回 `master`、删除已并入价值的 `bgm-engine` / `bgm-engine-mixed-backup`、评估 CI 触发条件是否放宽到开发分支；`FONTS_LICENSE.md` 版权行与项目名修正。
+- [ ] **GitHub Release 上传**（人类执行）：上传 `build/Nmoku-0.2.0-beta-win64.zip` 至 `v0.2.0-beta` Release；`FONTS_LICENSE.md` 版权行与项目名修正。
 - [ ] **UI 缩放体系重构（人类拍板 2026-11-26 暂缓）**：960×540 基准 + 公式化 `csf = (窗口高/540) × UI倍率` + 窗口化固定分辨率挡位（960×540 / 1920×1080 / 2560×1440，保留自由拖拽）+ UI 倍率下拉（0.5x–2x）。工具 `tools/ui-baseline-preview.html` 已备。
 - [ ] **游戏内其余按钮 hover 微交互推广**：预开始页已落地平滑 hover 强调条+轻移，后续可统一推广到暂停/存档/设置等壳屏。
-- [ ] **GitHub Release 上传**（人类执行）：`build/Nmoku-0.1.0-alpha-win64.zip` 已备；tag `m5` 待人类走查后打。
 - [ ] **正式 BGM**：Strudel 谱面创作四轨 → strudel.cc 渲染/录音 → WAV→OGG 替换占位（见 `assets-src/music/strudel/README.md`）。
 - [ ] **3D 视图加载黑闪根治**（淡入已掩盖观感，视反馈决定是否做视口纹理就绪检测）。
 - [ ] **教学关小基建**：`LevelCatalog.Tutorial.InitialMoves` 改可注入+持久化。

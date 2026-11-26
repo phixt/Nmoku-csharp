@@ -6,7 +6,7 @@
 - 迁移计划：[docs/migration-plan.md](docs/migration-plan.md)
 - 目标平台：Windows 桌面 x64
 - 引擎：Godot 4.6.x .NET 版 + .NET 8
-- 当前版本：**0.1.0-alpha**（M0–M5，进度见 [AGENTS.md](AGENTS.md)）
+- 当前版本：**0.2.0-beta**（M0–M5，进度见 [AGENTS.md](AGENTS.md)）
 
 ## 下载与运行
 
