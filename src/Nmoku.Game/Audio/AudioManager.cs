@@ -44,8 +44,12 @@ public sealed partial class AudioManager : Node
     public float SfxVolume { get; private set; } = DefaultSfxVolume;
     public float BgmVolume { get; private set; } = DefaultBgmVolume;
     public bool Muted { get; private set; }
+    /// <summary>音效独立静音开关（持久化至 audio.sfx_muted；与全局静音 M 正交）。</summary>
+    public bool SfxMuted { get; private set; }
+    /// <summary>音乐独立静音开关（持久化至 audio.bgm_muted；与全局静音 M 正交）。</summary>
+    public bool BgmMuted { get; private set; }
 
-    /// <summary>静音翻转后触发（M 键/设置页两路统一出口）：设置页按钮文本联动刷新。</summary>
+    /// <summary>全局/独立静音任一变化后触发（M 键/音频浏览屏统一出口）。</summary>
     public event Action? MuteChanged;
 
     public override void _Ready()
@@ -79,7 +83,7 @@ public sealed partial class AudioManager : Node
 
     public override void _Process(double delta)
     {
-        bool holdDuck = !Muted && IsGameOverStingerPlaying();
+        bool holdDuck = !Muted && !SfxMuted && !BgmMuted && IsGameOverStingerPlaying();
         float duck = _bgmDuck.Step((float)delta, holdDuck);
         if (!Mathf.IsEqualApprox(duck, _lastAppliedBgmDuck))
         {
@@ -151,8 +155,17 @@ public sealed partial class AudioManager : Node
             rotate: true,
             preferredTrackId: preferAdvanced ? AudioPolicy.AdvancedGameTrackId : AudioPolicy.StandardGameTrackId);
 
-    /// <summary>设置页修改音乐偏好后即时重估当前槽位。</summary>
+    /// <summary>设置页/音频浏览屏修改音乐偏好后即时重估当前槽位。</summary>
     public void RefreshCurrentBgm() => _music.RefreshCurrentSlot();
+
+    /// <summary>BGM 浏览屏直选试听曲目（交叉淡化、从头起播）。</summary>
+    public void PreviewBgmTrack(string slot, string trackId) => _music.PlayTrackDirect(slot, trackId);
+
+    /// <summary>BGM 浏览屏拖拽进度条跳转。</summary>
+    public void SeekBgm(double seconds) => _music.SeekActive(seconds);
+
+    /// <summary>读取当前主在播轨位信息（供 BGM 浏览屏实时刷新进度）。</summary>
+    public BgmPlaybackStatus GetBgmStatus() => _music.GetPlaybackStatus();
 
     /// <summary>自测投影：headless 回归锁直接观测音乐引擎轨位与闪避状态。</summary>
     internal SampleMusicEngine? MusicForTests => _music as SampleMusicEngine;
@@ -170,7 +183,7 @@ public sealed partial class AudioManager : Node
     /// </summary>
     public void PlayStonePlace(PlayerColor color)
     {
-        if (Muted)
+        if (Muted || SfxMuted)
         {
             return;
         }
@@ -197,7 +210,7 @@ public sealed partial class AudioManager : Node
     public void PlayGameOver(GameOverSfx outcome)
     {
         StopGameOverSfx();
-        if (Muted || outcome == GameOverSfx.None)
+        if (Muted || SfxMuted || outcome == GameOverSfx.None)
         {
             return;
         }
@@ -220,7 +233,7 @@ public sealed partial class AudioManager : Node
     /// <summary>SWAP2 决策轻触反馈：换色微亮（1.08x）、保持执白柔和（0.95x）。</summary>
     public void PlaySwapResolved(bool swapped)
     {
-        if (Muted || !_sfx.TryGetValue(SfxKind.Click, out var player))
+        if (Muted || SfxMuted || !_sfx.TryGetValue(SfxKind.Click, out var player))
         {
             return;
         }
@@ -228,10 +241,10 @@ public sealed partial class AudioManager : Node
         player.Play();
     }
 
-    /// <summary>播放音效：静音时忽略；重入=从头重播（源 audio.currentTime=0 语义）。</summary>
+    /// <summary>播放音效：全局或音效独立静音时忽略；重入=从头重播（源 audio.currentTime=0 语义）。</summary>
     public void PlaySfx(SfxKind kind)
     {
-        if (Muted || !_sfx.TryGetValue(kind, out var player))
+        if (Muted || SfxMuted || !_sfx.TryGetValue(kind, out var player))
         {
             return;
         }
@@ -264,6 +277,40 @@ public sealed partial class AudioManager : Node
         MuteChanged?.Invoke();
     }
 
+    /// <summary>音效独立开关翻转（Sfx 总线静音，独立于 M 键全局静音与 BGM 开关）。</summary>
+    public void ToggleSfxMute() => SetSfxMuted(!SfxMuted);
+
+    public void SetSfxMuted(bool muted)
+    {
+        if (SfxMuted == muted)
+        {
+            return;
+        }
+        SfxMuted = muted;
+        if (SfxMuted)
+        {
+            StopGameOverSfx();
+        }
+        ApplyVolumes();
+        SaveSettings();
+        MuteChanged?.Invoke();
+    }
+
+    /// <summary>音乐独立开关翻转（Bgm 总线静音，保持播放位置与轨位状态不断线）。</summary>
+    public void ToggleBgmMute() => SetBgmMuted(!BgmMuted);
+
+    public void SetBgmMuted(bool muted)
+    {
+        if (BgmMuted == muted)
+        {
+            return;
+        }
+        BgmMuted = muted;
+        ApplyVolumes();
+        SaveSettings();
+        MuteChanged?.Invoke();
+    }
+
     private bool IsGameOverStingerPlaying()
     {
         bool win = _sfx.TryGetValue(SfxKind.Win, out var w) && GodotObject.IsInstanceValid(w) && w.Playing;
@@ -274,6 +321,8 @@ public sealed partial class AudioManager : Node
     private void ApplyVolumes()
     {
         AudioServer.SetBusMute(AudioServer.GetBusIndex("Master"), Muted);
+        AudioServer.SetBusMute(AudioServer.GetBusIndex("Sfx"), SfxMuted);
+        AudioServer.SetBusMute(AudioServer.GetBusIndex("Bgm"), BgmMuted);
         AudioServer.SetBusVolumeDb(AudioServer.GetBusIndex("Sfx"), LinearToDb(SfxVolume));
         ApplyBgmBusVolume();
     }
@@ -290,6 +339,8 @@ public sealed partial class AudioManager : Node
         SfxVolume = Mathf.Clamp((float)SettingsStore.Get("audio", "volume_sfx", SfxVolume).AsSingle(), 0f, 1f);
         BgmVolume = Mathf.Clamp((float)SettingsStore.Get("audio", "volume_bgm", BgmVolume).AsSingle(), 0f, 1f);
         Muted = SettingsStore.Get("audio", "muted", Muted).AsBool();
+        SfxMuted = SettingsStore.Get("audio", "sfx_muted", SfxMuted).AsBool();
+        BgmMuted = SettingsStore.Get("audio", "bgm_muted", BgmMuted).AsBool();
     }
 
     private void SaveSettings()
@@ -297,6 +348,8 @@ public sealed partial class AudioManager : Node
         SettingsStore.SetMany("audio",
             ("volume_sfx", SfxVolume),
             ("volume_bgm", BgmVolume),
-            ("muted", Muted));
+            ("muted", Muted),
+            ("sfx_muted", SfxMuted),
+            ("bgm_muted", BgmMuted));
     }
 }

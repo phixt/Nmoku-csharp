@@ -13,6 +13,14 @@ public enum BgmTrack
     Pause,
 }
 
+/// <summary>当前 BGM 播放实时状态快照（供 BGM 浏览界面进度条与曲目高亮使用）。</summary>
+public sealed record BgmPlaybackStatus(
+    string? Slot,
+    string? TrackId,
+    double PositionSec,
+    double LengthSec,
+    bool IsPlaying);
+
 /// <summary>
 /// 音乐引擎接口（§3.5）：采样版 <see cref="SampleMusicEngine"/> 为默认装配，
 /// 合成器版 <see cref="SynthMusicEngine"/> 留壳挂后续版本。槽位=场景键字符串（解耦场景绑定）。
@@ -40,4 +48,17 @@ public interface IMusicEngine
     void RefreshCurrentSlot()
     {
     }
+
+    /// <summary>BGM 浏览界面直选试听：直接交叉淡化切至指定曲目（从头起播）。</summary>
+    void PlayTrackDirect(string slot, string trackId)
+    {
+    }
+
+    /// <summary>BGM 浏览界面拖动进度条跳转。</summary>
+    void SeekActive(double seconds)
+    {
+    }
+
+    /// <summary>读取当前主在播轨位状态。</summary>
+    BgmPlaybackStatus GetPlaybackStatus() => new(null, null, 0, 0, false);
 }

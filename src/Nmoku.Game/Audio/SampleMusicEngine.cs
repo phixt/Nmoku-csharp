@@ -104,6 +104,59 @@ public sealed partial class SampleMusicEngine : Node, IMusicEngine
         }
     }
 
+    public void PlayTrackDirect(string slot, string trackId)
+    {
+        var pool = _library.Pool(slot);
+        var pick = pool.FirstOrDefault(t => string.Equals(t.Id, trackId, StringComparison.Ordinal));
+        if (pick == null)
+        {
+            return;
+        }
+        var active = _lanes.FirstOrDefault(l => l.Player.Playing && l.TargetVolume >= 1f);
+        if (active != null && active.TrackId == pick.Id)
+        {
+            _currentSlot = slot;
+            _sessionIdBySlot[slot] = pick.Id;
+            _lastIdBySlot[slot] = pick.Id;
+            return;
+        }
+        _pendingRotate.Remove(slot);
+        _resumeSec.Remove(pick.Id); // 试听浏览从头起播
+        StartPickedTrack(slot, pick);
+    }
+
+    public void SeekActive(double seconds)
+    {
+        var active = _lanes.FirstOrDefault(l => l.Player.Playing && l.TargetVolume >= 1f && l.Player.Stream != null);
+        if (active == null)
+        {
+            return;
+        }
+        double len = active.Player.Stream!.GetLength();
+        if (len <= 0.1)
+        {
+            return;
+        }
+        double clamped = Math.Clamp(seconds, 0.0, Math.Max(0.0, len - 0.15));
+        active.Player.Seek((float)clamped);
+    }
+
+    public BgmPlaybackStatus GetPlaybackStatus()
+    {
+        var active = _lanes.FirstOrDefault(l => l.Player.Playing && l.TargetVolume >= 1f && l.Player.Stream != null)
+                     ?? _lanes.FirstOrDefault(l => l.Player.Playing && l.Player.Stream != null);
+        if (active == null || active.Player.Stream == null)
+        {
+            return new BgmPlaybackStatus(_currentSlot, null, 0, 0, false);
+        }
+        return new BgmPlaybackStatus(
+            active.Slot,
+            active.TrackId,
+            active.Player.GetPlaybackPosition(),
+            active.Player.Stream.GetLength(),
+            active.Player.Playing);
+    }
+
     public void Start(string slot)
     {
         var pool = _library.Pool(slot);
@@ -172,6 +225,11 @@ public sealed partial class SampleMusicEngine : Node, IMusicEngine
             _resumeSec.Remove(pick.Id);
         }
 
+        StartPickedTrack(slot, pick);
+    }
+
+    private void StartPickedTrack(string slot, MusicLibrary.Track pick)
+    {
         // 落点选择：还挂着目标曲的在播轨（优雅回归优先，避免同曲自重叠）> 空闲轨 > 音量最低轨（抢滩，先存其进度）
         var lane = _lanes.FirstOrDefault(l => l.TrackId == pick.Id && l.Player.Playing)
                    ?? _lanes.FirstOrDefault(l => !l.Busy);
