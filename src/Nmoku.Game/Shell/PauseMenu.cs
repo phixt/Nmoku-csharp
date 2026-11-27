@@ -15,6 +15,7 @@ public sealed partial class PauseMenu : Control
     public event Action? SaveProgressRequested;
     public event Action? LoadRequested;
     public event Action? GuideRequested;
+    public event Action? AudioHubRequested;
     public event Action? TitleRequested;
     public event Action? SettingsRequested;
 
@@ -46,6 +47,7 @@ public sealed partial class PauseMenu : Control
         box.AddChild(MakeMenuButton(I18n.T(Text.Menu.SaveProgress), "save_first_empty", () => SaveProgressRequested?.Invoke()));
         box.AddChild(MakeMenuButton(I18n.T(Text.Title.LoadGame), action: null, () => LoadRequested?.Invoke()));
         box.AddChild(MakeMenuButton(I18n.T(Text.Title.Guide), "open_guide", () => GuideRequested?.Invoke()));
+        box.AddChild(MakeMenuButton(I18n.T(Text.Audio.HubTitle), action: null, () => AudioHubRequested?.Invoke()));
         box.AddChild(MakeMenuButton(I18n.T(Text.Settings.Title), action: null, () => SettingsRequested?.Invoke()));
         box.AddChild(MakeMenuButton(I18n.T(Text.Menu.BackToTitle), "return_to_title", () => TitleRequested?.Invoke()));
     }

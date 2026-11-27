@@ -553,6 +553,8 @@ public partial class Main
         _autotestSteps.Enqueue(("m5-i18n", AutotestI18n));
         _autotestSteps.Enqueue(("m5-title-fit", AutotestTitleFit));
         _autotestSteps.Enqueue(("m5-settings-bugs", AutotestSettingsBugs));
+        _autotestSteps.Enqueue(("m5-audio-hub", AutotestAudioHub));
+        _autotestSteps.Enqueue(("m5-guide-author-note", AutotestGuideAuthorNote));
         _autotestSteps.Enqueue(("m5-save-integrity", AutotestSaveIntegrity));
         _autotestSteps.Enqueue(("m5-save-legacy-migration", AutotestSaveLegacyMigration));
         _autotestSteps.Enqueue(("m5-viewport-level-fit", AutotestViewportLevelFit));
@@ -811,21 +813,25 @@ public partial class Main
             return $"FAIL title-min-height={minH:0.0} > 416";
         }
 
-        var minFace = new Vector2(320f, 416f);
+        var minFace = new Vector2(320f, 360f);
         Rect2 minRect = _titleScreen.ApplyMenuLayoutForTests(minFace);
         bool minInside = new Rect2(Vector2.Zero, minFace).Encloses(minRect);
 
-        var designFace = new Vector2(768f, 432f);
+        var designFace = new Vector2(960f, 540f);
         Rect2 designRect = _titleScreen.ApplyMenuLayoutForTests(designFace);
         bool designInside = new Rect2(Vector2.Zero, designFace).Encloses(designRect);
         bool designOk = designInside
-            && Mathf.IsEqualApprox(designRect.Size.X, 232f)
-            && designRect.Size.Y > 200f && designRect.Size.Y <= 340f;
+            && Mathf.IsEqualApprox(designRect.Size.X, 248f)
+            && designRect.Size.Y > 200f && designRect.Size.Y <= 380f;
+
+        var scaledFace = new Vector2(768f, 432f);
+        Rect2 scaledRect = _titleScreen.ApplyMenuLayoutForTests(scaledFace);
+        bool scaledInside = new Rect2(Vector2.Zero, scaledFace).Encloses(scaledRect);
 
         _titleScreen.ApplyMenuLayoutForTests(_titleScreen.Size); // 复原真实布局
-        return minInside && designOk
+        return minInside && designOk && scaledInside
             ? "ok"
-            : $"FAIL min-rect={minRect} inside={minInside} design-rect={designRect} designOk={designOk}";
+            : $"FAIL min-rect={minRect} inside={minInside} design-rect={designRect} designOk={designOk} scaled={scaledRect}";
     }
 
     /// <summary>
@@ -957,10 +963,7 @@ public partial class Main
     private int _setBugPhase;
     private string _setBugLangBefore = "";
     private string _setBugLocaleBefore = "";
-    private string _setBugMuteTextBefore = "";
-
-    private HSlider[] SettingsSliders() =>
-        _settingsScreen.FindChildren("*", "HSlider", true, false).OfType<HSlider>().ToArray();
+    private float _setBugScaleBefore = 1f;
 
     private OptionButton? SettingsLanguageSelect() =>
         _settingsScreen.FindChild("LanguageSelect", true, false) as OptionButton;
@@ -968,19 +971,19 @@ public partial class Main
     private OptionButton? SettingsModeSelect() =>
         _settingsScreen.FindChild("WindowModeSelect", true, false) as OptionButton;
 
-    private Button? SettingsMuteButton() =>
-        _settingsScreen.FindChildren("*", "Button", true, false).OfType<Button>()
-            .FirstOrDefault(b => b.Text == I18n.T(Text.Settings.MutedOn)
-                                 || b.Text == I18n.T(Text.Settings.MutedOff));
+    private OptionButton? SettingsResolutionSelect() =>
+        _settingsScreen.FindChild("ResolutionSelect", true, false) as OptionButton;
+
+    private OptionButton? SettingsScaleSelect() =>
+        _settingsScreen.FindChild("UiScaleSelect", true, false) as OptionButton;
 
     private Label? SettingsTitleLabel() =>
         _settingsScreen.FindChildren("*", "Label", true, false).OfType<Label>()
             .FirstOrDefault(l => l.Text == I18n.T(Text.Settings.Title));
 
-    /// <summary>M5 设置页四 bug 回归锁（2026-10-01）：①音量滑条不被 Expand 塌缩（M3 同款坑，
-    /// 宽度须铺满行）②M 键静音时设置页按钮文本联动刷新 ③语言切换 UI 全链路（合成 item_selected
-    /// 走真实 handler）——切 en 后重建屏文本/选中项正确、**改回 zh-CN 生效**（dash/underscore 匹配）
-    /// ④模式下拉初值=headless 取 cfg。测试前后快照/恢复 general.lang，不污染真实偏好。</summary>
+    /// <summary>M5 设置屏回归锁（显示/分辨率/UI 倍率/语言热刷新 + 音频项已迁至 AudioHubScreen）：
+    /// ① 窗口模式/分辨率/UI 倍率下拉均 ExpandFill 且可写回偏好；② 语言切换 en↔zh 全链路含"改不回"锁；
+    /// ③ 直达「音乐与音效」入口按钮存在。测试前后快照/恢复 general.lang 与 general.ui_scale。</summary>
     private string AutotestSettingsBugs()
     {
         switch (_setBugPhase)
@@ -988,6 +991,7 @@ public partial class Main
             case 0:
                 _setBugLangBefore = SettingsStore.Get("general", "lang", "").AsString();
                 _setBugLocaleBefore = TranslationServer.GetLocale();
+                _setBugScaleBefore = (float)SettingsStore.Get("general", "ui_scale", 1f).AsSingle();
                 OpenSettings();
                 _setBugPhase = 1;
                 return "wait";
@@ -996,54 +1000,32 @@ public partial class Main
                 {
                     return "FAIL no-settings";
                 }
-                HSlider[] sliders = SettingsSliders();
-                if (sliders.Length != 2)
+                OptionButton? res = SettingsResolutionSelect();
+                OptionButton? scale = SettingsScaleSelect();
+                Button? audioLink = _settingsScreen.FindChild("OpenAudioHubButton", true, false) as Button;
+                if (res == null || res.ItemCount != UiScaleMath.ResolutionPresets.Length
+                    || scale == null || scale.ItemCount != UiScaleMath.MultiplierPresets.Length
+                    || audioLink == null)
                 {
-                    return $"FAIL sliders={sliders.Length}";
+                    return $"FAIL display-controls res={res?.ItemCount} scale={scale?.ItemCount} audioLink={audioLink != null}";
                 }
-                if (sliders.Any(s => s.SizeFlagsHorizontal != Godot.Control.SizeFlags.ExpandFill))
+                scale.EmitSignal("item_selected", 2); // 1.25x
+                if (MathF.Abs((float)SettingsStore.Get("general", "ui_scale", 0f).AsSingle() - 1.25f) > 0.01f)
                 {
-                    return "FAIL slider-expand-not-fill";
+                    return "FAIL ui-scale-not-persisted";
                 }
-                if (sliders.Any(s => s.Size.X < 150f))
+                SettingsStore.Set("general", "ui_scale", _setBugScaleBefore);
+                ApplyUiScale(_setBugScaleBefore);
+
+                OptionButton? lang = SettingsLanguageSelect();
+                if (lang == null || lang.GetSelected() < 0)
                 {
-                    return $"FAIL slider-collapsed width={sliders.Min(s => s.Size.X):0}";
+                    return "FAIL language-initial-selection";
                 }
-                Button? mute = SettingsMuteButton();
-                if (mute == null)
-                {
-                    return "FAIL mute-button";
-                }
-                _setBugMuteTextBefore = mute.Text;
-                SimulateActionPress("toggle_mute"); // M 键路径：toast+翻转，按钮文本应经事件联动
+                lang.EmitSignal("item_selected", 2); // en-US
                 _setBugPhase = 2;
                 return "wait";
             case 2:
-                Button? mute2 = SettingsMuteButton();
-                if (mute2 == null || mute2.Text == _setBugMuteTextBefore)
-                {
-                    return "FAIL mute-text-not-synced";
-                }
-                if (mute2.Text != (AudioManager.Instance!.Muted
-                        ? I18n.T(Text.Settings.MutedOn)
-                        : I18n.T(Text.Settings.MutedOff)))
-                {
-                    return $"FAIL mute-text-wrong-state {mute2.Text}";
-                }
-                SimulateActionPress("toggle_mute"); // 翻回
-                OptionButton? lang = SettingsLanguageSelect();
-                if (lang == null)
-                {
-                    return "FAIL language-select";
-                }
-                if (lang.GetSelected() < 0)
-                {
-                    return "FAIL language-initial-selection"; // bug3 伴随症状：初值永不选中
-                }
-                lang.EmitSignal("item_selected", 2); // en-US
-                _setBugPhase = 3;
-                return "wait";
-            case 3:
                 if (TranslationServer.GetLocale() != "en_US")
                 {
                     return $"FAIL en-locale={TranslationServer.GetLocale()}";
@@ -1059,9 +1041,9 @@ public partial class Main
                     return $"FAIL en-title={titleEn?.Text ?? "null"}";
                 }
                 langEn.EmitSignal("item_selected", 0); // zh-CN——"改不回"锁
-                _setBugPhase = 4;
+                _setBugPhase = 3;
                 return "wait";
-            case 4:
+            case 3:
                 if (TranslationServer.GetLocale() != "zh_CN")
                 {
                     return $"FAIL zh-locale={TranslationServer.GetLocale()}";
@@ -1083,20 +1065,157 @@ public partial class Main
                 {
                     return $"FAIL mode-initial sel={mode?.GetSelected()} cfg={modeCfg}";
                 }
-                SettingsStore.Set("general", "lang", _setBugLangBefore); // 恢复偏好
+                SettingsStore.Set("general", "lang", _setBugLangBefore);
                 _router.PopOverlay("settings");
-                _setBugPhase = 5;
+                _setBugPhase = 4;
                 return "wait";
-            case 5:
+            case 4:
                 if (_router.IsOverlayOpen("settings"))
                 {
                     return "wait";
                 }
-                TranslationServer.SetLocale(_setBugLocaleBefore); // locale 与偏好双双归位
+                TranslationServer.SetLocale(_setBugLocaleBefore);
                 _setBugPhase = 0;
                 return "ok";
             default:
                 _setBugPhase = 0;
+                return "FAIL";
+        }
+    }
+
+    private int _hubPhase;
+    private (bool Master, bool Sfx, bool Bgm) _hubMuteBefore;
+
+    /// <summary>音乐与音效中心（AudioHubScreen）回归锁：
+    /// ① 合并后的两个音量滑条 ExpandFill 不塌缩；② 音效/音乐独立开关正交且与 M 键全局静音联动；
+    /// ③ 5 轨 BGM 曲目卡齐全、点击直选试听切换成功且 Seek 不抛。</summary>
+    private string AutotestAudioHub()
+    {
+        switch (_hubPhase)
+        {
+            case 0:
+                _hubMuteBefore = (_audio.Muted, _audio.SfxMuted, _audio.BgmMuted);
+                OpenAudioHub();
+                _hubPhase = 1;
+                return "wait";
+            case 1:
+                if (_audioHubScreen == null || !IsInstanceValid(_audioHubScreen))
+                {
+                    return "FAIL no-audio-hub";
+                }
+                var sfxSlider = _audioHubScreen.FindChild("SfxVolumeSlider", true, false) as HSlider;
+                var bgmSlider = _audioHubScreen.FindChild("BgmVolumeSlider", true, false) as HSlider;
+                if (sfxSlider == null || bgmSlider == null
+                    || sfxSlider.SizeFlagsHorizontal != Godot.Control.SizeFlags.ExpandFill
+                    || bgmSlider.SizeFlagsHorizontal != Godot.Control.SizeFlags.ExpandFill
+                    || sfxSlider.Size.X < 60f || bgmSlider.Size.X < 60f)
+                {
+                    return $"FAIL sliders sfx={sfxSlider?.Size.X:0} bgm={bgmSlider?.Size.X:0}";
+                }
+                var sfxBtn = _audioHubScreen.FindChild("SfxMuteButton", true, false) as Button;
+                var bgmBtn = _audioHubScreen.FindChild("BgmMuteButton", true, false) as Button;
+                var masterBtn = _audioHubScreen.FindChild("MasterMuteButton", true, false) as Button;
+                if (sfxBtn == null || bgmBtn == null || masterBtn == null)
+                {
+                    return "FAIL mute-buttons-missing";
+                }
+                // 独立开关正交验证
+                _audio.ToggleSfxMute();
+                bool sfxOnly = _audio.SfxMuted != _hubMuteBefore.Sfx
+                               && _audio.BgmMuted == _hubMuteBefore.Bgm
+                               && _audio.Muted == _hubMuteBefore.Master
+                               && sfxBtn.Text == (_audio.SfxMuted ? I18n.T(Text.Audio.SfxOff) : I18n.T(Text.Audio.SfxOn));
+                _audio.SetSfxMuted(_hubMuteBefore.Sfx);
+
+                _audio.ToggleBgmMute();
+                bool bgmOnly = _audio.BgmMuted != _hubMuteBefore.Bgm
+                               && _audio.SfxMuted == _hubMuteBefore.Sfx
+                               && _audio.Muted == _hubMuteBefore.Master
+                               && bgmBtn.Text == (_audio.BgmMuted ? I18n.T(Text.Audio.BgmOff) : I18n.T(Text.Audio.BgmOn));
+                _audio.SetBgmMuted(_hubMuteBefore.Bgm);
+
+                // M 键全局静音联动 MasterMuteButton
+                string masterBefore = masterBtn.Text;
+                SimulateActionPress("toggle_mute");
+                bool masterSynced = masterBtn.Text != masterBefore && _audio.Muted != _hubMuteBefore.Master;
+                if (_audio.Muted != _hubMuteBefore.Master)
+                {
+                    _audio.ToggleMute();
+                }
+
+                // 5 轨曲目卡存在 + 点击直选 bgm_game_2 试听
+                foreach (var meta in AudioPolicy.BgmCatalog)
+                {
+                    if (_audioHubScreen.FindChild("TrackCard_" + meta.TrackId, true, false) is not Button)
+                    {
+                        return $"FAIL missing-card-{meta.TrackId}";
+                    }
+                }
+                var card2 = (Button)_audioHubScreen.FindChild("TrackCard_bgm_game_2", true, false);
+                card2.EmitSignal("pressed");
+                _audio.SeekBgm(5.0);
+                var status = _audio.GetBgmStatus();
+                bool previewOk = status.IsPlaying && status.TrackId == "bgm_game_2";
+
+                _router.PopOverlay("audio-hub");
+                _hubPhase = 2;
+                return sfxOnly && bgmOnly && masterSynced && previewOk
+                    ? "wait"
+                    : $"FAIL sfxOnly={sfxOnly} bgmOnly={bgmOnly} master={masterSynced} preview={previewOk} track={status.TrackId}";
+            case 2:
+                if (_router.IsOverlayOpen("audio-hub"))
+                {
+                    return "wait";
+                }
+                _audio.StopBgm();
+                _hubPhase = 0;
+                return "ok";
+            default:
+                _hubPhase = 0;
+                return "FAIL";
+        }
+    }
+
+    private int _authorPhase;
+
+    /// <summary>引导屏「作者的话」默认折叠回归锁：进入引导默认关闭不出现，点击按钮展开后切至阅读卡片，再点返回按键表。</summary>
+    private string AutotestGuideAuthorNote()
+    {
+        switch (_authorPhase)
+        {
+            case 0:
+                if (_store.State != GameState.Title)
+                {
+                    _store.Pause();
+                    _store.ReturnToTitle();
+                    return "wait";
+                }
+                _store.OpenGuide();
+                _authorPhase = 1;
+                return "wait";
+            case 1:
+                if (_guideScreen == null || !IsInstanceValid(_guideScreen))
+                {
+                    return "FAIL no-guide";
+                }
+                var toggle = _guideScreen.FindChild("AuthorNoteToggle", true, false) as Button;
+                var notePanel = _guideScreen.FindChild("AuthorNotePanel", true, false) as Control;
+                if (toggle == null || notePanel == null)
+                {
+                    return "FAIL missing-author-controls";
+                }
+                bool defaultCollapsed = !_guideScreen.IsAuthorNoteOpen && _guideScreen.Content.Visible && !notePanel.Visible;
+                toggle.EmitSignal("pressed");
+                bool opened = _guideScreen.IsAuthorNoteOpen && !_guideScreen.Content.Visible && notePanel.Visible;
+                toggle.EmitSignal("pressed");
+                bool closedAgain = !_guideScreen.IsAuthorNoteOpen && _guideScreen.Content.Visible && !notePanel.Visible;
+                _store.GuideBack();
+                _authorPhase = 0;
+                return defaultCollapsed && opened && closedAgain
+                    ? "ok"
+                    : $"FAIL default={defaultCollapsed} opened={opened} closed={closedAgain}";
+            default:
+                _authorPhase = 0;
                 return "FAIL";
         }
     }

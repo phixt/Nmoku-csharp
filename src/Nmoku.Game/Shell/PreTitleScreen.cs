@@ -25,6 +25,7 @@ public sealed partial class PreTitleScreen : Control, IKeepAliveRefreshable
     public event Action? CustomGameRequested;
     public event Action? LoadRequested;
     public event Action? GuideRequested;
+    public event Action? AudioHubRequested;
     public event Action? SettingsRequested;
     public event Action? QuitRequested;
 
@@ -70,14 +71,14 @@ public sealed partial class PreTitleScreen : Control, IKeepAliveRefreshable
     private const float MinMenuPitch = 0.08f;
     private const float MaxMenuPitch = 0.76f;
 
-    // 菜单列设计基准（768×432 逻辑面：宽 232、右留白 56、间距 9、按钮高 36）
-    private const float DesignFaceWidth = 768f;
-    private const float DesignColumnWidth = 232f;
-    private const float DesignRightMargin = 56f;
+    // 菜单列设计基准（960×540 逻辑面：宽 248、右留白 64、间距 9、按钮高 36；小屏/高倍率下自动收缩保不出界）
+    private const float DesignFaceWidth = 960f;
+    private const float DesignColumnWidth = 248f;
+    private const float DesignRightMargin = 64f;
     private const float DesignButtonHeight = 36f;
     private const float DesignSeparation = 9f;
-    private const float MinButtonHeight = 24f;
-    private const int MaxMenuButtons = 7;
+    private const float MinButtonHeight = 22f;
+    private const int MaxMenuButtons = 8;
 
     private enum Phase { Letter, Morph, Menu }
 
@@ -1080,6 +1081,7 @@ void fragment() {
         AddMenuButton(false, () => I18n.T(Text.Title.CustomGame), () => CustomGameRequested?.Invoke());
         AddMenuButton(false, () => I18n.T(Text.Title.LoadGame), () => LoadRequested?.Invoke());
         AddMenuButton(false, () => I18n.T(Text.Title.Guide), () => GuideRequested?.Invoke());
+        AddMenuButton(false, () => I18n.T(Text.Audio.HubTitle), () => AudioHubRequested?.Invoke());
         AddMenuButton(false, () => I18n.T(Text.Settings.Title), () => SettingsRequested?.Invoke());
         AddMenuButton(false, () => I18n.T(Text.Title.Quit), () => QuitRequested?.Invoke());
 

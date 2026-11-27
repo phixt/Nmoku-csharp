@@ -1,9 +1,6 @@
 using Godot;
 using Nmoku.Core;
-using Nmoku.Core.Audio;
-using Nmoku.Game.Audio;
 using Nmoku.Game.Theme;
-using Nmoku.Game;
 
 namespace Nmoku.Game.Shell;
 
@@ -16,20 +13,20 @@ public enum WindowMode
 }
 
 /// <summary>
-/// 设置屏（Overlay 浮层，Title/Paused 均可打开）：音量/静音（audio 节）+ 对局音乐/切屏策略（music 节）
-/// + 窗口模式/语言（general 节）。音量与静音经 AudioManager 即时生效并持久化；窗口模式发事件由 Main
-/// 操作窗口（设置页不碰 DisplayServer）；语言切换走 TranslationServer + EventBus（热刷新由壳层重建壳屏，B20 ④）。
+/// 设置屏（Overlay 浮层，Title/Paused 均可打开）：专注显示缩放与语言（general 节）+ 直达「音乐与音效」入口。
+/// 原音频设置（音量滑条、独立/全局静音、对局音乐与切屏策略）已合并迁入 <see cref="AudioHubScreen"/>。
+/// 窗口模式/分辨率/UI 倍率发事件由 Main 操作窗口（设置页不碰 DisplayServer）；语言切换走 TranslationServer + EventBus。
 /// </summary>
 public sealed partial class SettingsScreen : Control
 {
     public event Action? CloseRequested;
+    public event Action? AudioHubRequested;
     public event Action<WindowMode>? WindowModeChanged;
+    public event Action<Vector2I>? WindowResolutionChanged;
+    public event Action<float>? UiScaleChanged;
 
     private static readonly string[] Locales = ["zh-CN", "zh-Hant", "en-US", "ja-JP"];
     private static readonly string[] ModeKeys = ["windowed", "maximized", "fullscreen"];
-
-    private Button _muteButton = null!;
-    private AudioManager? _subscribedAudio;
 
     public override void _Ready()
     {
@@ -55,13 +52,13 @@ public sealed partial class SettingsScreen : Control
             CornerRadiusBottomRight = 8,
             ContentMarginLeft = 24,
             ContentMarginRight = 24,
-            ContentMarginTop = 16,
-            ContentMarginBottom = 16,
+            ContentMarginTop = 18,
+            ContentMarginBottom = 18,
         });
         center.AddChild(panel);
 
         var box = new VBoxContainer();
-        box.AddThemeConstantOverride("separation", 8);
+        box.AddThemeConstantOverride("separation", 10);
         box.CustomMinimumSize = new Vector2(420, 0);
         panel.AddChild(box);
 
@@ -73,159 +70,14 @@ public sealed partial class SettingsScreen : Control
         header.AddChild(title);
         header.AddChild(MakeButton(I18n.T(Text.Overlay.Cancel), () => CloseRequested?.Invoke()));
 
-        var audio = AudioManager.Instance;
-        float sfx = audio?.SfxVolume ?? 0.6f;
-        float bgm = audio?.BgmVolume ?? 0.3f;
-
-        box.AddChild(MakeVolumeRow(I18n.T(Text.Settings.SfxVolume), sfx, v =>
-            audio?.SetVolumes(v, audio.BgmVolume)));
-        box.AddChild(MakeVolumeRow(I18n.T(Text.Settings.BgmVolume), bgm, v =>
-            audio?.SetVolumes(audio.SfxVolume, v)));
-
-        _muteButton = MakeButton(MuteText(), ToggleMute);
-        box.AddChild(_muteButton);
-
-        box.AddChild(MakeGameMusicRow());
-        box.AddChild(MakeBgmScopeRow());
         box.AddChild(MakeWindowModeRow());
+        box.AddChild(MakeResolutionRow());
+        box.AddChild(MakeUiScaleRow());
         box.AddChild(MakeLanguageRow());
 
-        // 静音联动（M 键两路统一）：AudioManager 翻转即刷新按钮文本；语言热刷新会整体重建本屏，
-        // 旧实例 _ExitTree 退订防悬挂回调
-        _subscribedAudio = AudioManager.Instance;
-        if (_subscribedAudio != null)
-        {
-            _subscribedAudio.MuteChanged += RefreshMuteText;
-        }
-    }
-
-    public override void _ExitTree()
-    {
-        if (_subscribedAudio != null)
-        {
-            _subscribedAudio.MuteChanged -= RefreshMuteText;
-            _subscribedAudio = null;
-        }
-    }
-
-    private Control MakeVolumeRow(string label, float value, Action<float> onChanged)
-    {
-        var row = new HBoxContainer();
-        row.AddThemeConstantOverride("separation", 10);
-
-        row.AddChild(MakeRowLabel(label));
-
-        var slider = new HSlider
-        {
-            MinValue = 0,
-            MaxValue = 1,
-            Step = 0.05,
-            Value = value,
-            // ExpandFill 而非 Expand：Expand 只分配空间不填充，滑条塌缩到抓手宽度——拖不动且
-            // 值→位置映射退化（M3 分屏视口同款坑，2026-09-26 验收实测"滑不动/方向反"根因）
-            SizeFlagsHorizontal = SizeFlags.ExpandFill,
-        };
-        var percent = new Label { CustomMinimumSize = new Vector2(48, 0) };
-        percent.Text = $"{(int)Mathf.Round(value * 100)}%";
-        percent.AddThemeColorOverride("font_color", Palette.Active.TextDim);
-        slider.ValueChanged += v =>
-        {
-            onChanged((float)v);
-            percent.Text = $"{(int)Mathf.Round(v * 100)}%";
-        };
-        row.AddChild(slider);
-        row.AddChild(percent);
-        return row;
-    }
-
-    /// <summary>对局音乐选曲偏好（music.slot_game）：自动轮换 / 标准对局曲 / 进阶对局曲 / 关闭。</summary>
-    private Control MakeGameMusicRow()
-    {
-        var row = new HBoxContainer();
-        row.AddThemeConstantOverride("separation", 10);
-        row.AddChild(MakeRowLabel(I18n.T(Text.Settings.GameMusic)));
-
-        var select = new OptionButton
-        {
-            Name = "GameMusicSelect",
-            SizeFlagsHorizontal = SizeFlags.ExpandFill,
-        };
-        string current = MusicPrefs.SlotOverride("game");
-        var options = new[]
-        {
-            ("auto", I18n.T(Text.Settings.GameMusicAuto)),
-            (AudioPolicy.StandardGameTrackId, I18n.T(Text.Settings.GameMusicStandard)),
-            (AudioPolicy.AdvancedGameTrackId, I18n.T(Text.Settings.GameMusicAdvanced)),
-            ("off", I18n.T(Text.Settings.GameMusicOff)),
-        };
-        bool matched = false;
-        foreach (var (key, text) in options)
-        {
-            int idx = select.ItemCount;
-            select.AddItem(text, idx);
-            select.SetItemMetadata(idx, key);
-            if (key == current)
-            {
-                select.Select(idx);
-                matched = true;
-            }
-        }
-        if (!matched)
-        {
-            select.Select(0);
-        }
-        select.ItemSelected += idx =>
-        {
-            string key = select.GetItemMetadata((int)idx).AsString();
-            SettingsStore.Set("music", "slot_game", key);
-            AudioManager.Instance?.RefreshCurrentBgm();
-        };
-        row.AddChild(select);
-        return row;
-    }
-
-    /// <summary>切屏音乐策略（music.global_mode）：随场景切换 / 锁定当前曲。</summary>
-    private Control MakeBgmScopeRow()
-    {
-        var row = new HBoxContainer();
-        row.AddThemeConstantOverride("separation", 10);
-        row.AddChild(MakeRowLabel(I18n.T(Text.Settings.BgmScope)));
-
-        var select = new OptionButton
-        {
-            Name = "BgmScopeSelect",
-            SizeFlagsHorizontal = SizeFlags.ExpandFill,
-        };
-        string current = MusicPrefs.GlobalMode();
-        var options = new[]
-        {
-            ("scene", I18n.T(Text.Settings.BgmScopeScene)),
-            ("lock", I18n.T(Text.Settings.BgmScopeLock)),
-        };
-        bool matched = false;
-        foreach (var (key, text) in options)
-        {
-            int idx = select.ItemCount;
-            select.AddItem(text, idx);
-            select.SetItemMetadata(idx, key);
-            if (key == current)
-            {
-                select.Select(idx);
-                matched = true;
-            }
-        }
-        if (!matched)
-        {
-            select.Select(0);
-        }
-        select.ItemSelected += idx =>
-        {
-            string key = select.GetItemMetadata((int)idx).AsString();
-            SettingsStore.Set("music", "global_mode", key);
-            AudioManager.Instance?.RefreshCurrentBgm();
-        };
-        row.AddChild(select);
-        return row;
+        var audioLink = MakeButton($"{I18n.T(Text.Audio.HubTitle)}  →", () => AudioHubRequested?.Invoke());
+        audioLink.Name = "OpenAudioHubButton";
+        box.AddChild(audioLink);
     }
 
     private Control MakeWindowModeRow()
@@ -280,6 +132,92 @@ public sealed partial class SettingsScreen : Control
         return row;
     }
 
+    /// <summary>窗口化分辨率挡位（仍保留自由拖拽；选定即切回窗口化并按挡位居中）。</summary>
+    private Control MakeResolutionRow()
+    {
+        var row = new HBoxContainer();
+        row.AddThemeConstantOverride("separation", 10);
+        row.AddChild(MakeRowLabel(I18n.T(Text.Settings.Resolution)));
+
+        var select = new OptionButton
+        {
+            Name = "ResolutionSelect",
+            SizeFlagsHorizontal = SizeFlags.ExpandFill,
+        };
+        string saved = SettingsStore.Get("general", "window_resolution",
+            UiScaleMath.FormatResolutionKey(UiScaleMath.DefaultWindowWidth, UiScaleMath.DefaultWindowHeight)).AsString();
+        var activeRes = UiScaleMath.TryParseResolutionKey(saved)
+                        ?? (UiScaleMath.DefaultWindowWidth, UiScaleMath.DefaultWindowHeight);
+        string activeKey = UiScaleMath.FormatResolutionKey(activeRes.Width, activeRes.Height);
+
+        int selectedIdx = -1;
+        foreach (var (w, h) in UiScaleMath.ResolutionPresets)
+        {
+            string key = UiScaleMath.FormatResolutionKey(w, h);
+            int idx = select.ItemCount;
+            select.AddItem($"{w} × {h}", idx);
+            select.SetItemMetadata(idx, key);
+            if (key == activeKey)
+            {
+                selectedIdx = idx;
+            }
+        }
+        if (selectedIdx >= 0)
+        {
+            select.Select(selectedIdx);
+        }
+        select.ItemSelected += idx =>
+        {
+            string key = select.GetItemMetadata((int)idx).AsString();
+            if (UiScaleMath.TryParseResolutionKey(key) is { } parsed)
+            {
+                SettingsStore.Set("general", "window_resolution", key);
+                WindowResolutionChanged?.Invoke(new Vector2I(parsed.Width, parsed.Height));
+            }
+        };
+        row.AddChild(select);
+        return row;
+    }
+
+    /// <summary>UI 缩放倍率（csf = (窗口高/540) × 倍率；0.75x / 1.0x / 1.25x / 1.5x）。</summary>
+    private Control MakeUiScaleRow()
+    {
+        var row = new HBoxContainer();
+        row.AddThemeConstantOverride("separation", 10);
+        row.AddChild(MakeRowLabel(I18n.T(Text.Settings.UiScale)));
+
+        var select = new OptionButton
+        {
+            Name = "UiScaleSelect",
+            SizeFlagsHorizontal = SizeFlags.ExpandFill,
+        };
+        float current = UiScaleMath.NormalizeMultiplier(
+            (float)SettingsStore.Get("general", "ui_scale", UiScaleMath.DefaultMultiplier).AsSingle());
+        int bestIdx = 1;
+        float bestDiff = float.MaxValue;
+        foreach (float mult in UiScaleMath.MultiplierPresets)
+        {
+            int idx = select.ItemCount;
+            select.AddItem($"{mult:0.##}x", idx);
+            select.SetItemMetadata(idx, mult);
+            float diff = MathF.Abs(mult - current);
+            if (diff < bestDiff)
+            {
+                bestDiff = diff;
+                bestIdx = idx;
+            }
+        }
+        select.Select(bestIdx);
+        select.ItemSelected += idx =>
+        {
+            float mult = UiScaleMath.NormalizeMultiplier((float)select.GetItemMetadata((int)idx).AsSingle());
+            SettingsStore.Set("general", "ui_scale", mult);
+            UiScaleChanged?.Invoke(mult);
+        };
+        row.AddChild(select);
+        return row;
+    }
+
     private Control MakeLanguageRow()
     {
         var row = new HBoxContainer();
@@ -292,8 +230,7 @@ public sealed partial class SettingsScreen : Control
             SizeFlagsHorizontal = SizeFlags.ExpandFill,
         };
         // 选项=语言自称（不翻译），当前值来自 TranslationServer 实时 locale。
-        // 匹配必须经 StandardizeLocale：GetLocale 返回下划线形（zh_CN），选项键是横线形（zh-CN）——
-        // 直接相等永不命中，下拉初值/重建后恒为空选（"改不回"观感的组成之一）
+        // 匹配必须经 StandardizeLocale：GetLocale 返回下划线形（zh_CN），选项键是横线形（zh-CN）
         string current = TranslationServer.StandardizeLocale(TranslationServer.GetLocale());
         foreach (var (locale, name) in new[]
                  {
@@ -322,27 +259,14 @@ public sealed partial class SettingsScreen : Control
         return row;
     }
 
-    private Label MakeRowLabel(string text)
+    private static Label MakeRowLabel(string text)
     {
         var label = new Label { Text = text, CustomMinimumSize = new Vector2(110, 0) };
         label.AddThemeColorOverride("font_color", Palette.Active.TextPrimary);
         return label;
     }
 
-    private string MuteText() =>
-        AudioManager.Instance?.Muted == true ? I18n.T(Text.Settings.MutedOn) : I18n.T(Text.Settings.MutedOff);
-
-    private void ToggleMute()
-    {
-        AudioManager.Instance?.ToggleMute(); // 文本刷新统一走 MuteChanged 事件（M 键同路）
-    }
-
-    private void RefreshMuteText()
-    {
-        _muteButton.Text = MuteText();
-    }
-
-    private Button MakeButton(string text, Action onPressed)
+    private static Button MakeButton(string text, Action onPressed)
     {
         var button = new Button { Text = text };
         button.AddThemeColorOverride("font_color", Palette.Active.TextPrimary);

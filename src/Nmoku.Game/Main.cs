@@ -40,6 +40,7 @@ public partial class Main : Node
     private SaveMenu _saveMenu = null!;
     private GuideScreen _guideScreen = null!;
     private SettingsScreen _settingsScreen = null!;
+    private AudioHubScreen _audioHubScreen = null!;
     private KeymapScreen _keymapScreen = null!;
     private ReplayBar _replayBar = null!;
     private SandboxPanel _sandboxPanel = null!;
@@ -60,9 +61,8 @@ public partial class Main : Node
     /// <summary>3D 视口渲染倍率（1:1 原生物理像素 + MSAA 4×；摒弃此前 2× 超采样 + 8× MSAA 的 32× 过采瓶颈）。</summary>
     private const float ViewportSupersample = 1f;
 
-    /// <summary>全局 UI 观感放大系数（人类拍板 2026-09-25）：内容缩放绝对值（×2.5 基准设计），
-    /// 窗口固定 1920×1080，等效逻辑视口 768×432；调全局 UI 大小只动这里。</summary>
-    private const float UiScaleFactor = 2.5f;
+    /// <summary>用户 UI 缩放倍率（960×540 基准，csf = (窗口高/540) × _uiScaleMultiplier；存 general.ui_scale）。</summary>
+    private float _uiScaleMultiplier = UiScaleMath.DefaultMultiplier;
     private bool _rotating;
     private bool _panning;
 
@@ -171,6 +171,7 @@ public partial class Main : Node
         // Window 无 mode_changed 信号，size_changed 覆盖全部尺寸变化的模式切换（最小化不误写）
         if (DisplayServer.GetName() != "headless")
         {
+            GetWindow().SizeChanged += SyncDisplayContentScale;
             GetWindow().SizeChanged += SyncWindowModeToPrefs;
             GetWindow().SizeChanged += OnWindowSizeChangedTrace;
             TraceWindowGeometry(force: true);
@@ -211,6 +212,7 @@ public partial class Main : Node
             var win = GetWindow();
             if (win != null)
             {
+                win.SizeChanged -= SyncDisplayContentScale;
                 win.SizeChanged -= SyncWindowModeToPrefs;
                 win.SizeChanged -= OnWindowSizeChangedTrace;
             }
@@ -219,33 +221,79 @@ public partial class Main : Node
     }
 
     /// <summary>
-    /// UI 缩放（人类拍板 2026-09-25）：窗口固定项目默认 1920×1080，内容缩放=2.5 绝对值
-    /// （等效设计基准 768×432）。不再随 DPI/工作区调整——那是"UI 过小"首版的方案，
-    /// 实测观感更差（窗口过大+发糊）后回退。3D 视口由 SyncViewport3DResolution 直接吃
-    /// 原生像素保持清晰。
+    /// UI 缩放体系（960×540 基准 + 公式化 csf = (窗口高/540) × UI倍率，2026-11-27 落地）：
+    /// ContentScaleSize 恒为 Zero（expand 语义，B19 根治），窗口拖拽/切换分辨率/最大化/全屏均由
+    /// <see cref="SyncDisplayContentScale"/> 动态重算 ContentScaleFactor；3D 视口保持 1:1 物理像素。
     /// </summary>
     private void ApplyDisplayScaling()
     {
+        _uiScaleMultiplier = UiScaleMath.NormalizeMultiplier(
+            (float)SettingsStore.Get("general", "ui_scale", UiScaleMath.DefaultMultiplier).AsSingle());
         // headless 的 dummy DisplayServer 无有效窗口参数——跳过（无头自测/CI 必须跳过）
         if (DisplayServer.GetName() == "headless")
         {
             return;
         }
         var window = GetWindow();
-        if (window.Mode is Window.ModeEnum.Fullscreen or Window.ModeEnum.ExclusiveFullscreen)
+        window.ContentScaleSize = Vector2I.Zero;
+        window.MinSize = new Vector2I(UiScaleMath.MinWindowWidth, UiScaleMath.MinWindowHeight);
+
+        if (window.Mode is not (Window.ModeEnum.Fullscreen or Window.ModeEnum.ExclusiveFullscreen))
+        {
+            var savedRes = ReadSavedWindowResolution();
+            window.Size = ClampToUsableScreen(savedRes);
+            window.MoveToCenter();
+        }
+        SyncDisplayContentScale();
+        RestoreWindowMode(); // 上次会话若是最大化/全屏，启动即恢复（设置页 general 节）
+    }
+
+    /// <summary>按当前物理窗口高与 UI 倍率同步 ContentScaleFactor（带阈值守卫，杜绝缩放回环）。</summary>
+    private void SyncDisplayContentScale()
+    {
+        if (DisplayServer.GetName() == "headless")
         {
             return;
         }
-        // 批11 根治：Godot 4.6 的 ContentScaleSize 默认=启动窗口尺寸（1920×1080），其存在把逻辑面
-        // 钉死在 css/csf=768×432，窗口缩放时按 factor×window/css 抬缩放（最大化=×1.67 非整数发糊+
-        // 底部内容下压）——显式归零恢复 expand 语义：逻辑面=窗口/因子，元素物理尺寸恒定。
-        window.ContentScaleSize = Vector2I.Zero;
-        window.ContentScaleFactor = UiScaleFactor;
-        window.MoveToCenter();
-        // 窗口最小尺寸保护（2026-09-26 根治配套）：逻辑面高 ≥416（1080p 屏可用高），
-        // 标题屏内容 ~406 在最小窗口也 fit——阻断"拖矮窗口→底部按钮溢出"
-        window.MinSize = new Vector2I(800, (int)(416 * UiScaleFactor));
-        RestoreWindowMode(); // 上次会话若是最大化/全屏，启动即恢复（设置页 general 节）
+        if (EffectiveWindowMode() == DisplayServer.WindowMode.Minimized)
+        {
+            return;
+        }
+        var window = GetWindow();
+        var phys = DisplayServer.WindowGetSize();
+        int heightPx = phys.Y > 0 ? phys.Y : window.Size.Y;
+        if (heightPx <= 0)
+        {
+            return;
+        }
+        float target = UiScaleMath.ComputeContentScaleFactor(heightPx, _uiScaleMultiplier);
+        if (MathF.Abs(window.ContentScaleFactor - target) > 0.002f)
+        {
+            window.ContentScaleFactor = target;
+        }
+    }
+
+    private static Vector2I ReadSavedWindowResolution()
+    {
+        string raw = SettingsStore.Get("general", "window_resolution", "").AsString();
+        if (UiScaleMath.TryParseResolutionKey(raw) is { } parsed)
+        {
+            return new Vector2I(parsed.Width, parsed.Height);
+        }
+        return new Vector2I(UiScaleMath.DefaultWindowWidth, UiScaleMath.DefaultWindowHeight);
+    }
+
+    private static Vector2I ClampToUsableScreen(Vector2I desired)
+    {
+        int screen = DisplayServer.WindowGetCurrentScreen();
+        var usable = DisplayServer.ScreenGetUsableRect(screen).Size;
+        if (usable.X < UiScaleMath.MinWindowWidth || usable.Y < UiScaleMath.MinWindowHeight)
+        {
+            return desired;
+        }
+        return new Vector2I(
+            Math.Clamp(desired.X, UiScaleMath.MinWindowWidth, usable.X),
+            Math.Clamp(desired.Y, UiScaleMath.MinWindowHeight, usable.Y));
     }
 
     /// <summary>T 键/存档恢复触发的主题换肤：调色板切套 → 3D 环境 → 已挂载壳屏重建（game 基座除外，其视图走 ApplyPalette 通道）。</summary>
@@ -296,6 +344,7 @@ public partial class Main : Node
                 screen.CustomGameRequested += () => _router.PushOverlay("sandbox");
                 screen.LoadRequested += OpenSaveMenu;
                 screen.GuideRequested += () => _store.OpenGuide();
+                screen.AudioHubRequested += OpenAudioHub;
                 screen.SettingsRequested += OpenSettings;
                 screen.QuitRequested += () => GetTree().Quit();
                 _titleScreen = screen;
@@ -322,6 +371,7 @@ public partial class Main : Node
                 screen.SaveProgressRequested += () => _store.SaveToFirstEmpty();
                 screen.LoadRequested += OpenSaveMenu; // 暂停读档=打开存档菜单可选槽位（P1）；L 键仍是读最新
                 screen.GuideRequested += () => _store.OpenGuide();
+                screen.AudioHubRequested += OpenAudioHub;
                 screen.SettingsRequested += OpenSettings;
                 screen.TitleRequested += () => _store.ReturnToTitle();
                 _pauseMenu = screen;
@@ -387,8 +437,29 @@ public partial class Main : Node
             {
                 var screen = new SettingsScreen();
                 screen.CloseRequested += () => _router.PopOverlay("settings");
+                screen.AudioHubRequested += () =>
+                {
+                    _router.PopOverlay("settings");
+                    OpenAudioHub();
+                };
                 screen.WindowModeChanged += ApplyWindowMode;
+                screen.WindowResolutionChanged += ApplyWindowResolution;
+                screen.UiScaleChanged += ApplyUiScale;
                 _settingsScreen = screen;
+                return screen;
+            },
+        },
+        new RouteDef
+        {
+            Id = "audio-hub",
+            Layer = RouteLayer.Overlay,
+            Backdrop = BackdropKind.Dim,
+            Factory = () =>
+            {
+                var screen = new AudioHubScreen();
+                screen.CloseRequested += () => _router.PopOverlay("audio-hub");
+                screen.RestoreSceneBgmRequested += () => SyncBgm(_store.State);
+                _audioHubScreen = screen;
                 return screen;
             },
         },
@@ -645,6 +716,10 @@ public partial class Main : Node
         }
         if (_store.State is GameState.GuideFromTitle or GameState.GuideFromGame)
         {
+            if (_guideScreen.IsAuthorNoteOpen)
+            {
+                return false;
+            }
             return StepContent(_guideScreen.Content, key);
         }
         return false;
@@ -980,7 +1055,9 @@ public partial class Main : Node
 
     private void OpenSettings() => _router.PushOverlay("settings");
 
-    /// <summary>窗口模式切换（设置页事件）：窗口化恢复项目默认 1920×1080 居中；headless 跳过。</summary>
+    private void OpenAudioHub() => _router.PushOverlay("audio-hub");
+
+    /// <summary>窗口模式切换（设置页事件）：窗口化恢复用户所选分辨率挡位并居中；headless 跳过。</summary>
     private void ApplyWindowMode(WindowMode mode)
     {
         if (DisplayServer.GetName() == "headless")
@@ -998,10 +1075,33 @@ public partial class Main : Node
                 break;
             default:
                 window.Mode = Window.ModeEnum.Windowed;
-                window.Size = new Vector2I(1920, 1080);
+                window.Size = ClampToUsableScreen(ReadSavedWindowResolution());
                 window.MoveToCenter();
                 break;
         }
+        CallDeferred(nameof(SyncDisplayContentScale));
+    }
+
+    /// <summary>窗口分辨率预设切换（设置页事件）：切回窗口化并应用挡位居中，同步重算 UI 缩放。</summary>
+    private void ApplyWindowResolution(Vector2I size)
+    {
+        if (DisplayServer.GetName() == "headless")
+        {
+            return;
+        }
+        var window = GetWindow();
+        window.Mode = Window.ModeEnum.Windowed;
+        SettingsStore.Set("general", "window_mode", "windowed");
+        window.Size = ClampToUsableScreen(size);
+        window.MoveToCenter();
+        CallDeferred(nameof(SyncDisplayContentScale));
+    }
+
+    /// <summary>UI 缩放倍率切换（设置页事件）：即时重算 ContentScaleFactor。</summary>
+    private void ApplyUiScale(float multiplier)
+    {
+        _uiScaleMultiplier = UiScaleMath.NormalizeMultiplier(multiplier);
+        SyncDisplayContentScale();
     }
 
     /// <summary>语言偏好启动恢复（M5 验收反馈批补缺口：设置页写入 cfg 后此前无人读，重启即丢失）。
@@ -1091,6 +1191,7 @@ public partial class Main : Node
     {
         GetWindow().Mode = mode == "fullscreen" ? Window.ModeEnum.Fullscreen : Window.ModeEnum.Maximized;
         _modeRestorePending = false; // 恢复完成后的 SizeChanged 才允许写回
+        CallDeferred(nameof(SyncDisplayContentScale));
     }
 
     /// <summary>语言切换热刷新（B20 ④ 源语义：立即重注入文本）——重建已挂载壳屏（game 基座除外，
