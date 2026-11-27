@@ -5,7 +5,12 @@
 ## 当前（`v0.2.0-beta` / `m5` 已合回 `master` 并发布 2026-11-26）
 
 > 历史背景：M5 音频/设置/i18n/打包 + 2026-10-26 全面代码审查（[`docs/review-2026-10-26.md`](docs/review-2026-10-26.md)）修复批 ①–④ + 开始界面重做 + 全局 `UiTheme` + 亮色立体 N 矢量图标已全部合回 `master`，打 tag `m5` 与 `v0.2.0-beta` 并打包 `build/Nmoku-0.2.0-beta-win64.zip`。
-> 当前门禁：**build 0 警告 / 382 单测全绿 / 无头自测 ALL PASS / 打包冒烟 boot OK**。
+> 当前门禁：**build 0 警告 / 397 单测全绿 / 无头自测 ALL PASS / 正式音频已认领上线（2026-11-27）**。
+
+### 正式音频认领与播放机制（✅ 2026-11-27 已落地，待人类真实窗口试听验收）
+
+- [x] **正式资产替换**：认领 `../programmed-music/out/nmoku_ogg/` 5 轨无缝立体声 BGM（含 `bgm_game_2`）与真音源 `sfx_win`/`sfx_lose`，升级 `AudioBake` 烘焙黑白子玄石/玉石双敲落盘采样与 `-SyncMusic` 同步脚本。
+- [x] **播放机制补全（§10 B31）**：Core `AudioPolicy`/`SfxDebounceGate`/`BgmDuckEnvelope`（+15 例单测）；黑白子与 AI/演示盘/复盘分色落子声（同色 65ms 防抖 + ±3% 音高微抖 + 双声部复音）；PvE 胜负音效区分 + 3s 短乐句 BGM 平滑闪避与离开结算止尾；双曲对局池会话续播（修暂停往返切曲）+ 新局亲和/轮换；设置页补「对局音乐」「切屏音乐」四语言下拉。
 
 ### 0.2.0-beta 已收口（2026-11-26）
 
@@ -42,7 +47,7 @@
 - [ ] **GitHub Release 上传**（人类执行）：上传 `build/Nmoku-0.2.0-beta-win64.zip` 至 `v0.2.0-beta` Release；`FONTS_LICENSE.md` 版权行与项目名修正。
 - [ ] **UI 缩放体系重构（人类拍板 2026-11-26 暂缓）**：960×540 基准 + 公式化 `csf = (窗口高/540) × UI倍率` + 窗口化固定分辨率挡位（960×540 / 1920×1080 / 2560×1440，保留自由拖拽）+ UI 倍率下拉（0.5x–2x）。工具 `tools/ui-baseline-preview.html` 已备。
 - [ ] **游戏内其余按钮 hover 微交互推广**：预开始页已落地平滑 hover 强调条+轻移，后续可统一推广到暂停/存档/设置等壳屏。
-- [ ] **正式 BGM**：Strudel 谱面创作四轨 → strudel.cc 渲染/录音 → WAV→OGG 替换占位（见 `assets-src/music/strudel/README.md`）。
+- [x] **正式 BGM 与音效**：已于 2026-11-27 从 `../programmed-music/out/nmoku_ogg/` 认领 5 轨无缝立体声 BGM + 真音源胜负音效，并补全黑白子落盘/AI 落子/胜负闪避/多曲轮换/设置项（待真实窗口试听确认）。
 - [ ] **3D 视图加载黑闪根治**（淡入已掩盖观感，视反馈决定是否做视口纹理就绪检测）。
 - [ ] **教学关小基建**：`LevelCatalog.Tutorial.InitialMoves` 改可注入+持久化。
 - [ ] **AI 难度梯度可视化校验**：不同难度 AI 互弈批量对局 + 胜率曲线。

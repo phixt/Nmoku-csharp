@@ -1,30 +1,35 @@
-# Strudel BGM 谱面（正式 BGM 载体，WAV 暂留空）
+# 音频资产来源与同步管线（正式 BGM 与胜负音效已上线）
 
-M5 按人类指示（2026-09-26）：正式 BGM 走 **Strudel 代码音乐路线**，参照
-`D:\P_rojects\programmed-music`（patterns 谱面 → strudel.cc 播放/渲染 → WAV → OGG）。
-当前目录是**占位谱骨架**：和声进行对齐源项目 `audio_var.md §二` 的 BGM_PATTERNS，
-正式创作在此基础上展开。游戏内现在跑的是 `scripts/bake-audio.ps1` 烘焙的占位循环。
+## 当前状态（2026-11-27）
 
-## 目录
+正式音频已从同级项目 `../programmed-music/out/nmoku_ogg/` 认领并覆盖入
+`src/Nmoku.Game/assets/audio/`，全面取代 M5 占位合成音轨（详见 `docs/migration-plan.md` §10 B31）：
 
+| 资产 | 规格 | 说明 |
+|---|---|---|
+| `bgm_menu.ogg` | 44.1kHz 立体声 OGG q4 · 1:32 · 无缝循环 | 主主题 · 标题屏（94 BPM，清透晶体室内乐） |
+| `bgm_game.ogg` | 44.1kHz 立体声 OGG q4 · 2:00 · 无缝循环 | 标准对局（96 BPM，Action Loop 晶格悬停，中高频让位） |
+| `bgm_game_2.ogg` | 44.1kHz 立体声 OGG q4 · 1:49 · 无缝循环 | 进阶对局（106 BPM，Dorian + 轻巧军鼓/马林巴） |
+| `bgm_guide.ogg` | 44.1kHz 立体声 OGG q4 · 1:27 · 无缝循环 | 引导/说明（88 BPM，柔雾毡钢） |
+| `bgm_pause.ogg` | 44.1kHz 立体声 OGG q4 · 0:58 · 无缝循环 | 暂停屏息（66 BPM，水下低通柔雾） |
+| `sfx_win.wav` | 44.1kHz 16-bit 立体声 WAV · 3.10s | 华丽胜利短乐句（LABS Strings 2 Pizzicato） |
+| `sfx_lose.wav` | 44.1kHz 16-bit 立体声 WAV · 3.00s | 沉重失败短乐句（SSO Celli + Splice Ariel） |
+| `sfx_stone_black.wav` / `sfx_stone_white.wav` | 44.1kHz 16-bit WAV | 黑子玄石 / 白子玉石双敲落盘采样（由 `tools/AudioBake` 按试听台配方烘焙） |
+| `sfx_click.wav` / `sfx_hover.wav` | 44.1kHz 16-bit WAV | 柔和中性点击与微触采样（替代旧方波/正弦占位） |
+
+## 同步与重烘命令
+
+```powershell
+# 仅重烘黑白子落盘/点击/悬停采样（不会覆盖正式 BGM 与胜负音效）
+powershell -File scripts/bake-audio.ps1
+
+# 从 ../programmed-music/out/nmoku_ogg/ 重新同步正式 BGM/胜负音效 + 重烘落子采样
+powershell -File scripts/bake-audio.ps1 -SyncMusic
+
+# 刷新 Godot .import 元数据
+D:\Tools\Godot\Godot_console.exe --headless --path src/Nmoku.Game --import
 ```
-bgm_menu.strudel    标题屏（源: warm cinematic pad + shimmering arpeggios）
-bgm_game.strudel    对局（源: driving, plucky with walking bass）
-bgm_guide.strudel   引导页（源: gentle organ swell + sustained pad）
-bgm_pause.strudel   暂停（源: held-breath, underwater filtered）
-wav/                渲染产物（.wav），当前留空
-```
 
-## 渲染管线（正式音频上线步骤）
+## 历史说明
 
-1. 全选谱面 → 粘贴到 https://strudel.cc/ → Ctrl/Cmd+Enter 试听调整。
-2. 满意后导出/录制 WAV（参考 programmed-music 的做法），命名 `bgm_<轨>.wav` 放入 `wav/`。
-3. 转 OGG 覆盖游戏占位（q4 单声道与现有一致）：
-   `ffmpeg -i wav/bgm_menu.wav -c:a libvorbis -qscale:a 4 ../../../src/Nmoku.Game/assets/audio/bgm_menu.ogg`
-4. 无缝循环要求：谱面尾小节动机落回首小节（`@length` 整数轮），或 WAV 首尾都落在包络归零点。
-
-## 约定
-
-- 每轨一个 cycle = 一个和弦（`setcps` 按源 chordDuration 折算，谱内注明）。
-- 谱面 UTF-8 无 BOM；`.bat`/`.ps1` 类脚本不要写中文（OEM 码页咬字）。
-- 许可：谱面与渲染音频均为本项目自产，随仓库 GPL-3.0 分发。
+本目录下保留的 4 份 `bgm_*.strudel` 为 M5 早期按源 `audio_var.md §二` 编写的占位谱骨架，留作历史对照；正式编曲工程、REAPER 工程与渲染脚本位于同级仓库 `../programmed-music/`（参见其 `docs/NMOKU-BGM-PLAN.md`）。

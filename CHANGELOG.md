@@ -3,6 +3,16 @@
 > 维护规则见 `AGENTS.md`：只记"当前场景"相关事实；总量 ≤300 行，旧条目按里程碑压缩合并，但关键教训（踩坑结论）不删。
 > 提交级细节看 `git log`，这里只留人读的里程碑叙事。
 
+## 正式音频认领与播放机制升级（2026-11-27，§10 B31）
+
+- **资产认领**：从同级 `../programmed-music/out/nmoku_ogg/` 认领 REAPER 真音源管线交付的 5 轨无缝循环立体声 BGM（`bgm_menu`/`bgm_game`/`bgm_game_2`/`bgm_guide`/`bgm_pause`，q4）与 2 件管弦胜负短乐句（`sfx_win`/`sfx_lose`），彻底取代 M5 占位合成音轨；`tools/AudioBake` 与 `scripts/bake-audio.ps1` 升级为默认仅烘焙黑白子玄石/玉石双敲采样（`sfx_stone_black`/`sfx_stone_white`）与柔和点击/悬停采样，另提供 `-SyncMusic` 一键同步正式音乐资产。
+- **游戏音频机制**：
+  - **黑白子分色与 AI 落子声**：`GameManager.MovePlaced` 统一驱动人类、AI、标题演示盘与复盘单步前进的黑白分色落子声；按色独立 65ms 防抖（人类黑子与 AI 白子紧邻落子互不吞音）+ ±3% 自然音高微抖 + 双声部复音防截尾。
+  - **胜负区分与 BGM 闪避**：Core `AudioPolicy.ResolveGameOverSfx` 实现 PvE 人类胜（Win）/ AI 胜（Lose）/ PvP 胜（Win）/ 平局静默；3s 胜负短乐句播放期间 `AudioManager` 经 `BgmDuckEnvelope` 平滑闪避 BGM 总线至 0.22，播完或离开结算即停播残余并平滑回升。
+  - **双曲对局会话连续性与新局轮换**：修复多曲池下暂停/引导往返误切曲的隐藏缺陷——同局内保持当前曲目以保位置记忆与优雅回归；新局/重开/切关卡/读档经 `GameStore.MatchStarted` 触发亲和选曲（困难 AI/SWAP2/残局/扩展盘优先 `bgm_game_2`）与池内轮换并从头起播。
+  - **设置页音乐偏好收口**：`SettingsScreen` 新增「对局音乐」（自动轮换/标准对局曲/进阶对局曲/关闭）与「切屏音乐」（随场景切换/锁定当前曲）四语言下拉，读写 `MusicPrefs` 并即时重估当前槽位。
+- **门禁**：build 0 警告 / **397 单测全绿**（382→397，+15 例 `AudioPolicyTests`）/ `Godot --import` + `--quit` + `--autotest` ALL PASS（`m5-bgm-crossfade` 扩锁双曲池/新局轮换/落子/胜负闪避回升）。
+
 ## 0.2.0-beta（2026-11-26，M5 收口发布，tag `m5` / `v0.2.0-beta`）
 
 - **版本范围**：将 `prestart-native` 51 个提交快进合回 `master`，收口全部 M5 功能（音频/设置/四语言 i18n/打包）+ 2026-10-26 全面代码审查修复批 1–4 + 开始界面重做 + 亮色立体 N 纯平矢量应用图标，并清理已废弃分支 `bgm-engine` / `bgm-engine-mixed-backup`。
