@@ -11,7 +11,8 @@
   - **胜负区分与 BGM 闪避**：Core `AudioPolicy.ResolveGameOverSfx` 实现 PvE 人类胜（Win）/ AI 胜（Lose）/ PvP 胜（Win）/ 平局静默；3s 胜负短乐句播放期间 `AudioManager` 经 `BgmDuckEnvelope` 平滑闪避 BGM 总线至 0.22，播完或离开结算即停播残余并平滑回升。
   - **双曲对局会话连续性与新局轮换**：修复多曲池下暂停/引导往返误切曲的隐藏缺陷——同局内保持当前曲目以保位置记忆与优雅回归；新局/重开/切关卡/读档经 `GameStore.MatchStarted` 触发亲和选曲（困难 AI/SWAP2/残局/扩展盘优先 `bgm_game_2`）与池内轮换并从头起播。
   - **设置页音乐偏好收口**：`SettingsScreen` 新增「对局音乐」（自动轮换/标准对局曲/进阶对局曲/关闭）与「切屏音乐」（随场景切换/锁定当前曲）四语言下拉，读写 `MusicPrefs` 并即时重估当前槽位。
-- **门禁**：build 0 警告 / **397 单测全绿**（382→397，+15 例 `AudioPolicyTests`）/ `Godot --import` + `--quit` + `--autotest` ALL PASS（`m5-bgm-crossfade` 扩锁双曲池/新局轮换/落子/胜负闪避回升）。
+- **SWAP2 / PvE 联动修复（同日补齐）**：① 修复 PvE + SWAP2 首手后弹出幽灵确认框（AI 自动继续执白前不再触发 `SwapPhaseStarted`）；② 修复 `GameManager.LoadFrom` 把存档 `PlayerColor`（人类色）反写成 `_aiColor` 导致人机角色与 PvE 胜负音效双双反转（抽 Core `TurnOwnership.AiColorFromHumanColor`）；③ 修复 SWAP2 换色后悔棋退回第 1 手时白子残留导致行棋方错乱；④ 修复读取 1 手 SWAP2 存档因未弹决策框而永久锁死棋盘（并保复盘不误弹窗）；⑤ 补 SWAP2 决策轻触音效（`PlaySwapResolved`）。
+- **门禁**：build 0 警告 / **400 单测全绿**（382→400，+18 例）/ `Godot --import` + `--quit` + `--autotest` ALL PASS（`m5-bgm-crossfade` 扩锁双曲池/新局轮换/落子/胜负闪避回升 + 4 项 SWAP2/PvE 回归锁）。
 
 ## 0.2.0-beta（2026-11-26，M5 收口发布，tag `m5` / `v0.2.0-beta`）
 
