@@ -3,6 +3,13 @@
 > 维护规则见 `AGENTS.md`：只记"当前场景"相关事实；总量 ≤300 行，旧条目按里程碑压缩合并，但关键教训（踩坑结论）不删。
 > 提交级细节看 `git log`，这里只留人读的里程碑叙事。
 
+## UI 缩放适配 + 音乐与音效中心 + 作者的话预留（2026-11-27，§10 B32）
+
+- **960×540 公式化 UI 缩放体系**：新增 Core `UiScaleMath`（`csf = clamp((窗口物理高/540)×UI倍率, 0.75, 6.0)`），`Main` 在 `SizeChanged` 中动态同步 `ContentScaleFactor`（保留 `ContentScaleSize=Zero` 与阈值守卫，零回环）；`SettingsScreen` 专注显示与语言（窗口模式 / 5 档窗口分辨率 960×540–2560×1440 / UI 倍率 0.75x–1.5x / 四语言 + 直达「音乐与音效」入口）；`PreTitleScreen` 适配 960×540 基准与 8 按钮自适应菜单列。
+- **独立「音乐与音效」浮层（`AudioHubScreen`，路由 `audio-hub`）**：标题/暂停/设置页均可直达，**合并原设置页全部音频设置**；`AudioManager` 新增 **音效独立静音（`sfx_muted`）** 与 **音乐独立静音（`bgm_muted`）**（与 M 键全局静音正交）；右侧内置 5 轨正式 BGM 浏览器（直选交叉淡化试听、实时进度与拖动跳转、一键恢复当前场景曲）+ 黑白落子/胜负试听。
+- **引导页「作者的话」预留位**：仅在 `GuideScreen`（配 `bgm_guide`）右上角提供默认折叠的切换按钮，平时不出现，点击切至独立滚动阅读卡片（占位文案待填）；F1 快捷浮层保持纯粹按键表。
+- **门禁**：build 0 警告 / **410 单测全绿**（400→410，+10 例 `UiScaleMathTests` 与 `BgmCatalog`）/ `Godot --import` + `--quit` + `--autotest` ALL PASS（新增 `m5-audio-hub`、`m5-guide-author-note`，同步升级 `m5-title-fit`、`m5-settings-bugs`）。
+
 ## 正式音频认领与播放机制升级（2026-11-27，§10 B31）
 
 - **资产认领**：从同级 `../programmed-music/out/nmoku_ogg/` 认领 REAPER 真音源管线交付的 5 轨无缝循环立体声 BGM（`bgm_menu`/`bgm_game`/`bgm_game_2`/`bgm_guide`/`bgm_pause`，q4）与 2 件管弦胜负短乐句（`sfx_win`/`sfx_lose`），彻底取代 M5 占位合成音轨；`tools/AudioBake` 与 `scripts/bake-audio.ps1` 升级为默认仅烘焙黑白子玄石/玉石双敲采样（`sfx_stone_black`/`sfx_stone_white`）与柔和点击/悬停采样，另提供 `-SyncMusic` 一键同步正式音乐资产。
@@ -188,37 +195,11 @@
 - **M/T 浮层内生效补齐**：KeymapTable 宣称 AllowWhenOverlay 但浮层分发只接了 F1/Esc（M4 遗留漂移），
   M5 补接线（**修复批 ③-5 已把该作用域改为数据驱动**）。门禁：build 0 警告 / 304 测试 / 无头自测 ALL PASS。
 
-## M5 验收反馈批 2 — 设置页四 bug 根治（2026-10-01）
+## M5 验收反馈批 1–2 — 标题屏溢出与设置页四 bug 根治（2026-09-26 → 10-01，已压缩）
 
-- **①音量滑条"滑不动/方向反"**：HSlider 用 `SizeFlags.Expand`（只分配空间不填充，M3 分屏视口同款坑）
-  塌缩到抓手宽度——值→位置映射在 width≈抓手宽时退化。改 `ExpandFill` 铺满行（另两个 OptionButton 同改）。
-- **②静音不联动**：M 键翻转无通知通道。`AudioManager` 增 `MuteChanged` 事件（ToggleMute 唯一出口），
-  设置页订阅刷新按钮文本、`_ExitTree` 退订（语言热刷新会重建本屏，防悬挂回调）。
-- **③语言"选项文字不改变/改不回"**：两叠加根因，热刷新机制本身无恙——(a) 下拉选中匹配用横线形（zh-CN）
-  对比 `GetLocale()` 的下划线形（zh_CN）**永不等** → 恒空选；(b) **启动从不读 cfg lang**（设置页只写不读），
-  重启丢偏好。修：匹配经 `StandardizeLocale`；`Main._Ready` 增 `RestoreLanguage`——**无偏好时默认 zh-CN**。
-- **④模式下拉初值**：改读**实际窗口状态**，cfg 与实际由 SizeChanged 同步点收敛；启动恢复期以
-  `_modeRestorePending` 拦截过渡态写回，防待恢复偏好被毁。
-- **顺带修自测潜在 bug（被新回归步骤暴露）**：`AutotestAudioSettings` 首帧 `return "ok"` 即被自测框架
-  出队，"第二帧关浮层"清理是**死代码**——设置浮层泄漏开放到此后全部步骤。改返回 "wait" 让清理入队。
-  **教训：自测框架对非 wait 结果立即出队，多帧步骤首帧必须返回 wait。**
-- 门禁：build 0 警告 / 304 测试 / 无头自测 ALL PASS（新增 `m5-settings-bugs` 回归锁：滑条
-  ExpandFill+布局后实际宽度、M 键动作路径按钮文本联动、语言 en→zh 全链路 UI 路径含"改不回"、
-  模式初值）/ computer use 真实窗口复验（滑条拖动方向跟手、静音联动、启动恢复日语→zh→en→zh
-  往返、窗口化→最大化→重开初值=实际→切回窗口化）。
-
-## M5 验收反馈批 1 — 标题屏溢出根治（2026-09-26）
-
-- **根因（computer use 三模式实测取证）**：标题屏内容自然高 ~470 逻辑像素 > 窗口化逻辑面高 432
-  （1080/2.5），CenterContainer 居中溢出=上下两端同时裁切 →「退出」不可见；M4 按钮少一个临界
-  通过，M5 加「设置」按钮破临界。最大化/全屏 743~800 高从来够放。
-- **修复**：标题屏压缩 fit（42/13 号字+间距 8+按钮 34，7 按钮最坏 406）+ 窗口 MinSize 1040 阻断
-  拖矮溢出 + SizeChanged 同步窗口模式偏好（cfg 与实际状态闭环）+ CallDeferred 修 fullscreen
-  恢复落成 Maximized 偏差；回归锁 m5-title-fit。**批11 ContentScaleSize=Zero 保留不回退**（防发糊
-  机制正确；「显小」观感由已入待办的 UI 缩放体系重构解决——csf 跟随窗口）。
-- 实测顺带取证设置页四 bug（滑条塌缩=SizeFlags.Expand 同款坑/静音联动/语言切换/模式下拉初值）
-  已持久化 TODO，与 UI 缩放重构同碰设置页、建议合并实施。
-- 门禁：build 0 警告 / 304 测试 / 无头自测 ALL PASS / computer use 三模式复验。
+- **批 1（标题溢出）**：原固定 `csf=2.5` 下逻辑高 432 致 7 按钮溢出 → 压缩 fit + MinSize 保护 + SizeChanged 写回窗口模式偏好 + CallDeferred 修 fullscreen 恢复偏差；保留 `ContentScaleSize=Zero`（B19 根治）。
+- **批 2（设置页四 bug）**：① 滑条与下拉改 `ExpandFill`（`Expand` 只分配不填充致塌缩，M3 同款坑）；② `AudioManager.MuteChanged` 联动 M 键与按钮文本、`_ExitTree` 退订防热刷新悬挂；③ 语言匹配经 `StandardizeLocale`（修 `zh-CN`≠`zh_CN`）+ 启动恢复 `general.lang`（无偏好默认 zh-CN）；④ 模式初值读实际窗口态，`_modeRestorePending` 拦截恢复期误写。
+- **自测教训**：自测框架对非 `wait` 立即出队，多帧步骤首帧必须返回 `wait`（此前首帧 `ok` 致浮层关闭成为死代码）。门禁 304 测试 + computer use 三模式复验通过。
 
 ## 0.1.0-alpha（2026-09-26，M4 收官节选）
 
