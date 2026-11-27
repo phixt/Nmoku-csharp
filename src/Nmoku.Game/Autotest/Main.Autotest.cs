@@ -1,6 +1,7 @@
 using Godot;
 using Nmoku.Core;
 using Nmoku.Core.AI;
+using Nmoku.Core.Audio;
 using Nmoku.Core.Camera;
 using Nmoku.Core.Saves;
 using Nmoku.Game;
@@ -887,12 +888,10 @@ public partial class Main
         _settingsScreen.FindChildren("*", "HSlider", true, false).OfType<HSlider>().ToArray();
 
     private OptionButton? SettingsLanguageSelect() =>
-        _settingsScreen.FindChildren("*", "OptionButton", true, false)
-            .OfType<OptionButton>().FirstOrDefault(o => o.ItemCount == 4);
+        _settingsScreen.FindChild("LanguageSelect", true, false) as OptionButton;
 
     private OptionButton? SettingsModeSelect() =>
-        _settingsScreen.FindChildren("*", "OptionButton", true, false)
-            .OfType<OptionButton>().FirstOrDefault(o => o.ItemCount == 3);
+        _settingsScreen.FindChild("WindowModeSelect", true, false) as OptionButton;
 
     private Button? SettingsMuteButton() =>
         _settingsScreen.FindChildren("*", "Button", true, false).OfType<Button>()
@@ -1268,24 +1267,56 @@ public partial class Main
                 {
                     return $"FAIL p6-missing-slot {BgmSnap(eng.LanesForTests)}";
                 }
-                // ② 曲库池：现有四文件按槽位归池；未知槽位空池
+                // ② 曲库池：正式交付 5 轨（game 槽双曲 bgm_game + bgm_game_2，其余三槽各 1 首，pretitle 空池）
                 var lib = eng.LibraryForTests;
-                if (lib.Pool("game").Count != 1 || lib.Pool("game")[0].Id != "bgm_game"
+                if (lib.Pool("game").Count != 2
+                    || lib.Pool("game")[0].Id != "bgm_game"
+                    || lib.Pool("game")[1].Id != "bgm_game_2"
+                    || lib.Pool("menu").Count != 1
+                    || lib.Pool("guide").Count != 1
+                    || lib.Pool("pause").Count != 1
                     || lib.Pool("pretitle").Count != 0)
                 {
                     return $"FAIL p6-pool game={lib.Pool("game").Count} pretitle={lib.Pool("pretitle").Count}";
                 }
-                // ③ 槽位覆盖 off：当前槽位静默（淡出收尾）；cfg 快照/恢复不污染真实偏好
+                // ②b 新局轮换（PrepareNewMatchBgm）：同槽双曲在开启新局时应平滑切至另一曲
+                _bgmTrackBeforeRotate = eng.LanesForTests.FirstOrDefault(l => l.Slot == "game" && l.TargetVolume >= 1f)?.TrackId ?? "";
                 _bgmSlotOvrBefore = SettingsStore.Get("music", "slot_game", "<absent>").AsString();
-                SettingsStore.Set("music", "slot_game", "off");
-                _audio.PlayBgm("game");
+                SettingsStore.Set("music", "slot_game", "auto");
+                _audio.PrepareNewMatchBgm(preferAdvanced: _bgmTrackBeforeRotate == "bgm_game");
                 _bgmT0 = Time.GetTicksMsec();
                 _bgmPhase = 7;
                 return "wait";
-            case 7: // off 覆盖淡出完成、无任何在播 → 恢复偏好收尾
-                if (!BgmWait(() => !eng.LanesForTests.Any(l => l.Playing)))
+            case 7: // 轮换后切到另一曲目，且黑白落子 + 胜负短乐句触发 BGM 闪避
+                if (!BgmWait(() =>
                 {
-                    return _bgmTimedOut ? $"FAIL p7-off {BgmSnap(eng.LanesForTests)}" : "wait";
+                    var g = eng.LanesForTests.FirstOrDefault(l => l.Slot == "game" && l.TargetVolume >= 1f);
+                    return g is { Playing: true } && g.TrackId != _bgmTrackBeforeRotate && g.LinVolume >= 0.5f;
+                }))
+                {
+                    return _bgmTimedOut ? $"FAIL p7-rotate before={_bgmTrackBeforeRotate} {BgmSnap(eng.LanesForTests)}" : "wait";
+                }
+                _audio.PlayStonePlace(PlayerColor.Black);
+                _audio.PlayStonePlace(PlayerColor.White);
+                _audio.PlayGameOver(GameOverSfx.Win);
+                _bgmT0 = Time.GetTicksMsec();
+                _bgmPhase = 8;
+                return "wait";
+            case 8: // 胜负短乐句期间 BGM 闪避压低 → StopGameOverSfx 释放 → 测 slot_game=off 淡出收尾
+                if (!BgmWait(() => _audio.BgmDuckForTests < 0.75f))
+                {
+                    return _bgmTimedOut ? $"FAIL p8-duck duck={_audio.BgmDuckForTests:0.00} playing={_audio.IsGameOverStingerPlayingForTests}" : "wait";
+                }
+                _audio.StopGameOverSfx();
+                SettingsStore.Set("music", "slot_game", "off");
+                _audio.PlayBgm("game");
+                _bgmT0 = Time.GetTicksMsec();
+                _bgmPhase = 9;
+                return "wait";
+            case 9: // off 覆盖淡出完成 + BGM 闪避回升 → 恢复偏好收尾
+                if (!BgmWait(() => !eng.LanesForTests.Any(l => l.Playing) && _audio.BgmDuckForTests >= 0.9f))
+                {
+                    return _bgmTimedOut ? $"FAIL p9-off duck={_audio.BgmDuckForTests:0.00} {BgmSnap(eng.LanesForTests)}" : "wait";
                 }
                 SettingsStore.Set("music", "slot_game", _bgmSlotOvrBefore == "<absent>" ? "auto" : _bgmSlotOvrBefore);
                 _audio.StopBgm();
@@ -1296,6 +1327,7 @@ public partial class Main
     }
 
     private string _bgmSlotOvrBefore = "";
+    private string _bgmTrackBeforeRotate = "";
 
     private int _saveAlignPhase;
     private int _saveAlignClearIdx;

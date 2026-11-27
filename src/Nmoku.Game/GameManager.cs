@@ -45,6 +45,8 @@ public sealed partial class GameManager : Node
     public bool Colorblind => _colorblind;
     public bool AuxEnabled => _auxEnabled;
     public bool PvE => _pve;
+    public PlayerColor AiColor => _aiColor;
+    public LevelConfig Level => _level;
     public AIDifficulty Difficulty => _aiDifficulty;
     public Coordinate3D? Hover => _hover;
     public IReadOnlyList<Move> History => _history;
@@ -69,6 +71,8 @@ public sealed partial class GameManager : Node
 
     /// <summary>棋盘/回合/胜负任一变化（2D 重画 + 3D Rebuild 的总信号）。</summary>
     public event Action? StateChanged;
+    /// <summary>新落一子（人类与 AI 均触发，用于分色落子音效等反馈）。</summary>
+    public event Action<Move>? MovePlaced;
     /// <summary>焦点层变化（A/D）。</summary>
     public event Action<int>? FocusChanged;
     /// <summary>对局结束：winner 1/2，0=判和。</summary>
@@ -501,7 +505,9 @@ public sealed partial class GameManager : Node
     private void ApplyMove(int x, int y, int z)
     {
         _board.Set(x, y, z, _current);
-        _history.Add(new Move(x, y, z, _current));
+        var move = new Move(x, y, z, _current);
+        _history.Add(move);
+        MovePlaced?.Invoke(move);
 
         if (_engine.CheckWin(x, y, z, _current, _board))
         {

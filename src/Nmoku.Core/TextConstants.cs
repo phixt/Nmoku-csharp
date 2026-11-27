@@ -143,6 +143,14 @@ public static class Text
         public const string ModeMaximized = "最大化";
         public const string ModeFullscreen = "全屏";
         public const string Language = "语言";
+        public const string GameMusic = "对局音乐";
+        public const string GameMusicAuto = "自动轮换";
+        public const string GameMusicStandard = "标准对局曲";
+        public const string GameMusicAdvanced = "进阶对局曲";
+        public const string GameMusicOff = "关闭";
+        public const string BgmScope = "切屏音乐";
+        public const string BgmScopeScene = "随场景切换";
+        public const string BgmScopeLock = "锁定当前曲";
     }
 
     public static class Levels

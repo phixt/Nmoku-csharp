@@ -56,6 +56,8 @@ public sealed partial class GameStore : Node
     public event Action? SavesChanged;
     /// <summary>关卡装配完成：对局维度（尺寸/层数）可能变化，壳层需重配视图与相机。</summary>
     public event Action? LevelChanged;
+    /// <summary>新对局开始（新开/重开/切关卡/读档进入对局；暂停与保留局恢复不触发，用于 BGM 会话轮换）。</summary>
+    public event Action? MatchStarted;
 
     public GameStore() : this(null)
     {
@@ -106,6 +108,7 @@ public sealed partial class GameStore : Node
         if (to == GameState.Playing && trigger == GameTrigger.NewGame)
         {
             GM.Reset(); // 确认已由调用方先行完成（§3.4 "Confirms restart"）
+            MatchStarted?.Invoke();
         }
         SetState(to.Value);
         return true;
@@ -131,6 +134,7 @@ public sealed partial class GameStore : Node
             else
             {
                 GM.Reset();
+                MatchStarted?.Invoke();
                 Fire(GameTrigger.StartGame);
             }
             if (IsDarkTheme != _themePreference)
@@ -155,6 +159,7 @@ public sealed partial class GameStore : Node
     {
         GM.Configure(level, pve, difficulty);
         LevelChanged?.Invoke(); // 维度随档变化：视图/相机必须重配（层数>默认时不重配则不渲染——M4 验收反馈）
+        MatchStarted?.Invoke();
         return Fire(GameTrigger.StartGame);
     }
 
@@ -219,6 +224,7 @@ public sealed partial class GameStore : Node
             return false;
         }
         ApplySavedTheme(data); // 存档主题随档恢复（SaveData.isDarkTheme）
+        MatchStarted?.Invoke();
         SetState(to.Value);
         return true;
     }

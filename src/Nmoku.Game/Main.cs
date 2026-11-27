@@ -1,6 +1,7 @@
 using Godot;
 using Nmoku.Core;
 using Nmoku.Core.AI;
+using Nmoku.Core.Audio;
 using Nmoku.Core.Camera;
 using Nmoku.Core.Saves;
 using Nmoku.Game;
@@ -140,14 +141,11 @@ public partial class Main : Node
         _turnIndicator = _gameScreen.TurnIndicator;
         _board2D.Game = _gm; // 2D 面板状态源（此前遗漏导致右半屏空白）
         _board2D.HoverChanged += cell => _gm.SetHover(cell);
-        _board2D.PlaceRequested += cell =>
-        {
-            if (_gm.TryPlace(cell.X, cell.Y, cell.Z))
-            {
-                _audio.PlaySfx(SfxKind.Click); // 落子成功才有声（源 main.ts:144/336，B20 ①）
-            }
-        };
+        _board2D.PlaceRequested += cell => _gm.TryPlace(cell.X, cell.Y, cell.Z);
+        _gm.MovePlaced += move => _audio.PlayStonePlace(move.Player); // 人类与 AI 落子统一走分色双敲采样（B31）
         _store.StateChanged += OnStateChanged;
+        _store.MatchStarted += () =>
+            _audio.PrepareNewMatchBgm(AudioPolicy.PreferAdvancedGameTrack(_gm.Level, _gm.PvE, _gm.Difficulty));
         _store.SavesChanged += () =>
         {
             if (_router.IsOverlayOpen("save-menu"))
@@ -155,9 +153,10 @@ public partial class Main : Node
                 _saveMenu.RefreshSlots(_store.Saves.GetSlots());
             }
         };
-        _gm.GameOver += _ =>
+        _gm.GameOver += winner =>
         {
-            _audio.PlaySfx(SfxKind.Win); // 源语义：任意方获胜（含 AI 胜）同播 win（B20 ①）
+            // B31：PvE 区分人类胜（Win）与 AI 胜（Lose），PvP 胜方均播 Win，平局静默；播放期间 BGM 自动平滑闪避
+            _audio.PlayGameOver(AudioPolicy.ResolveGameOverSfx(_gm.PvE, winner, _gm.AiColor));
             _store.NotifyGameOver();
         };
         _gm.SwapPhaseStarted += ShowSwapDialog;
@@ -431,7 +430,7 @@ public partial class Main : Node
             Factory = () =>
             {
                 var bar = new ReplayBar();
-                bar.StepRequested += d => _gm.StepReplay(d);
+                bar.StepRequested += StepReplayWithAudio;
                 bar.SeekRequested += i => _gm.SetReplayIndex(i);
                 bar.ExitRequested += () => _store.ExitReplay();
                 _replayBar = bar;
@@ -605,8 +604,8 @@ public partial class Main : Node
         yield return ("restart", () => _store.RequestRestart());
         yield return ("return_to_title", () => _store.ReturnToTitle());
         yield return ("open_guide", () => _store.OpenGuide());
-        yield return ("replay_prev", () => _gm.StepReplay(-1));
-        yield return ("replay_next", () => _gm.StepReplay(1));
+        yield return ("replay_prev", () => StepReplayWithAudio(-1));
+        yield return ("replay_next", () => StepReplayWithAudio(1));
         yield return ("exit_replay", () => _store.ExitReplay());
         yield return ("layer_prev", () => _gm.CycleFocus(-1));
         yield return ("layer_next", () => _gm.CycleFocus(1));
@@ -878,8 +877,22 @@ public partial class Main : Node
 
     // ---- 状态机 → 路由（可见性由 SceneRouter 按栈差分管理，这里只做各屏的数据灌入）----
 
+    private void StepReplayWithAudio(int delta)
+    {
+        int before = _gm.ReplayIndex;
+        _gm.StepReplay(delta);
+        if (delta > 0 && _gm.ReplayIndex > before && _gm.LastVisibleMove is { } move)
+        {
+            _audio.PlayStonePlace(move.Player);
+        }
+    }
+
     private void OnStateChanged(GameState state)
     {
+        if (_lastState == GameState.GameOver && state != GameState.GameOver)
+        {
+            _audio.StopGameOverSfx(); // 离开结算（重开/回标题）即收掉残余 3s 胜负短乐句，BGM 平滑回升
+        }
         _router.ShowState(state);
         SyncBgm(state);
         // 进对局（从标题/引导进入，非暂停/复盘往返）：3D 视口首帧渐显，掩盖纹理就绪前的黑闪

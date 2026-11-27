@@ -1,5 +1,6 @@
 using Godot;
 using Nmoku.Core;
+using Nmoku.Core.Audio;
 using Nmoku.Game.Audio;
 using Nmoku.Game.Theme;
 using Nmoku.Game;
@@ -15,9 +16,9 @@ public enum WindowMode
 }
 
 /// <summary>
-/// 设置屏（Overlay 浮层，Title/Paused 均可打开）：音量/静音（audio 节）+ 窗口模式/语言（general 节）。
-/// 音量与静音经 AudioManager 即时生效并持久化；窗口模式发事件由 Main 操作窗口（设置页不碰 DisplayServer）；
-/// 语言切换走 TranslationServer + EventBus（热刷新由壳层重建壳屏，B20 ④）。键位重绑定=大工程，不在本屏。
+/// 设置屏（Overlay 浮层，Title/Paused 均可打开）：音量/静音（audio 节）+ 对局音乐/切屏策略（music 节）
+/// + 窗口模式/语言（general 节）。音量与静音经 AudioManager 即时生效并持久化；窗口模式发事件由 Main
+/// 操作窗口（设置页不碰 DisplayServer）；语言切换走 TranslationServer + EventBus（热刷新由壳层重建壳屏，B20 ④）。
 /// </summary>
 public sealed partial class SettingsScreen : Control
 {
@@ -54,13 +55,13 @@ public sealed partial class SettingsScreen : Control
             CornerRadiusBottomRight = 8,
             ContentMarginLeft = 24,
             ContentMarginRight = 24,
-            ContentMarginTop = 20,
-            ContentMarginBottom = 20,
+            ContentMarginTop = 16,
+            ContentMarginBottom = 16,
         });
         center.AddChild(panel);
 
         var box = new VBoxContainer();
-        box.AddThemeConstantOverride("separation", 10);
+        box.AddThemeConstantOverride("separation", 8);
         box.CustomMinimumSize = new Vector2(420, 0);
         panel.AddChild(box);
 
@@ -84,6 +85,8 @@ public sealed partial class SettingsScreen : Control
         _muteButton = MakeButton(MuteText(), ToggleMute);
         box.AddChild(_muteButton);
 
+        box.AddChild(MakeGameMusicRow());
+        box.AddChild(MakeBgmScopeRow());
         box.AddChild(MakeWindowModeRow());
         box.AddChild(MakeLanguageRow());
 
@@ -135,13 +138,107 @@ public sealed partial class SettingsScreen : Control
         return row;
     }
 
+    /// <summary>对局音乐选曲偏好（music.slot_game）：自动轮换 / 标准对局曲 / 进阶对局曲 / 关闭。</summary>
+    private Control MakeGameMusicRow()
+    {
+        var row = new HBoxContainer();
+        row.AddThemeConstantOverride("separation", 10);
+        row.AddChild(MakeRowLabel(I18n.T(Text.Settings.GameMusic)));
+
+        var select = new OptionButton
+        {
+            Name = "GameMusicSelect",
+            SizeFlagsHorizontal = SizeFlags.ExpandFill,
+        };
+        string current = MusicPrefs.SlotOverride("game");
+        var options = new[]
+        {
+            ("auto", I18n.T(Text.Settings.GameMusicAuto)),
+            (AudioPolicy.StandardGameTrackId, I18n.T(Text.Settings.GameMusicStandard)),
+            (AudioPolicy.AdvancedGameTrackId, I18n.T(Text.Settings.GameMusicAdvanced)),
+            ("off", I18n.T(Text.Settings.GameMusicOff)),
+        };
+        bool matched = false;
+        foreach (var (key, text) in options)
+        {
+            int idx = select.ItemCount;
+            select.AddItem(text, idx);
+            select.SetItemMetadata(idx, key);
+            if (key == current)
+            {
+                select.Select(idx);
+                matched = true;
+            }
+        }
+        if (!matched)
+        {
+            select.Select(0);
+        }
+        select.ItemSelected += idx =>
+        {
+            string key = select.GetItemMetadata((int)idx).AsString();
+            SettingsStore.Set("music", "slot_game", key);
+            AudioManager.Instance?.RefreshCurrentBgm();
+        };
+        row.AddChild(select);
+        return row;
+    }
+
+    /// <summary>切屏音乐策略（music.global_mode）：随场景切换 / 锁定当前曲。</summary>
+    private Control MakeBgmScopeRow()
+    {
+        var row = new HBoxContainer();
+        row.AddThemeConstantOverride("separation", 10);
+        row.AddChild(MakeRowLabel(I18n.T(Text.Settings.BgmScope)));
+
+        var select = new OptionButton
+        {
+            Name = "BgmScopeSelect",
+            SizeFlagsHorizontal = SizeFlags.ExpandFill,
+        };
+        string current = MusicPrefs.GlobalMode();
+        var options = new[]
+        {
+            ("scene", I18n.T(Text.Settings.BgmScopeScene)),
+            ("lock", I18n.T(Text.Settings.BgmScopeLock)),
+        };
+        bool matched = false;
+        foreach (var (key, text) in options)
+        {
+            int idx = select.ItemCount;
+            select.AddItem(text, idx);
+            select.SetItemMetadata(idx, key);
+            if (key == current)
+            {
+                select.Select(idx);
+                matched = true;
+            }
+        }
+        if (!matched)
+        {
+            select.Select(0);
+        }
+        select.ItemSelected += idx =>
+        {
+            string key = select.GetItemMetadata((int)idx).AsString();
+            SettingsStore.Set("music", "global_mode", key);
+            AudioManager.Instance?.RefreshCurrentBgm();
+        };
+        row.AddChild(select);
+        return row;
+    }
+
     private Control MakeWindowModeRow()
     {
         var row = new HBoxContainer();
         row.AddThemeConstantOverride("separation", 10);
         row.AddChild(MakeRowLabel(I18n.T(Text.Settings.WindowMode)));
 
-        var select = new OptionButton { SizeFlagsHorizontal = SizeFlags.ExpandFill };
+        var select = new OptionButton
+        {
+            Name = "WindowModeSelect",
+            SizeFlagsHorizontal = SizeFlags.ExpandFill,
+        };
         // 初值=实际窗口状态（非 cfg）：cfg 只在 SizeChanged 同步点与实际收敛，重启恢复期可能短暂
         // 分叉——下拉作为"当前模式视图"以窗口为准（headless 无窗口退回 cfg，回归锁用）
         string current = DisplayServer.GetName() == "headless"
@@ -189,7 +286,11 @@ public sealed partial class SettingsScreen : Control
         row.AddThemeConstantOverride("separation", 10);
         row.AddChild(MakeRowLabel(I18n.T(Text.Settings.Language)));
 
-        var select = new OptionButton { SizeFlagsHorizontal = SizeFlags.ExpandFill };
+        var select = new OptionButton
+        {
+            Name = "LanguageSelect",
+            SizeFlagsHorizontal = SizeFlags.ExpandFill,
+        };
         // 选项=语言自称（不翻译），当前值来自 TranslationServer 实时 locale。
         // 匹配必须经 StandardizeLocale：GetLocale 返回下划线形（zh_CN），选项键是横线形（zh-CN）——
         // 直接相等永不命中，下拉初值/重建后恒为空选（"改不回"观感的组成之一）

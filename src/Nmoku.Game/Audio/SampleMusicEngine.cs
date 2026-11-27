@@ -1,4 +1,5 @@
 using Godot;
+using Nmoku.Core.Audio;
 
 namespace Nmoku.Game.Audio;
 
@@ -8,9 +9,9 @@ namespace Nmoku.Game.Audio;
 /// 并行重叠（源 playBGM/startBGMPattern 的 WebAudio linearRamp 语义，B20 ②）；位置记忆（切走的
 /// 轨记住播放进度，切回续播不重头）；优雅回归（切回还在淡出的轨=淡出反转为淡入）。快速连切由
 /// 「瞬时音量重定目标」仲裁，同帧多请求=最后者胜，不产生重启爆音。
-/// 槽位调配（MusicPrefs，P3 设置页收口）：每槽位覆盖 auto/off/定曲 + 随机(不重复)/顺序轮换。
-/// 当前资产为 tools/AudioBake 生成的占位循环；正式 BGM 走 Strudel 谱面渲染替换
-/// （assets-src/music/strudel/README.md 渲染管线）。
+/// 多曲会话机制（2026-11-27，B31）：同一会话内（暂停/引导/标题保留局往返）固定当前曲目保证位置记忆与
+/// 优雅回归；新局经 <see cref="PrepareSlotSession"/> 触发亲和选曲与池内轮换并从头起播。
+/// 正式 BGM 由 programmed-music REAPER 真音源管线交付（5 轨无缝循环立体声 OGG）。
 /// </summary>
 public sealed partial class SampleMusicEngine : Node, IMusicEngine
 {
@@ -19,7 +20,7 @@ public sealed partial class SampleMusicEngine : Node, IMusicEngine
         public AudioStreamPlayer Player = null!;
         public string Slot = "";      // 该轨位当前挂的槽位（场景键）
         public string? TrackId;       // 该轨位当前挂的曲目 Id（bgm_<slot>[_<n>]）；null=空
-        public float LinVolume;       // 瞬时线性音量（淡化在玩家级，音量/静音在总线级，正交）
+        public float LinVolume;       // 瞬时线性音量（淡化在玩家级，音量/静音/闪避在总线级，正交）
         public float TargetVolume;
         /// <summary>挂着曲子（在播或淡出中）即占用；空闲才可指派。</summary>
         public bool Busy => Player.Playing || TargetVolume > 0f;
@@ -30,8 +31,10 @@ public sealed partial class SampleMusicEngine : Node, IMusicEngine
 
     private readonly MusicLibrary _library = new();
     private readonly Lane[] _lanes = [new Lane(), new Lane()];
-    private readonly Dictionary<string, double> _resumeSec = [];      // 位置记忆：切回续播
-    private readonly Dictionary<string, string> _lastIdBySlot = [];   // 池选取去重/顺序游标
+    private readonly Dictionary<string, double> _resumeSec = [];        // 位置记忆：切回续播
+    private readonly Dictionary<string, string> _sessionIdBySlot = [];  // 会话当前曲：暂停/引导往返不乱切
+    private readonly Dictionary<string, string> _lastIdBySlot = [];     // 池选取去重/顺序游标
+    private readonly Dictionary<string, string?> _pendingRotate = [];   // 下次进入该槽位触发新局轮换（值=亲和曲 Id）
     private readonly HashSet<string> _warnedEmptySlots = [];
     private readonly Random _rng = new();
     private string? _currentSlot;
@@ -78,6 +81,29 @@ public sealed partial class SampleMusicEngine : Node, IMusicEngine
         }
     }
 
+    public void PrepareSlotSession(string slot, bool rotate = true, string? preferredTrackId = null)
+    {
+        if (!rotate)
+        {
+            _pendingRotate.Remove(slot);
+            return;
+        }
+        _pendingRotate[slot] = preferredTrackId;
+        // 若此刻正处于该槽位（例如 GameOver 直接点击「重新开始」仍在 game 轨），立即平滑轮换
+        if (_currentSlot == slot)
+        {
+            Start(slot);
+        }
+    }
+
+    public void RefreshCurrentSlot()
+    {
+        if (_currentSlot is { } slot)
+        {
+            Start(slot);
+        }
+    }
+
     public void Start(string slot)
     {
         var pool = _library.Pool(slot);
@@ -93,7 +119,9 @@ public sealed partial class SampleMusicEngine : Node, IMusicEngine
         var active = _lanes.FirstOrDefault(l => l.Player.Playing && l.TargetVolume >= 1f);
         if (ovr == "off")
         {
-            if (_currentSlot == slot)
+            _pendingRotate.Remove(slot);
+            _sessionIdBySlot.Remove(slot);
+            if (_currentSlot == slot || active?.Slot == slot)
             {
                 foreach (var l in _lanes)
                 {
@@ -102,23 +130,48 @@ public sealed partial class SampleMusicEngine : Node, IMusicEngine
                         l.TargetVolume = 0f; // 该槽位静默：交叉淡出收尾
                     }
                 }
-                _currentSlot = null;
+                if (_currentSlot == slot)
+                {
+                    _currentSlot = null;
+                }
             }
             return;
         }
-        if (_currentSlot == slot && active != null)
+
+        bool forceRotate = _pendingRotate.Remove(slot, out string? preferredId);
+        bool pinnedSwitch = active != null
+                            && _currentSlot == slot
+                            && ovr != "auto"
+                            && active.TrackId != ovr
+                            && pool.Any(t => t.Id == ovr);
+
+        if (_currentSlot == slot && active != null && !forceRotate && !pinnedSwitch)
         {
             return; // 同槽在播守卫（源 playBGM 同轨守卫，B20 ②：复盘回局/暂停往返不重播不换曲）
         }
-        if (MusicPrefs.GlobalMode() == "lock" && active != null)
+        if (MusicPrefs.GlobalMode() == "lock" && active != null && !pinnedSwitch)
         {
-            return; // 全局锁定（P3 设置页收口）：切场景不打断当前曲
+            return; // 全局锁定（设置页可配）：切场景不打断当前曲
         }
-        var pick = Resolve(slot, pool, ovr);
+
+        var pick = Resolve(slot, pool, ovr, forceRotate, preferredId);
         if (pick == null)
         {
             return;
         }
+        // 新局轮换命中同一首且已在播（如用户定曲或单曲池）→ 保持平稳在播，不强切
+        if (_currentSlot == slot && active != null && active.TrackId == pick.Id)
+        {
+            _sessionIdBySlot[slot] = pick.Id;
+            _lastIdBySlot[slot] = pick.Id;
+            return;
+        }
+        if (forceRotate)
+        {
+            // 新局切到的新曲目从 0:00 起播，不沿用上一局残留进度
+            _resumeSec.Remove(pick.Id);
+        }
+
         // 落点选择：还挂着目标曲的在播轨（优雅回归优先，避免同曲自重叠）> 空闲轨 > 音量最低轨（抢滩，先存其进度）
         var lane = _lanes.FirstOrDefault(l => l.TrackId == pick.Id && l.Player.Playing)
                    ?? _lanes.FirstOrDefault(l => !l.Busy);
@@ -157,6 +210,7 @@ public sealed partial class SampleMusicEngine : Node, IMusicEngine
             }
         }
         lane.TargetVolume = 1f;
+        _sessionIdBySlot[slot] = pick.Id;
         _lastIdBySlot[slot] = pick.Id;
         _currentSlot = slot;
     }
@@ -173,6 +227,7 @@ public sealed partial class SampleMusicEngine : Node, IMusicEngine
             lane.LinVolume = 0f;
             lane.TargetVolume = 0f;
         }
+        _pendingRotate.Clear();
         _currentSlot = null;
     }
 
@@ -181,43 +236,31 @@ public sealed partial class SampleMusicEngine : Node, IMusicEngine
         // 采样版不驱动参数（源 intensity 默认 0 无效果；合成器回填时按 audio_var.md §五实现）
     }
 
-    /// <summary>槽位选曲：覆盖定曲 > 池策略（随机不重复 / 顺序轮换）。</summary>
-    private MusicLibrary.Track? Resolve(string slot, IReadOnlyList<MusicLibrary.Track> pool, string ovr)
+    /// <summary>槽位选曲：委托 Core 纯函数 <see cref="AudioPolicy.SelectNextTrackId"/>。</summary>
+    private MusicLibrary.Track? Resolve(
+        string slot,
+        IReadOnlyList<MusicLibrary.Track> pool,
+        string ovr,
+        bool rotate,
+        string? preferredId)
     {
-        if (ovr != "auto")
+        string[] poolIds = new string[pool.Count];
+        for (int i = 0; i < pool.Count; i++)
         {
-            var pinned = pool.FirstOrDefault(t => t.Id == ovr);
-            if (pinned != null)
-            {
-                return pinned;
-            }
-            // 覆盖曲不在池内（文件被删等）：回落自动策略
+            poolIds[i] = pool[i].Id;
         }
-        if (pool.Count == 1)
-        {
-            return pool[0];
-        }
-        string? last = _lastIdBySlot.GetValueOrDefault(slot);
-        if (MusicPrefs.PlayMode() == "sequence")
-        {
-            int idx = -1;
-            for (int i = 0; i < pool.Count; i++)
-            {
-                if (pool[i].Id == last)
-                {
-                    idx = i;
-                    break;
-                }
-            }
-            return pool[(idx + 1) % pool.Count];
-        }
-        MusicLibrary.Track pick;
-        do
-        {
-            pick = pool[_rng.Next(pool.Count)];
-        }
-        while (pool.Count > 1 && pick.Id == last);
-        return pick;
+        string? sessionId = _sessionIdBySlot.GetValueOrDefault(slot);
+        string? lastId = _lastIdBySlot.GetValueOrDefault(slot);
+        string? chosenId = AudioPolicy.SelectNextTrackId(
+            poolIds,
+            sessionId,
+            lastId,
+            ovr,
+            MusicPrefs.PlayMode(),
+            rotate,
+            preferredId,
+            n => _rng.Next(n));
+        return chosenId == null ? null : pool.FirstOrDefault(t => t.Id == chosenId);
     }
 
     private void SavePosition(Lane lane)

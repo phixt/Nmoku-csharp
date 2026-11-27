@@ -855,13 +855,14 @@ void fragment() {
 
     private void PlaceStone(Coordinate3D cell, bool playAudio)
     {
-        AddStoneInternal(cell.X, cell.Y, cell.Z, _turn, isShowcase: false);
+        PlayerColor placed = _turn;
+        AddStoneInternal(cell.X, cell.Y, cell.Z, placed, isShowcase: false);
         _turn = _turn.Opponent();
         UpdateDemoStatus();
         _auxDirty = true;
         if (playAudio)
         {
-            AudioManager.Instance?.PlaySfx(SfxKind.Click);
+            AudioManager.Instance?.PlayStonePlace(placed);
         }
     }
 

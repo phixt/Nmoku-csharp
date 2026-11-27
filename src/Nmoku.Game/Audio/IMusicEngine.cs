@@ -27,4 +27,17 @@ public interface IMusicEngine
 
     /// <summary>动态强度 0–1（audio_var.md §五：源默认 0 不驱动任何参数；采样版留空）。</summary>
     void SetIntensity(float value);
+
+    /// <summary>
+    /// 声明某槽位将进入新一轮会话（如开新局/重开/切关卡）：在多曲池中触发选曲轮换或亲和曲切换，
+    /// 并让新局曲目从头播放；暂停/引导往返不调用此方法，保持会话内同曲续播与优雅回归。
+    /// </summary>
+    void PrepareSlotSession(string slot, bool rotate = true, string? preferredTrackId = null)
+    {
+    }
+
+    /// <summary>设置页修改音乐偏好（定曲/静默/全局锁定）后，对当前槽位即时重估生效。</summary>
+    void RefreshCurrentSlot()
+    {
+    }
 }
