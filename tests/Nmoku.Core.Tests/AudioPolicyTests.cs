@@ -148,4 +148,13 @@ public class AudioPolicyTests
         float top = env.Step(0.80f, holdDucked: false);
         Assert.Equal(1f, top, precision: 3);
     }
+
+    [Fact]
+    public void BgmCatalog_ContainsAllFiveFormalTracksAndResolvesById()
+    {
+        Assert.Equal(5, AudioPolicy.BgmCatalog.Count);
+        Assert.Equal("game", AudioPolicy.FindTrackMeta("bgm_game_2")?.Slot);
+        Assert.Equal("menu", AudioPolicy.FindTrackMeta("bgm_menu")?.Slot);
+        Assert.Null(AudioPolicy.FindTrackMeta("bgm_unknown"));
+    }
 }

@@ -118,6 +118,9 @@ public static class Text
         public const string KeymapTitle = "快捷键说明（F1）";
         /// <summary>F1 页作用域名拼接模板（en: "{0} layer"）。</summary>
         public const string LayerPageFormat = "{0} 层";
+        public const string AuthorNote = "作者的话";
+        public const string AuthorNoteBack = "返回按键说明";
+        public const string AuthorNotePlaceholder = "此处为「作者的话」预留空间，正式内容撰写中，敬请期待。";
     }
 
     public static class Overlay
@@ -142,6 +145,8 @@ public static class Text
         public const string ModeWindowed = "窗口化";
         public const string ModeMaximized = "最大化";
         public const string ModeFullscreen = "全屏";
+        public const string Resolution = "窗口分辨率";
+        public const string UiScale = "界面缩放";
         public const string Language = "语言";
         public const string GameMusic = "对局音乐";
         public const string GameMusicAuto = "自动轮换";
@@ -151,6 +156,34 @@ public static class Text
         public const string BgmScope = "切屏音乐";
         public const string BgmScopeScene = "随场景切换";
         public const string BgmScopeLock = "锁定当前曲";
+    }
+
+    public static class Audio
+    {
+        public const string HubTitle = "音乐与音效";
+        public const string SectionControls = "音量与独立开关";
+        public const string SectionLibrary = "背景音乐一览";
+        public const string SfxOn = "音效：开";
+        public const string SfxOff = "音效：关";
+        public const string BgmOn = "音乐：开";
+        public const string BgmOff = "音乐：关";
+        public const string TestStone = "试听落子";
+        public const string TestWin = "试听胜利";
+        public const string TestLose = "试听失败";
+        public const string NowPlaying = "正在播放：{0}";
+        public const string NowStopped = "当前未播放";
+        public const string PlayingBadge = "播放中";
+        public const string RestoreSceneBgm = "恢复场景曲";
+        public const string TrackMenuTitle = "主主题 · 标题屏";
+        public const string TrackMenuDesc = "94 BPM · 1:32 · 清透晶体室内乐";
+        public const string TrackGameTitle = "标准对局 · 晶格悬停";
+        public const string TrackGameDesc = "96 BPM · 2:00 · 轻盈悬停，中高频让位落子声";
+        public const string TrackGame2Title = "进阶对局 · 多利亚行进";
+        public const string TrackGame2Desc = "106 BPM · 1:49 · Dorian 博弈色彩与轻巧打击乐";
+        public const string TrackGuideTitle = "引导与说明 · 柔雾毡钢";
+        public const string TrackGuideDesc = "88 BPM · 1:27 · 低干扰阅读光晕";
+        public const string TrackPauseTitle = "暂停屏息 · 水下柔雾";
+        public const string TrackPauseDesc = "66 BPM · 0:58 · 玻璃罩低通静谧空间";
     }
 
     public static class Levels

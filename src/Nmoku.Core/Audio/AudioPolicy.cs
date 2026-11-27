@@ -2,6 +2,9 @@ using Nmoku.Core.AI;
 
 namespace Nmoku.Core.Audio;
 
+/// <summary>BGM 曲目元数据条目（用于 BGM 浏览界面展示与槽位映射，单一事实源）。</summary>
+public sealed record BgmTrackMeta(string TrackId, string Slot, string TitleKey, string DescKey);
+
 /// <summary>终局音效类型（PvE 区分胜负，PvP 胜方均播胜利，平局静默不播胜负号角）。</summary>
 public enum GameOverSfx
 {
@@ -23,6 +26,33 @@ public static class AudioPolicy
 
     public const string StandardGameTrackId = "bgm_game";
     public const string AdvancedGameTrackId = "bgm_game_2";
+
+    /// <summary>已交付的 5 轨正式 BGM 清单（供 BGM 浏览界面渲染与试听）。</summary>
+    public static readonly IReadOnlyList<BgmTrackMeta> BgmCatalog =
+    [
+        new("bgm_menu", "menu", Text.Audio.TrackMenuTitle, Text.Audio.TrackMenuDesc),
+        new("bgm_game", "game", Text.Audio.TrackGameTitle, Text.Audio.TrackGameDesc),
+        new("bgm_game_2", "game", Text.Audio.TrackGame2Title, Text.Audio.TrackGame2Desc),
+        new("bgm_guide", "guide", Text.Audio.TrackGuideTitle, Text.Audio.TrackGuideDesc),
+        new("bgm_pause", "pause", Text.Audio.TrackPauseTitle, Text.Audio.TrackPauseDesc),
+    ];
+
+    /// <summary>按曲目 Id 查找元数据（未登记的外部扩展曲返回 null）。</summary>
+    public static BgmTrackMeta? FindTrackMeta(string? trackId)
+    {
+        if (string.IsNullOrEmpty(trackId))
+        {
+            return null;
+        }
+        for (int i = 0; i < BgmCatalog.Count; i++)
+        {
+            if (string.Equals(BgmCatalog[i].TrackId, trackId, StringComparison.Ordinal))
+            {
+                return BgmCatalog[i];
+            }
+        }
+        return null;
+    }
 
     /// <summary>
     /// 终局音效判定：
