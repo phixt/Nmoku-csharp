@@ -25,4 +25,11 @@ public static class TurnOwnership
     /// <summary>此刻是否轮到 AI（PvE 且当前行棋方 = AI 色）。PvP 恒假。</summary>
     public static bool IsAiTurn(bool pve, PlayerColor current, PlayerColor aiColor) =>
         pve && current == aiColor;
+
+    /// <summary>
+    /// 由存档 <c>SaveData.playerColor</c>（人类执子色：1=黑、2=白）反推 AI 执子色（互为对手）。
+    /// 缺失或非法值默认人类执黑、AI 执白（M3 约定）。
+    /// </summary>
+    public static PlayerColor AiColorFromHumanColor(int humanPlayerColor) =>
+        humanPlayerColor == (int)PlayerColor.White ? PlayerColor.Black : PlayerColor.White;
 }

@@ -217,6 +217,17 @@ public sealed partial class AudioManager : Node
         }
     }
 
+    /// <summary>SWAP2 决策轻触反馈：换色微亮（1.08x）、保持执白柔和（0.95x）。</summary>
+    public void PlaySwapResolved(bool swapped)
+    {
+        if (Muted || !_sfx.TryGetValue(SfxKind.Click, out var player))
+        {
+            return;
+        }
+        player.PitchScale = swapped ? 1.08f : 0.95f;
+        player.Play();
+    }
+
     /// <summary>播放音效：静音时忽略；重入=从头重播（源 audio.currentTime=0 语义）。</summary>
     public void PlaySfx(SfxKind kind)
     {

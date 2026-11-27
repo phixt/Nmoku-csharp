@@ -48,4 +48,13 @@ public class TurnOwnershipTests
             }
         }
     }
+
+    [Theory]
+    [InlineData(1, PlayerColor.White)] // 人类执黑 → AI 执白
+    [InlineData(2, PlayerColor.Black)] // 人类执白 → AI 执黑
+    [InlineData(0, PlayerColor.White)] // 非法/缺失默认人类执黑 → AI 执白
+    public void AiColorFromHumanColor_ReturnsOpponentColor(int savedHumanColor, PlayerColor expectedAi)
+    {
+        Assert.Equal(expectedAi, TurnOwnership.AiColorFromHumanColor(savedHumanColor));
+    }
 }

@@ -79,6 +79,8 @@ public sealed partial class GameManager : Node
     public event Action<int>? GameOver;
     /// <summary>进入 SWAP2 决策期（白方选择交换/继续）。</summary>
     public event Action? SwapPhaseStarted;
+    /// <summary>SWAP2 决策完成（参数=是否交换黑白；仅人类主动决策时触发，用于音效等反馈）。</summary>
+    public event Action<bool>? SwapResolved;
     /// <summary>悬停格变化（2D→3D 蓝点联动，null=无）。</summary>
     public event Action<Coordinate3D?>? HoverChanged;
 
@@ -125,6 +127,7 @@ public sealed partial class GameManager : Node
         var ts = _engine.GetNextTurnState(_history, _history[^1].Player, _level);
         _swapPending = ts.IsSwapPhase;
         _current = ts.NextPlayer; // B1：决策期指针不动（=刚行棋方），标准局为对手
+        TryAutoResolveAiSwap();
         StateChanged?.Invoke();
         if (_swapPending)
         {
@@ -195,6 +198,7 @@ public sealed partial class GameManager : Node
         {
             PopMove();
         }
+        TryAutoResolveAiSwap();
         StateChanged?.Invoke();
         if (_swapPending)
         {
@@ -217,7 +221,12 @@ public sealed partial class GameManager : Node
         if (swap)
         {
             SwapEngine.ApplySwap(_history, _board);
+            if (_pve)
+            {
+                _aiColor = _aiColor.Opponent();
+            }
         }
+        SwapResolved?.Invoke(swap);
         StateChanged?.Invoke();
         MaybeTriggerAi();
     }
@@ -258,7 +267,7 @@ public sealed partial class GameManager : Node
             Winner = _winner,
             CurrentPlayer = (int)_current,
             IsDarkTheme = isDarkTheme,
-            PlayerColor = 1, // PvE 人执黑（M3 约定，AI 执白）
+            PlayerColor = (int)_aiColor.Opponent(), // 存档语义=人类执子色（1=黑、2=白），与 _aiColor 互为对手
             BoardSize = _board.BoardSize,
             Layers = _board.Layers,
             LayerSpacing = LayerSpacing,
@@ -277,7 +286,9 @@ public sealed partial class GameManager : Node
     /// → 才动现场</b>，任一步不合即返回 false（不改任何状态）。
     /// </para>
     /// </summary>
-    public bool LoadFrom(SaveData d, int? winLength = null)
+    public bool LoadFrom(SaveData d, int? winLength = null) => LoadFromInternal(d, winLength, forReplay: false);
+
+    private bool LoadFromInternal(SaveData d, int? winLength, bool forReplay)
     {
         if (d == null || d.BoardSize <= 0 || d.Layers <= 0 || d.Moves == null)
         {
@@ -334,7 +345,7 @@ public sealed partial class GameManager : Node
         _level = new LevelConfig { Id = "sandbox", BoardSize = d.BoardSize, Layers = d.Layers, Rules = rules, WinLength = effectiveWinLength };
         _engine = engine;
         _pve = string.Equals(d.GameMode, "pve", StringComparison.OrdinalIgnoreCase);
-        _aiColor = d.PlayerColor == 2 ? PlayerColor.White : PlayerColor.Black;
+        _aiColor = TurnOwnership.AiColorFromHumanColor(d.PlayerColor);
         _aiDifficulty = d.AiDifficulty switch
         {
             "easy" => AIDifficulty.Easy,
@@ -367,10 +378,19 @@ public sealed partial class GameManager : Node
         _swapPending = false;
         if (_history.Count > 0)
         {
-            // 引擎重推导：standard 直接得对手回合；swap2 恰在决策期则恢复 _swapPending（B1 指针不动）
-            var ts = _engine.GetNextTurnState(_history, _history[^1].Player, _level);
-            _swapPending = ts.IsSwapPhase;
-            _current = ts.NextPlayer;
+            // SWAP2 恰 1 手且首子已翻为白子：说明已执行过换色，直接由新黑方落第 2 手
+            if (rules == RuleSet.Swap2 && _history.Count == 1 && _history[0].Player == PlayerColor.White)
+            {
+                _swapPending = false;
+                _current = PlayerColor.Black;
+            }
+            else
+            {
+                // 引擎重推导：standard 直接得对手回合；swap2 恰在决策期则恢复 _swapPending（B1 指针不动）
+                var ts = _engine.GetNextTurnState(_history, _history[^1].Player, _level);
+                _swapPending = ts.IsSwapPhase;
+                _current = ts.NextPlayer;
+            }
         }
         else
         {
@@ -381,9 +401,23 @@ public sealed partial class GameManager : Node
         _replayMoves = null;
         ReplayIndex = 0;
         SetHover(null);
+        if (!forReplay)
+        {
+            TryAutoResolveAiSwap();
+        }
         StateChanged?.Invoke();
         FocusChanged?.Invoke(_focusZ);
-        MaybeTriggerAi(); // PvE 恢复时恰好轮到 AI 则续下
+        if (!forReplay)
+        {
+            if (_swapPending)
+            {
+                SwapPhaseStarted?.Invoke(); // 1 手 SWAP2 存档恢复后必须弹出决策框，否则 _swapPending 永久锁死棋盘
+            }
+            else
+            {
+                MaybeTriggerAi(); // PvE 恢复时恰好轮到 AI 则续下
+            }
+        }
         return true;
     }
 
@@ -417,7 +451,7 @@ public sealed partial class GameManager : Node
     /// <summary>进入复盘（01-core §2.4）：棋盘重放为 0 手可见，落子/悔棋被门控。</summary>
     public bool BeginReplay(SaveData d, int? winLength = null)
     {
-        if (!LoadFrom(d, winLength))
+        if (!LoadFromInternal(d, winLength, forReplay: true))
         {
             return false;
         }
@@ -529,14 +563,33 @@ public sealed partial class GameManager : Node
         if (ts.IsSwapPhase)
         {
             _swapPending = true;
+            _current = ts.NextPlayer;
+            bool aiResolved = TryAutoResolveAiSwap();
             StateChanged?.Invoke();
-            SwapPhaseStarted?.Invoke();
-            MaybeTriggerAi(); // PvE：AI 执白时自动"继续执白"
+            if (!aiResolved)
+            {
+                SwapPhaseStarted?.Invoke();
+            }
+            else
+            {
+                MaybeTriggerAi();
+            }
             return;
         }
         _current = ts.NextPlayer;
         StateChanged?.Invoke();
         MaybeTriggerAi();
+    }
+
+    private bool TryAutoResolveAiSwap()
+    {
+        if (!_swapPending || !_pve || _current.Opponent() != _aiColor)
+        {
+            return false;
+        }
+        // PvE 的 SWAP2 决策：AI 执白时直接按"继续执白"处理，不向人类弹出幽灵确认框
+        _swapPending = false;
+        return true;
     }
 
     private void PopMove()
@@ -549,9 +602,25 @@ public sealed partial class GameManager : Node
 
         if (_history.Count == 0)
         {
+            if (_pve && _level.Rules == RuleSet.Swap2 && last.Player == PlayerColor.White)
+            {
+                _aiColor = _aiColor.Opponent();
+            }
             _current = PlayerColor.Black;
             _swapPending = false;
             return;
+        }
+        // SWAP2 悔棋退回第 1 手且首子曾被换色成白子：先还原回未交换的原始黑子，再重进决策期
+        if (_history.Count == 1
+            && _level.Rules == RuleSet.Swap2
+            && _level.InitialMoves.Count == 0
+            && _history[0].Player == PlayerColor.White)
+        {
+            SwapEngine.ApplySwap(_history, _board);
+            if (_pve)
+            {
+                _aiColor = _aiColor.Opponent();
+            }
         }
         var ts = _engine.GetNextTurnState(_history, _history[^1].Player, _level);
         _swapPending = ts.IsSwapPhase;
@@ -560,17 +629,8 @@ public sealed partial class GameManager : Node
 
     private void MaybeTriggerAi()
     {
-        if (!_pve || _ai == null || InReplay)
+        if (!_pve || _ai == null || InReplay || _swapPending)
         {
-            return;
-        }
-        if (_swapPending)
-        {
-            // PvE 的 SWAP2 决策：AI 执白时按"继续执白"处理（M3 简化，智能换色留 M4+）
-            if (_current.Opponent() == _aiColor)
-            {
-                ResolveSwap(false);
-            }
             return;
         }
         if (IsOver || _current != _aiColor)

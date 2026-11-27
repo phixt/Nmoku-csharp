@@ -169,6 +169,81 @@ public partial class Main
                 : "FAIL";
         }));
         _autotestSteps.Enqueue(("swap2b-black2", () => _gm.TryPlace(3, 3, 0) ? "ok" : "FAIL"));
+        // SWAP2 回归锁（2026-11-27）：① 换色后悔棋退回第 1 手必须还原首子为黑且重进决策期
+        _autotestSteps.Enqueue(("swap2-undo-revert", () =>
+        {
+            _overlay.CloseAll();
+            _gm.Undo();
+            bool ok = _gm.History.Count == 1
+                      && _gm.History[0].Player == PlayerColor.Black
+                      && _gm.Board.Get(4, 4, 0) == CellState.Black
+                      && _gm.SwapPending
+                      && _gm.Current == PlayerColor.Black
+                      && _overlay.IsModalOpen;
+            _overlay.CloseAll();
+            return ok
+                ? "ok"
+                : $"FAIL hist={_gm.History.Count} p0={(_gm.History.Count > 0 ? _gm.History[0].Player : 0)} pend={_gm.SwapPending} cur={_gm.Current} modal={_overlay.IsModalOpen}";
+        }));
+        // ② PvE + SWAP2 首手后 AI 自动继续执白，绝不向人类弹出幽灵确认框
+        _autotestSteps.Enqueue(("swap2-pve-no-ghost-modal", () =>
+        {
+            _overlay.CloseAll();
+            _gm.Configure(9, 3, RuleSet.Swap2, pve: true, AIDifficulty.Medium);
+            bool p1 = _gm.TryPlace(4, 4, 0);
+            bool noModal = !_overlay.IsModalOpen && !_gm.SwapPending && _gm.Current == PlayerColor.Black;
+            bool p2 = _gm.TryPlace(5, 4, 0);
+            return p1 && noModal && p2
+                ? "ok"
+                : $"FAIL p1={p1} modal={_overlay.IsModalOpen} pend={_gm.SwapPending} cur={_gm.Current} p2={p2}";
+        }));
+        // ③ 1 手 SWAP2 读档（未换色弹决策框不死锁 / 已换色白子直接轮黑 / 复盘不弹窗）
+        _autotestSteps.Enqueue(("swap2-load-1move-unblocked", () =>
+        {
+            _overlay.CloseAll();
+            _gm.Configure(9, 3, RuleSet.Swap2, pve: false, AIDifficulty.Medium);
+            _gm.TryPlace(4, 4, 0);
+            var unswappedSave = _gm.BuildSaveData(true);
+            _gm.ResolveSwap(true);
+            var swappedSave = _gm.BuildSaveData(true);
+            _overlay.CloseAll();
+
+            bool load1 = _gm.LoadFrom(unswappedSave);
+            bool unswappedOk = load1 && _gm.SwapPending && _overlay.IsModalOpen;
+            _overlay.CloseAll();
+
+            bool load2 = _gm.LoadFrom(swappedSave);
+            bool swappedOk = load2 && !_gm.SwapPending && !_overlay.IsModalOpen && _gm.Current == PlayerColor.Black;
+
+            bool rep = _gm.BeginReplay(unswappedSave);
+            bool replayNoModal = rep && !_overlay.IsModalOpen;
+            _overlay.CloseAll();
+            return unswappedOk && swappedOk && replayNoModal
+                ? "ok"
+                : $"FAIL unswapped={unswappedOk} swapped={swappedOk} replay={replayNoModal}";
+        }));
+        // ④ PvE 存读档 _aiColor 方向校验（修复此前 LoadFrom 将人类色反写为 AI 色导致门控与胜负音效全反）
+        _autotestSteps.Enqueue(("pve-save-load-aicolor", () =>
+        {
+            _gm.Configure(9, 3, RuleSet.Gomoku, pve: true, AIDifficulty.Medium);
+            var saveBlackHuman = _gm.BuildSaveData(true); // PlayerColor=1（人黑 AI 白）
+            bool loaded1 = _gm.LoadFrom(saveBlackHuman);
+            bool blackHumanOk = loaded1
+                                && saveBlackHuman.PlayerColor == 1
+                                && _gm.AiColor == PlayerColor.White
+                                && AudioPolicy.ResolveGameOverSfx(true, 1, _gm.AiColor) == GameOverSfx.Win
+                                && AudioPolicy.ResolveGameOverSfx(true, 2, _gm.AiColor) == GameOverSfx.Lose;
+
+            saveBlackHuman.PlayerColor = 2; // 人白 AI 黑
+            bool loaded2 = _gm.LoadFrom(saveBlackHuman);
+            bool whiteHumanOk = loaded2
+                                && _gm.AiColor == PlayerColor.Black
+                                && AudioPolicy.ResolveGameOverSfx(true, 2, _gm.AiColor) == GameOverSfx.Win
+                                && AudioPolicy.ResolveGameOverSfx(true, 1, _gm.AiColor) == GameOverSfx.Lose;
+            return blackHumanOk && whiteHumanOk
+                ? "ok"
+                : $"FAIL blackHuman={blackHumanOk} whiteHuman={whiteHumanOk} ai={_gm.AiColor}";
+        }));
 
         // PvE：人类落子后 AI 应答
         _autotestSteps.Enqueue(("cfg-pve", () =>

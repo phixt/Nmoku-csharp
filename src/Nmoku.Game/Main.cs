@@ -160,6 +160,7 @@ public partial class Main : Node
             _store.NotifyGameOver();
         };
         _gm.SwapPhaseStarted += ShowSwapDialog;
+        _gm.SwapResolved += swapped => _audio.PlaySwapResolved(swapped);
         _gm.StateChanged += Refresh;
         _gm.FocusChanged += _ => Refresh();
         _gm.HoverChanged += OnHoverChanged;
